@@ -3,10 +3,19 @@ import { useAuthStore } from '../stores/auth';
 import { useWsStore } from '../stores/ws';
 import { api } from '../lib/api';
 import { EventMap } from '../components/EventMap';
+import { assessTriage, type TriageAssessment, type TriageLevel } from '../lib/llm-triage';
+import { useLLMApiKey } from '../hooks/useLLMApiKey';
 
 const typeLabels: Record<string, string> = {
   medical: 'Medisinsk', trauma: 'Traume',
   psychiatric: 'Psykiatrisk', other: 'Annet',
+};
+
+const TRIAGE_COLORS: Record<TriageLevel, { color: string; bg: string; label: string }> = {
+  lav:     { color: 'var(--color-status-ok)',       bg: 'var(--color-status-ok-bg)',       label: 'Lav' },
+  middels: { color: 'var(--color-status-info)',      bg: 'var(--color-status-info-bg)',      label: 'Middels' },
+  høy:     { color: 'var(--color-status-warning)',   bg: 'var(--color-status-warning-bg)',   label: 'Høy' },
+  kritisk: { color: 'var(--color-status-critical)',  bg: 'var(--color-status-critical-bg)',  label: 'KRITISK' },
 };
 
 const PATH_LABELS: Record<string, string> = {
@@ -25,6 +34,28 @@ export function CoordinatorDashboard() {
   const [escalatePath, setEscalatePath] = useState<string>('path_a_rk_ambulance');
   const [escalateReason, setEscalateReason] = useState('');
   const [escalating, setEscalating] = useState(false);
+
+  // LLM triage state
+  const { apiKey, setApiKey, hasKey, isDemo } = useLLMApiKey();
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [apiKeyDraft, setApiKeyDraft] = useState('');
+  const [triageResults, setTriageResults] = useState<Record<string, TriageAssessment>>({});
+  const [triageLoading, setTriageLoading] = useState<Record<string, boolean>>({});
+  const [triageErrors, setTriageErrors] = useState<Record<string, string>>({});
+
+  const handleTriageAssess = async (inc: any) => {
+    if (!hasKey) { setShowApiKeyInput(true); return; }
+    setTriageLoading((p) => ({ ...p, [inc.id]: true }));
+    setTriageErrors((p) => { const n = { ...p }; delete n[inc.id]; return n; });
+    try {
+      const result = await assessTriage(inc, apiKey);
+      setTriageResults((p) => ({ ...p, [inc.id]: result }));
+    } catch (e: any) {
+      setTriageErrors((p) => ({ ...p, [inc.id]: e.message ?? 'Feil ved AI-vurdering' }));
+    } finally {
+      setTriageLoading((p) => ({ ...p, [inc.id]: false }));
+    }
+  };
 
   const fetchAll = useCallback(() => {
     if (!eventId) return;
@@ -102,9 +133,79 @@ export function CoordinatorDashboard() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, marginBottom: 'var(--space-6)' }}>
-        Koordinator
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
+        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}>Koordinator</h1>
+        {!isDemo && (
+          <button
+            onClick={() => { setApiKeyDraft(apiKey); setShowApiKeyInput(true); }}
+            title="Konfigurer Anthropic API-nøkkel for AI-triage"
+            style={{
+              padding: 'var(--space-2) var(--space-3)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)',
+              background: hasKey ? 'var(--color-status-ok-bg)' : 'var(--color-surface)',
+              color: hasKey ? 'var(--color-status-ok)' : 'var(--color-text-muted)',
+              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+              cursor: 'pointer',
+            }}
+          >
+            {hasKey ? '✓ AI aktiv' : '⚙ API-nøkkel'}
+          </button>
+        )}
+      </div>
+
+      {/* API key modal */}
+      {showApiKeyInput && (
+        <div
+          role="dialog"
+          aria-label="Anthropic API-nøkkel"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
+            background: 'rgba(0,0,0,0.5)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
+          }}
+        >
+          <div style={{
+            background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-6)', maxWidth: 440, width: '100%',
+          }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+              Anthropic API-nøkkel
+            </h2>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
+              Nøkkelen lagres kun lokalt i nettleseren din og brukes til AI-triageanalyse.
+            </p>
+            <input
+              type="password"
+              value={apiKeyDraft}
+              onChange={(e) => setApiKeyDraft(e.target.value)}
+              placeholder="sk-ant-..."
+              style={{
+                width: '100%', padding: 'var(--space-2) var(--space-3)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)',
+                marginBottom: 'var(--space-4)',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <button
+                onClick={() => setShowApiKeyInput(false)}
+                style={{ flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer' }}
+              >
+                Avbryt
+              </button>
+              <button
+                onClick={() => { setApiKey(apiKeyDraft); setShowApiKeyInput(false); }}
+                style={{ flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-brand)', color: 'white', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Lagre
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Escalation modal */}
       {escalateTarget && (
@@ -282,35 +383,94 @@ export function CoordinatorDashboard() {
                         {new Date(inc.createdAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
-                    {inc.status !== 'resolved' && (
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        {!inc.activeEscalation && (
-                          <button
-                            onClick={() => setEscalateTarget(inc.id)}
-                            style={{
-                              fontSize: 11, padding: '4px 8px', borderRadius: 4,
-                              border: '1px solid var(--color-status-critical)',
-                              background: 'transparent',
-                              color: 'var(--color-status-critical)',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            ⚠ Eskalér
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {/* AI triage button */}
+                      <button
+                        onClick={() => handleTriageAssess(inc)}
+                        disabled={triageLoading[inc.id]}
+                        title="Be om AI-vurdering av kritikalitet"
+                        style={{
+                          fontSize: 11, padding: '4px 8px', borderRadius: 4,
+                          border: '1px solid var(--color-brand)',
+                          background: triageResults[inc.id] ? 'var(--color-brand)' : 'transparent',
+                          color: triageResults[inc.id] ? 'white' : 'var(--color-brand)',
+                          cursor: 'pointer', fontFamily: 'var(--font-mono)',
+                        }}
+                      >
+                        {triageLoading[inc.id] ? '⏳ AI...' : triageResults[inc.id] ? '✦ AI' : '✦ Vurder'}
+                      </button>
+                      {inc.status !== 'resolved' && (
+                        <>
+                          {!inc.activeEscalation && (
+                            <button
+                              onClick={() => setEscalateTarget(inc.id)}
+                              style={{
+                                fontSize: 11, padding: '4px 8px', borderRadius: 4,
+                                border: '1px solid var(--color-status-critical)',
+                                background: 'transparent',
+                                color: 'var(--color-status-critical)',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              ⚠ Eskalér
+                            </button>
+                          )}
+                          {inc.status === 'on_scene' && (
+                            <button onClick={() => handleStatusUpdate(inc.id, 'transporting')}
+                              style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer' }}>
+                              → Transport
+                            </button>
+                          )}
+                          <button onClick={() => handleStatusUpdate(inc.id, 'resolved')}
+                            style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer', color: 'var(--color-status-ok)' }}>
+                            ✓ Løst
                           </button>
-                        )}
-                        {inc.status === 'on_scene' && (
-                          <button onClick={() => handleStatusUpdate(inc.id, 'transporting')}
-                            style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer' }}>
-                            → Transport
-                          </button>
-                        )}
-                        <button onClick={() => handleStatusUpdate(inc.id, 'resolved')}
-                          style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer', color: 'var(--color-status-ok)' }}>
-                          ✓ Løst
-                        </button>
-                      </div>
-                    )}
+                        </>
+                      )}
+                    </div>
                   </div>
+
+                  {/* AI triage result panel */}
+                  {triageErrors[inc.id] && (
+                    <div style={{
+                      marginTop: 'var(--space-3)',
+                      padding: 'var(--space-2) var(--space-3)',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'var(--color-status-critical-bg)',
+                      color: 'var(--color-status-critical)',
+                      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                    }}>
+                      {triageErrors[inc.id]}
+                    </div>
+                  )}
+                  {triageResults[inc.id] && (() => {
+                    const r = triageResults[inc.id];
+                    const c = TRIAGE_COLORS[r.level];
+                    return (
+                      <div style={{
+                        marginTop: 'var(--space-3)',
+                        padding: 'var(--space-3)',
+                        borderRadius: 'var(--radius-sm)',
+                        background: c.bg,
+                        border: `1px solid ${c.color}`,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-1)' }}>
+                          <span style={{
+                            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                            fontWeight: 700, color: c.color, textTransform: 'uppercase',
+                          }}>
+                            ✦ AI &mdash; {c.label}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: 'var(--text-xs)', margin: '0 0 var(--space-1)', color: 'var(--color-text)' }}>
+                          {r.summary}
+                        </p>
+                        <p style={{ fontSize: 'var(--text-xs)', margin: 0, fontWeight: 600, color: c.color }}>
+                          → {r.recommendation}
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </article>
               ))}
             </div>
