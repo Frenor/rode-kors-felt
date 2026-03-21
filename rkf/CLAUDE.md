@@ -77,3 +77,28 @@ docker compose up -d      # Start Postgres + Redis locally
 - First Aider code: `123456`
 - Sick Bay code: `654321`
 - Admin: `admin@rkf.no` / `admin123`
+
+---
+
+### Agent Team
+
+This project uses a multi-agent structure. The **Product Lead** is the primary agent
+you talk to. It coordinates a specialist team defined in `prompts/agents/`.
+
+```
+prompts/agents/
+  README.md              — Team overview and invocation protocol
+  product-lead.md        — Orchestrator (primary interface)
+  ux-designer.md         — Design system, accessibility, Norwegian copy
+  frontend-engineer.md   — React 19 PWA, offline sync, state
+  backend-engineer.md    — Fastify, Drizzle, PostgreSQL, WebSockets
+  qa-engineer.md         — Vitest, Playwright, axe-core, quality gates
+  devops-engineer.md     — Terraform, AWS, GitHub Actions, Docker
+  field-user.md          — Usability tester persona (Norwegian, field conditions)
+```
+
+**To invoke an agent:** use the Agent tool with the agent file as context, or ask the
+Product Lead to delegate to the appropriate specialist.
+
+**Field User veto:** if the Field User (Kari Larsen) cannot complete a usability
+scenario, it is a P0 blocker — no release until resolved.
