@@ -107,3 +107,39 @@ When specifying a component, use this format:
 - **To Field User:** scenario scripts for usability review ("Du er på en konsert...")
 - **To Product Lead:** flag any design that cannot meet accessibility targets within
   current constraints
+
+---
+
+## When Invoked in Parallel
+
+When launched as a parallel sub-agent alongside other specialists, return your output
+in this exact format so the orchestrator can synthesize all agents' work:
+
+### Assessment
+Brief analysis from a UX/design perspective: which user roles and device profiles are
+affected, whether existing design tokens cover the need, and any Norwegian copy concerns.
+
+### Proposed Changes
+Use the component spec template for each new or changed component:
+
+```
+## Component: [Name]
+- Role(s): [First Aider | Sick Bay | Coordinator]
+- Viewport: [mobile 360px+ | tablet 768px+ | desktop 1280px+]
+- States: default, hover, focus, active, disabled, error, offline, loading
+- ARIA: role, aria-label, aria-describedby, live region (if applicable)
+- Measurements: min-height [px], padding [px], touch target [px]
+- Copy (Norwegian Bokmål): label, placeholder, error, success messages
+- Token references: [token names from tokens.css]
+```
+
+### Dependencies on Other Agents
+- **From Frontend Engineer:** feasibility check on complex interactions
+- **To QA Engineer:** ARIA tree, contrast targets, expected focus order
+- **Other:** anything blocking the spec being finalized
+
+### Risks / Blockers
+Flag any case where meeting WCAG AAA for clinical data or the 56px touch target
+requirement forces a layout trade-off that Product Lead must decide on.
+
+You commonly work in parallel with: `frontend-engineer`, `field-user`, `qa-engineer`.

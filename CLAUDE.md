@@ -80,25 +80,87 @@ docker compose up -d      # Start Postgres + Redis locally
 
 ---
 
-### Agent Team
+## Multi-Agent Orchestration Protocol
 
-This project uses a multi-agent structure. The **Product Lead** is the primary agent
-you talk to. It coordinates a specialist team defined in `prompts/agents/`.
+This project has a specialist agent team in `prompts/agents/`. **You must use it.**
+Do not solve tasks alone as a generalist. For every non-trivial request, identify the
+relevant specialists, launch them **in parallel**, and synthesize their outputs.
+
+### Step 1 — Classify the Request
+
+Map the incoming request to one or more agents using this routing matrix:
+
+| Request type | Launch these agents in parallel |
+|---|---|
+| New UI component or screen | `frontend-engineer` + `ux-designer` |
+| New API endpoint | `backend-engineer` + `frontend-engineer` |
+| Full-stack feature | `frontend-engineer` + `backend-engineer` + `ux-designer` + `qa-engineer` |
+| Bug fix (frontend) | `frontend-engineer` + `qa-engineer` |
+| Bug fix (backend) | `backend-engineer` + `qa-engineer` |
+| Accessibility issue | `ux-designer` + `frontend-engineer` + `qa-engineer` |
+| Performance problem | `frontend-engineer` or `backend-engineer` + `devops-engineer` |
+| Infra / CI / deploy | `devops-engineer` + `backend-engineer` |
+| Usability review | `ux-designer` + `field-user` |
+| Design system / tokens | `ux-designer` + `frontend-engineer` |
+| Test coverage / quality | `qa-engineer` |
+| Sprint or feature planning | `product-lead` (delegates further) |
+
+### Step 2 — Launch Agents in Parallel
+
+In a **single response**, call the Agent tool multiple times — one per specialist.
+Never send them sequentially when they can work at the same time.
+
+Each Agent tool call must use this prompt structure:
+
+```
+You are the [ROLE] for the RKF project (Røde Kors Felt — Norwegian Red Cross event
+medical system).
+
+## Your Role
+[full contents of prompts/agents/<role>.md]
+
+## Non-Negotiables
+- Offline-first: all writes go to Dexie/IndexedDB first, sync when online
+- Append-only clinical data (vitals, AVPU) — never overwrite
+- All queries scoped by eventId (row-level security)
+- Norwegian Bokmål for all user-facing strings
+- GDPR: no mandatory PII, AWS eu-central-1 only
+- WCAG 2.2 AA minimum; ≥ 7:1 contrast for clinical data; 56px touch targets
+- Vitals bounds: pulse 20–220, SpO₂ 50–100, RF 4–60, pain 0–10
+
+## Your Task
+[specific sub-task scoped to this agent's domain]
+
+## Return Format
+### Assessment
+### Proposed Changes (files + code snippets)
+### Dependencies on Other Agents
+### Risks / Blockers
+```
+
+### Step 3 — Synthesize
+
+After all parallel agents respond:
+
+1. Identify any **conflicts** (e.g., mismatched API contracts between frontend and backend agents).
+2. Resolve conflicts using the priority order: **Safety > Offline > Accessibility > GDPR > Performance > DX**.
+3. Check that QA's test plan covers the changes proposed by other agents.
+4. If `field-user` reported any blockers, treat them as **P0** — stop and fix before proceeding.
+5. Produce a unified implementation plan or directly implement the changes.
+
+### Agent Roster
 
 ```
 prompts/agents/
-  README.md              — Team overview and invocation protocol
-  product-lead.md        — Orchestrator (primary interface)
+  README.md              — Team overview
+  product-lead.md        — Orchestrator; owns backlog, sprint planning, handoffs
   ux-designer.md         — Design system, accessibility, Norwegian copy
-  frontend-engineer.md   — React 19 PWA, offline sync, state
-  backend-engineer.md    — Fastify, Drizzle, PostgreSQL, WebSockets
+  frontend-engineer.md   — React 19 PWA, offline sync, Zustand, TanStack Query
+  backend-engineer.md    — Fastify, Drizzle ORM, PostgreSQL, WebSockets
   qa-engineer.md         — Vitest, Playwright, axe-core, quality gates
-  devops-engineer.md     — Terraform, AWS, GitHub Actions, Docker
-  field-user.md          — Usability tester persona (Norwegian, field conditions)
+  devops-engineer.md     — Terraform, AWS ECS, GitHub Actions, Docker
+  field-user.md          — Kari Larsen: Norwegian usability tester (thinks aloud,
+                           gives up after 3 failed attempts, reports in Norwegian)
 ```
 
-**To invoke an agent:** use the Agent tool with the agent file as context, or ask the
-Product Lead to delegate to the appropriate specialist.
-
-**Field User veto:** if the Field User (Kari Larsen) cannot complete a usability
-scenario, it is a P0 blocker — no release until resolved.
+**Field User veto:** a single blocker from Kari Larsen is a P0 — no release until resolved.
