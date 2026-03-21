@@ -35,6 +35,34 @@ export function CoordinatorDashboard() {
   const [escalateReason, setEscalateReason] = useState('');
   const [escalating, setEscalating] = useState(false);
 
+  // Nytt koordinatoroppdrag state
+  const [showNewOppdrag, setShowNewOppdrag] = useState(false);
+  const [newType, setNewType] = useState<string>('medical');
+  const [newTeamId, setNewTeamId] = useState<string>('');
+  const [newNote, setNewNote] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateOppdrag = async () => {
+    if (!eventId) return;
+    setCreating(true);
+    try {
+      const { incident } = await api.createIncident({
+        eventId,
+        type: newType,
+        source: 'coordinator',
+        teamId: newTeamId || undefined,
+        notes: newNote || undefined,
+      });
+      setIncidents((prev) => [incident, ...prev]);
+      setShowNewOppdrag(false);
+      setNewType('medical');
+      setNewTeamId('');
+      setNewNote('');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   // LLM triage state
   const { apiKey, setApiKey, hasKey, isDemo } = useLLMApiKey();
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
@@ -295,6 +323,121 @@ export function CoordinatorDashboard() {
         </div>
       )}
 
+      {/* Nytt koordinatoroppdrag modal */}
+      {showNewOppdrag && (
+        <div
+          role="dialog"
+          aria-label="Nytt koordinatoroppdrag"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
+            background: 'rgba(0,0,0,0.5)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
+          }}
+        >
+          <div style={{
+            background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-6)', maxWidth: 480, width: '100%',
+          }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-1)' }}>
+              Nytt koordinatoroppdrag
+            </h2>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-5)' }}>
+              Opprettet av koordinator — vises i hendelsesfeed og tildeles valgt lag.
+            </p>
+
+            {/* Type */}
+            <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+              Hendelsestype
+            </label>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
+              {(['medical', 'trauma', 'psychiatric', 'other'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setNewType(t)}
+                  style={{
+                    padding: 'var(--space-2) var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    border: `2px solid ${newType === t ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                    background: newType === t ? 'var(--color-brand)' : 'transparent',
+                    color: newType === t ? 'white' : 'var(--color-text)',
+                    fontWeight: newType === t ? 700 : 400,
+                    cursor: 'pointer', fontSize: 'var(--text-sm)',
+                    minHeight: 'var(--touch-min)',
+                  }}
+                >
+                  {typeLabels[t]}
+                </button>
+              ))}
+            </div>
+
+            {/* Team */}
+            <label htmlFor="new-oppdrag-team" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+              Tildel lag (valgfritt)
+            </label>
+            <select
+              id="new-oppdrag-team"
+              value={newTeamId}
+              onChange={(e) => setNewTeamId(e.target.value)}
+              style={{
+                width: '100%', padding: 'var(--space-2) var(--space-3)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)',
+                minHeight: 'var(--touch-min)',
+              }}
+            >
+              <option value="">— Velg lag —</option>
+              {teams.map((t: any) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+
+            {/* Note */}
+            <label htmlFor="new-oppdrag-note" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+              Sted / beskrivelse
+            </label>
+            <textarea
+              id="new-oppdrag-note"
+              value={newNote}
+              onChange={(e) => setNewNote(e.target.value)}
+              placeholder="F.eks. «Sektor B ved inngang, person sitter på bakken»"
+              rows={3}
+              style={{
+                width: '100%', padding: 'var(--space-2) var(--space-3)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                fontSize: 'var(--text-sm)', resize: 'vertical',
+                marginBottom: 'var(--space-5)',
+              }}
+            />
+
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <button
+                onClick={() => { setShowNewOppdrag(false); setNewNote(''); setNewTeamId(''); setNewType('medical'); }}
+                style={{
+                  flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer',
+                }}
+              >
+                Avbryt
+              </button>
+              <button
+                onClick={handleCreateOppdrag}
+                disabled={creating}
+                style={{
+                  flex: 2, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
+                  border: 'none', background: 'var(--color-brand)', color: 'white',
+                  fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                {creating ? 'Oppretter...' : 'Opprett og tildel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       {stats && (
         <div style={{
@@ -336,13 +479,26 @@ export function CoordinatorDashboard() {
       }}>
         {/* Left: incident feed */}
         <div>
-          <h2 style={{
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)',
-            color: 'var(--color-text-muted)', textTransform: 'uppercase',
-            marginBottom: 'var(--space-3)',
-          }}>
-            Hendelsesfeed
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+            <h2 style={{
+              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)',
+              color: 'var(--color-text-muted)', textTransform: 'uppercase', margin: 0,
+            }}>
+              Hendelsesfeed
+            </h2>
+            <button
+              onClick={() => setShowNewOppdrag(true)}
+              style={{
+                padding: 'var(--space-1) var(--space-3)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-brand)',
+                background: 'transparent', color: 'var(--color-brand)',
+                fontWeight: 600, fontSize: 'var(--text-sm)', cursor: 'pointer',
+              }}
+            >
+              + Nytt oppdrag
+            </button>
+          </div>
 
           {loading ? <p>Laster...</p> : incidents.length === 0 ? (
             <div style={{
@@ -359,25 +515,52 @@ export function CoordinatorDashboard() {
                   padding: 'var(--space-4)', borderRadius: 'var(--radius-md)',
                   border: inc.activeEscalation
                     ? '2px solid var(--color-status-critical)'
-                    : '1px solid var(--color-border)',
+                    : inc.source === 'coordinator'
+                      ? '1px dashed var(--color-brand)'
+                      : '1px solid var(--color-border)',
                   background: 'var(--color-surface)',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
-                      <strong>{typeLabels[inc.type] || inc.type}</strong>
-                      {inc.acvpu && (
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', marginLeft: 8 }}>
-                          ACVPU: {inc.acvpu.toUpperCase()}
-                        </span>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                        <strong>{typeLabels[inc.type] || inc.type}</strong>
+                        {inc.source === 'coordinator' && (
+                          <span style={{
+                            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                            fontWeight: 700, color: 'var(--color-brand)',
+                            border: '1px solid var(--color-brand)',
+                            borderRadius: 'var(--radius-sm)', padding: '0 4px',
+                          }}>
+                            K
+                          </span>
+                        )}
+                        {inc.status === 'dispatched' && (
+                          <span style={{
+                            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                            color: 'var(--color-text-muted)',
+                          }}>
+                            Tildelt
+                          </span>
+                        )}
+                        {inc.acvpu && (
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+                            ACVPU: {inc.acvpu.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
                       {inc.activeEscalation && (
                         <span style={{
-                          display: 'inline-block', marginLeft: 8,
+                          display: 'inline-block', marginTop: 4,
                           fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
                           fontWeight: 700, color: 'var(--color-status-critical)',
                         }}>
                           ⚠ ESKALERT: {PATH_LABELS[inc.activeEscalation.path] ?? inc.activeEscalation.path}
                         </span>
+                      )}
+                      {inc.notes && inc.source === 'coordinator' && (
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 4, fontStyle: 'italic' }}>
+                          {inc.notes}
+                        </div>
                       )}
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginTop: 4 }}>
                         {new Date(inc.createdAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
@@ -413,6 +596,12 @@ export function CoordinatorDashboard() {
                               }}
                             >
                               ⚠ Eskalér
+                            </button>
+                          )}
+                          {inc.status === 'dispatched' && (
+                            <button onClick={() => handleStatusUpdate(inc.id, 'on_scene')}
+                              style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--color-brand)', background: 'transparent', cursor: 'pointer', color: 'var(--color-brand)' }}>
+                              → Bekreftet på stedet
                             </button>
                           )}
                           {inc.status === 'on_scene' && (
