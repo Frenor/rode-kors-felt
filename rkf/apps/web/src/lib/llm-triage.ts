@@ -70,7 +70,7 @@ export async function assessTriage(
 ): Promise<TriageAssessment> {
   if (import.meta.env.VITE_DEMO_MODE === 'true') {
     await new Promise((r) => setTimeout(r, 800)); // simulate latency
-    return DEMO_RESPONSES[incident.type] ?? DEMO_RESPONSES.other;
+    return (DEMO_RESPONSES[incident.type] ?? DEMO_RESPONSES['other']) as TriageAssessment;
   }
 
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
@@ -82,7 +82,8 @@ export async function assessTriage(
     messages: [{ role: 'user', content: incidentToPrompt(incident) }],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const block = response.content[0];
+  const text = block?.type === 'text' ? block.text : '';
 
   try {
     const parsed = JSON.parse(text);
