@@ -445,6 +445,7 @@ export function CoordinatorDashboard() {
                   )}
                   {triageResults[inc.id] && (() => {
                     const r = triageResults[inc.id];
+                    if (!r) return null;
                     const c = TRIAGE_COLORS[r.level];
                     return (
                       <div style={{

@@ -33,7 +33,7 @@ describe('ApiClient — Authorization header', () => {
 
     await api.getEvents();
 
-    const calledHeaders = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+    const calledHeaders = fetchMock.mock.calls[0]![1]?.headers as Record<string, string>;
     expect(calledHeaders['Authorization']).toBeUndefined();
   });
 
@@ -46,7 +46,7 @@ describe('ApiClient — Authorization header', () => {
 
     await api.getEvents();
 
-    const calledHeaders = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+    const calledHeaders = fetchMock.mock.calls[0]![1]?.headers as Record<string, string>;
     expect(calledHeaders['Authorization']).toBe('Bearer my-token');
   });
 });
@@ -96,7 +96,7 @@ describe('ApiClient — redeemCode()', () => {
     await api.redeemCode('123456');
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('/api/auth/code');
     expect(init?.method).toBe('POST');
     expect(JSON.parse(init?.body as string)).toEqual({ code: '123456' });
@@ -112,7 +112,7 @@ describe('ApiClient — createIncident()', () => {
     await api.createIncident({ type: 'medical', eventId: 'evt-1' });
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('/api/incidents');
     expect(init?.method).toBe('POST');
     expect(JSON.parse(init?.body as string)).toEqual({ type: 'medical', eventId: 'evt-1' });
