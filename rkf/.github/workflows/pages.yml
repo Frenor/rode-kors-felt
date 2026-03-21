@@ -21,17 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Expose pnpm lock file at repo root
-        run: ln -sf rkf/pnpm-lock.yaml pnpm-lock.yaml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
         working-directory: rkf
