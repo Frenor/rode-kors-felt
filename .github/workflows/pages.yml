@@ -36,6 +36,7 @@ jobs:
         run: pnpm --filter @rkf/web build
         env:
           VITE_BASE_PATH: /rode-kors-felt/
+          VITE_DEMO_MODE: 'true'
           # Set this secret in repo Settings → Secrets if you have a running API:
           # VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
 

@@ -46,6 +46,22 @@ class ApiClient {
   }
 
   async redeemCode(code: string) {
+    if (import.meta.env.VITE_DEMO_MODE === 'true') {
+      const demos: Record<string, { role: string; eventName: string }> = {
+        '123456': { role: 'firstaid', eventName: 'Demo-arrangement' },
+        '654321': { role: 'sickbay', eventName: 'Demo-arrangement' },
+      };
+      const demo = demos[code];
+      if (!demo) throw new Error('Ugyldig kode (prøv 123456 eller 654321)');
+      return {
+        accessToken: 'demo-token',
+        refreshToken: 'demo-refresh',
+        role: demo.role,
+        eventId: 'demo-event',
+        eventName: demo.eventName,
+        teams: [{ id: 'team-1', name: 'Demo-lag' }],
+      };
+    }
     return this.request<{
       accessToken: string;
       refreshToken: string;

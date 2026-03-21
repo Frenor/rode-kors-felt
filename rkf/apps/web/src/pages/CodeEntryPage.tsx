@@ -226,6 +226,27 @@ export function CodeEntryPage() {
         </button>
       </form>
 
+      {/* Demo mode hint */}
+      {import.meta.env.VITE_DEMO_MODE === 'true' && (
+        <div
+          style={{
+            marginTop: 'var(--space-6)',
+            padding: 'var(--space-3) var(--space-4)',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            textAlign: 'center',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
+            color: 'var(--color-text-muted)',
+            lineHeight: 1.6,
+          }}
+        >
+          Demo-modus &mdash; bruk kode<br />
+          <strong>123456</strong> (førstehjelper) &nbsp;·&nbsp; <strong>654321</strong> (sykestue)
+        </div>
+      )}
+
       {/* Admin login link */}
       <Link
         to="/login"
