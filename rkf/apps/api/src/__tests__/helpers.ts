@@ -19,24 +19,35 @@ export async function buildApp() {
   return app;
 }
 
-/**
- * Returns a valid Bearer token for a first_aider role.
- * The eventId is taken from the seeded store at call time.
- */
+/** Returns a valid Bearer token for a first_aider role. */
 export function getFirstAiderToken(eventId: string): string {
   return createToken({ role: 'first_aider', eventId });
 }
 
-/**
- * Returns a valid Bearer token for a sickbay role.
- */
+/** Returns a valid Bearer token for a sickbay role. */
 export function getSickbayToken(eventId: string): string {
   return createToken({ role: 'sickbay', eventId });
 }
 
-/**
- * Returns a valid Bearer token for a coordinator role.
- */
+/** Returns a valid Bearer token for a coordinator role. */
 export function getCoordinatorToken(): string {
   return createToken({ role: 'coordinator' });
+}
+
+/**
+ * Queries the API for the first active event ID.
+ * Use this in beforeAll instead of importing from the store.
+ */
+export async function getEventId(app: Awaited<ReturnType<typeof buildApp>>): Promise<string> {
+  const token = getCoordinatorToken();
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/events',
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const events = res.json().events;
+  if (!events || events.length === 0) {
+    throw new Error('No seeded events found — check setup.ts');
+  }
+  return events[0].id as string;
 }

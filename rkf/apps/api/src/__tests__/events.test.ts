@@ -1,15 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, getCoordinatorToken } from './helpers.js';
-import { store } from '../db/store.js';
+import { buildApp, getCoordinatorToken, getEventId } from './helpers.js';
 
 let app: FastifyInstance;
 let eventId: string;
 
 beforeAll(async () => {
   app = await buildApp();
-  // Pick the seeded event from the singleton store
-  eventId = Array.from(store.events.values())[0]!.id;
+  eventId = await getEventId(app);
 });
 
 afterAll(async () => {

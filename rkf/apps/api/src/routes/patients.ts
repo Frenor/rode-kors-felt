@@ -1,45 +1,80 @@
 import type { FastifyInstance } from 'fastify';
-import { randomUUID } from 'node:crypto';
-import { store } from '../db/store.js';
+import { desc, eq, sql } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { incidents, patients, vitalReadings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 
 export async function patientRoutes(app: FastifyInstance) {
-  // List patients for an event
+  // List patients for an event (with latest vitals attached)
   app.get('/', { preHandler: requireAuth }, async (request) => {
     const user = (request as any).user;
     const { eventId } = request.query as { eventId?: string };
-    const targetEventId = eventId || user.eventId;
+    const targetEventId = eventId ?? user.eventId;
 
     if (!targetEventId) {
       return { patients: [] };
     }
 
-    const patients = Array.from(store.patients.values())
-      .filter((p) => p.eventId === targetEventId)
-      .sort((a, b) => new Date(b.arrivalTime).getTime() - new Date(a.arrivalTime).getTime());
+    const patientRows = await db
+      .select()
+      .from(patients)
+      .where(eq(patients.eventId, targetEventId))
+      .orderBy(desc(patients.arrivalTime));
 
-    // Attach latest vitals per patient
-    const patientsWithVitals = patients.map((p) => {
-      const patientVitals = Array.from(store.vitals.values())
-        .filter((v) => v.patientId === p.id)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const patientsWithVitals = await Promise.all(
+      patientRows.map(async (p) => {
+        const vitalsHistory = await db
+          .select()
+          .from(vitalReadings)
+          .where(eq(vitalReadings.patientId, p.id))
+          .orderBy(desc(vitalReadings.timestamp));
 
-      return {
-        ...p,
-        latestVitals: patientVitals[0] || null,
-        vitalsHistory: patientVitals,
-      };
-    });
+        return {
+          ...mapPatient(p),
+          latestVitals: vitalsHistory.length > 0 ? mapVitals(vitalsHistory[0]!) : null,
+          vitalsHistory: vitalsHistory.map(mapVitals),
+        };
+      }),
+    );
 
     return { patients: patientsWithVitals };
   });
 
-  // Create patient (from sickbay intake or incident handover)
+  // Get single patient with full vitals history
+  app.get('/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const [patient] = await db
+      .select()
+      .from(patients)
+      .where(eq(patients.id, id))
+      .limit(1);
+
+    if (!patient) {
+      return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    }
+
+    const vitalsHistory = await db
+      .select()
+      .from(vitalReadings)
+      .where(eq(vitalReadings.patientId, id))
+      .orderBy(desc(vitalReadings.timestamp));
+
+    return {
+      patient: {
+        ...mapPatient(patient),
+        latestVitals: vitalsHistory.length > 0 ? mapVitals(vitalsHistory[0]!) : null,
+        vitalsHistory: vitalsHistory.map(mapVitals),
+      },
+    };
+  });
+
+  // Create patient
   app.post('/', { preHandler: requireAuth }, async (request, reply) => {
     const user = (request as any).user;
     const body = request.body as {
-      eventId: string;
+      eventId?: string;
       incidentId?: string;
       ageGroup?: string;
       gender?: string;
@@ -47,43 +82,34 @@ export async function patientRoutes(app: FastifyInstance) {
       assignedClinician?: string;
     };
 
-    const eventId = body.eventId || user.eventId;
+    const eventId = body.eventId ?? user.eventId;
     if (!eventId) {
       return reply.code(400).send({ error: 'Mangler eventId' });
     }
 
-    const now = new Date().toISOString();
-    const patient = {
-      id: randomUUID(),
-      eventId,
-      incidentId: body.incidentId,
-      status: 'incoming',
-      ageGroup: body.ageGroup,
-      gender: body.gender,
-      presentingComplaint: body.presentingComplaint,
-      arrivalTime: now,
-      assignedClinician: body.assignedClinician,
-      notes: [],
-      diagnosisFlags: [],
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    store.patients.set(patient.id, patient);
+    const [patient] = await db
+      .insert(patients)
+      .values({
+        eventId,
+        incidentId: body.incidentId,
+        ageGroup: body.ageGroup,
+        gender: body.gender,
+        presentingComplaint: body.presentingComplaint,
+        assignedClinician: body.assignedClinician,
+        notes: [],
+        diagnosisFlags: [],
+      })
+      .returning();
 
     // If linked to incident, update incident status
     if (body.incidentId) {
-      const incident = store.incidents.get(body.incidentId);
-      if (incident) {
-        store.incidents.set(body.incidentId, {
-          ...incident,
-          status: 'at_sickbay',
-          updatedAt: now,
-        });
-      }
+      await db
+        .update(incidents)
+        .set({ status: 'at_sickbay', updatedAt: new Date() })
+        .where(eq(incidents.id, body.incidentId));
     }
 
-    return reply.code(201).send({ patient });
+    return reply.code(201).send({ patient: mapPatient(patient!) });
   });
 
   // Update patient
@@ -95,39 +121,57 @@ export async function patientRoutes(app: FastifyInstance) {
       diagnosisFlags: string[];
     }>;
 
-    const patient = store.patients.get(id);
-    if (!patient) {
+    const [existing] = await db
+      .select()
+      .from(patients)
+      .where(eq(patients.id, id))
+      .limit(1);
+
+    if (!existing) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
     }
 
-    const updated = {
-      ...patient,
-      ...body,
-      updatedAt: new Date().toISOString(),
-    };
+    const [updated] = await db
+      .update(patients)
+      .set({
+        ...(body.status && { status: body.status as typeof patients.$inferInsert['status'] }),
+        ...(body.assignedClinician !== undefined && { assignedClinician: body.assignedClinician }),
+        ...(body.diagnosisFlags && { diagnosisFlags: body.diagnosisFlags }),
+        updatedAt: new Date(),
+      })
+      .where(eq(patients.id, id))
+      .returning();
 
-    store.patients.set(id, updated);
-    return { patient: updated };
+    return { patient: mapPatient(updated!) };
   });
 
-  // Add clinical note
+  // Add clinical note (append-only)
   app.post('/:id/notes', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { text, author } = request.body as { text: string; author: string };
 
-    const patient = store.patients.get(id);
-    if (!patient) {
+    const [existing] = await db
+      .select()
+      .from(patients)
+      .where(eq(patients.id, id))
+      .limit(1);
+
+    if (!existing) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
     }
 
-    patient.notes.push({
-      text,
-      timestamp: new Date().toISOString(),
-      author,
-    });
-    patient.updatedAt = new Date().toISOString();
+    const newNote = { text, timestamp: new Date().toISOString(), author };
 
-    return { patient };
+    const [updated] = await db
+      .update(patients)
+      .set({
+        notes: sql`${patients.notes} || ${JSON.stringify([newNote])}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(eq(patients.id, id))
+      .returning();
+
+    return { patient: mapPatient(updated!) };
   });
 
   // Record vitals (append-only — never overwrite)
@@ -144,34 +188,65 @@ export async function patientRoutes(app: FastifyInstance) {
       acvpu?: string;
     };
 
-    const patient = store.patients.get(id);
+    const [patient] = await db
+      .select()
+      .from(patients)
+      .where(eq(patients.id, id))
+      .limit(1);
+
     if (!patient) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
     }
 
-    const reading = {
-      id: randomUUID(),
-      patientId: id,
-      timestamp: new Date().toISOString(),
-      pulse: body.pulse,
-      spo2: body.spo2,
-      respiratoryRate: body.respiratoryRate,
-      painScore: body.painScore,
-      systolicBP: body.systolicBP,
-      temperature: body.temperature,
-      onSupplementalOxygen: body.onSupplementalOxygen,
-      acvpu: body.acvpu,
-    };
+    const [reading] = await db
+      .insert(vitalReadings)
+      .values({
+        patientId: id,
+        pulse: body.pulse,
+        spo2: body.spo2,
+        respiratoryRate: body.respiratoryRate,
+        painScore: body.painScore,
+        systolicBp: body.systolicBP,
+        temperature: body.temperature,
+        onSupplementalOxygen: body.onSupplementalOxygen,
+        acvpu: body.acvpu as typeof vitalReadings.$inferInsert['acvpu'],
+      })
+      .returning();
 
-    store.vitals.set(reading.id, reading);
+    const mapped = mapVitals(reading!);
 
     broadcast({
       type: 'patient.vitals_updated',
       eventId: patient.eventId,
-      payload: { patientId: id, vitals: reading },
-      timestamp: reading.timestamp,
+      payload: { patientId: id, vitals: mapped },
+      timestamp: mapped.timestamp,
     });
 
-    return reply.code(201).send({ vitals: reading });
+    return reply.code(201).send({ vitals: mapped });
   });
+}
+
+function mapPatient(row: typeof patients.$inferSelect) {
+  return {
+    ...row,
+    arrivalTime: row.arrivalTime.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function mapVitals(row: typeof vitalReadings.$inferSelect) {
+  return {
+    id: row.id,
+    patientId: row.patientId,
+    timestamp: row.timestamp.toISOString(),
+    pulse: row.pulse ?? undefined,
+    spo2: row.spo2 ?? undefined,
+    respiratoryRate: row.respiratoryRate ?? undefined,
+    painScore: row.painScore ?? undefined,
+    systolicBP: row.systolicBp ?? undefined,
+    temperature: row.temperature ?? undefined,
+    onSupplementalOxygen: row.onSupplementalOxygen ?? undefined,
+    acvpu: row.acvpu ?? undefined,
+  };
 }

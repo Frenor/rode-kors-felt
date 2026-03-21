@@ -1,14 +1,15 @@
 import type { FastifyInstance } from 'fastify';
+import { eq } from 'drizzle-orm';
 import { TeamPositionPayload } from '@rkf/shared-types';
 import { verifyToken } from '../middleware/auth.js';
-import { store } from '../db/store.js';
+import { db } from '../db/index.js';
+import { teams } from '../db/schema.js';
 
 // Connected coordinator clients
 const clients = new Set<any>();
 
 export async function wsHandler(app: FastifyInstance) {
   app.get('/', { websocket: true }, (socket, request) => {
-    // Verify token from query string
     const url = new URL(request.url, `http://${request.headers.host}`);
     const token = url.searchParams.get('token');
 
@@ -29,19 +30,16 @@ export async function wsHandler(app: FastifyInstance) {
     socket.on('message', (raw: Buffer) => {
       try {
         const message = JSON.parse(raw.toString());
-        // Handle team position updates — persist and broadcast
+
         if (message.type === 'team.position') {
           const parsed = TeamPositionPayload.safeParse(message.payload);
           if (parsed.success) {
             const { teamId, position } = parsed.data;
-            const team = store.teams.get(teamId);
-            if (team) {
-              store.teams.set(teamId, {
-                ...team,
-                currentPosition: position,
-                lastPositionUpdate: new Date().toISOString(),
-              });
-            }
+            // Persist to DB (fire-and-forget — position loss on failure is acceptable)
+            db.update(teams)
+              .set({ currentPosition: position, lastPositionUpdate: new Date() })
+              .where(eq(teams.id, teamId))
+              .catch((err) => app.log.error({ err }, 'Failed to update team position'));
           }
           broadcast({
             type: 'team.position',

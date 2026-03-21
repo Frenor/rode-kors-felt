@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './helpers.js';
-import { createToken } from '../middleware/auth.js';
 
 let app: FastifyInstance;
 

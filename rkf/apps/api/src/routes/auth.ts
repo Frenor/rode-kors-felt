@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { store } from '../db/store.js';
+import { and, eq, gt, isNull } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { accessCodes, events, teams, users } from '../db/schema.js';
 import { createToken } from '../middleware/auth.js';
 
 export async function authRoutes(app: FastifyInstance) {
@@ -7,9 +9,11 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/login', async (request, reply) => {
     const { email, password } = request.body as { email: string; password: string };
 
-    const user = Array.from(store.users.values()).find(
-      (u) => u.email === email && u.passwordHash === password,
-    );
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.email, email), eq(users.passwordHash, password)))
+      .limit(1);
 
     if (!user) {
       return reply.code(401).send({ error: 'Feil e-post eller passord' });
@@ -21,10 +25,7 @@ export async function authRoutes(app: FastifyInstance) {
       email: user.email,
     });
 
-    const refreshToken = createToken({
-      userId: user.id,
-      type: 'refresh',
-    });
+    const refreshToken = createToken({ userId: user.id, type: 'refresh' });
 
     return {
       accessToken,
@@ -38,16 +39,29 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/code', async (request, reply) => {
     const { code } = request.body as { code: string };
 
-    const accessCode = Array.from(store.accessCodes.values()).find(
-      (ac) => ac.code === code && !ac.revokedAt && new Date(ac.expiresAt) > new Date(),
-    );
+    const [accessCode] = await db
+      .select()
+      .from(accessCodes)
+      .where(
+        and(
+          eq(accessCodes.code, code),
+          isNull(accessCodes.revokedAt),
+          gt(accessCodes.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
 
     if (!accessCode) {
       return reply.code(401).send({ error: 'Ugyldig eller utløpt kode' });
     }
 
-    const event = store.events.get(accessCode.eventId);
-    if (!event || event.status !== 'active') {
+    const [event] = await db
+      .select()
+      .from(events)
+      .where(and(eq(events.id, accessCode.eventId), eq(events.status, 'active')))
+      .limit(1);
+
+    if (!event) {
       return reply.code(404).send({ error: 'Arrangement ikke funnet eller inaktivt' });
     }
 
@@ -57,15 +71,9 @@ export async function authRoutes(app: FastifyInstance) {
       codeId: accessCode.id,
     });
 
-    const refreshToken = createToken({
-      eventId: accessCode.eventId,
-      type: 'refresh',
-    });
+    const refreshToken = createToken({ eventId: accessCode.eventId, type: 'refresh' });
 
-    // Get teams for this event
-    const teams = Array.from(store.teams.values()).filter(
-      (t) => t.eventId === accessCode.eventId,
-    );
+    const teamList = await db.select().from(teams).where(eq(teams.eventId, accessCode.eventId));
 
     return {
       accessToken,
@@ -73,21 +81,17 @@ export async function authRoutes(app: FastifyInstance) {
       role: accessCode.role,
       eventId: accessCode.eventId,
       eventName: event.name,
-      teams: teams.map((t) => ({ id: t.id, name: t.name })),
+      teams: teamList.map((t) => ({ id: t.id, name: t.name })),
     };
   });
 
   // Token refresh
   app.post('/refresh', async (request, reply) => {
-    // MVP: just issue a new token
     const { refreshToken } = request.body as { refreshToken: string };
     try {
       const parts = refreshToken.split('.');
       const payload = JSON.parse(atob(parts[1]!));
-      const newToken = createToken({
-        ...payload,
-        type: undefined,
-      });
+      const newToken = createToken({ ...payload, type: undefined });
       return { accessToken: newToken };
     } catch {
       return reply.code(401).send({ error: 'Ugyldig refresh token' });

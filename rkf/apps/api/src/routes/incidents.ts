@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { randomUUID } from 'node:crypto';
-import { store } from '../db/store.js';
+import { and, desc, eq, isNull } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { escalations, incidents } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 
@@ -9,34 +10,43 @@ export async function incidentRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: requireAuth }, async (request) => {
     const user = (request as any).user;
     const { eventId } = request.query as { eventId?: string };
-    const targetEventId = eventId || user.eventId;
+    const targetEventId = eventId ?? user.eventId;
 
     if (!targetEventId) {
       return { incidents: [] };
     }
 
-    const incidents = Array.from(store.incidents.values())
-      .filter((i) => i.eventId === targetEventId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const rows = await db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.eventId, targetEventId))
+      .orderBy(desc(incidents.createdAt));
 
-    return { incidents };
+    return { incidents: rows.map(mapIncident) };
   });
 
   // Get single incident
   app.get('/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const incident = store.incidents.get(id);
+
+    const [incident] = await db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.id, id))
+      .limit(1);
+
     if (!incident) {
       return reply.code(404).send({ error: 'Hendelse ikke funnet' });
     }
-    return { incident };
+
+    return { incident: mapIncident(incident) };
   });
 
-  // Create incident (first aiders)
+  // Create incident
   app.post('/', { preHandler: requireAuth }, async (request, reply) => {
     const user = (request as any).user;
     const body = request.body as {
-      eventId: string;
+      eventId?: string;
       teamId?: string;
       type: string;
       source?: 'field' | 'coordinator';
@@ -48,53 +58,55 @@ export async function incidentRoutes(app: FastifyInstance) {
       clientId?: string;
     };
 
-    const eventId = body.eventId || user.eventId;
+    const eventId = body.eventId ?? user.eventId;
     if (!eventId) {
       return reply.code(400).send({ error: 'Mangler eventId' });
     }
 
     // Deduplicate by clientId
     if (body.clientId) {
-      const existing = Array.from(store.incidents.values()).find(
-        (i) => i.clientId === body.clientId,
-      );
+      const [existing] = await db
+        .select()
+        .from(incidents)
+        .where(eq(incidents.clientId, body.clientId))
+        .limit(1);
+
       if (existing) {
-        return { incident: existing, deduplicated: true };
+        return { incident: mapIncident(existing), deduplicated: true };
       }
     }
 
-    const now = new Date().toISOString();
     const source = body.source ?? 'field';
-    const incident = {
-      id: randomUUID(),
-      eventId,
-      teamId: body.teamId,
-      type: body.type,
-      source,
-      status: source === 'coordinator' ? 'dispatched' : 'on_scene',
-      location: body.location ?? { lat: 59.9139, lng: 10.7522 },
-      acvpu: body.acvpu,
-      vitals: body.vitals,
-      mist: body.mist,
-      notes: body.notes,
-      clientId: body.clientId,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const [incident] = await db
+      .insert(incidents)
+      .values({
+        eventId,
+        teamId: body.teamId,
+        type: body.type as typeof incidents.$inferInsert['type'],
+        source,
+        status: source === 'coordinator' ? 'dispatched' : 'on_scene',
+        location: body.location ?? { lat: 59.9139, lng: 10.7522 },
+        acvpu: body.acvpu as typeof incidents.$inferInsert['acvpu'],
+        vitals: body.vitals,
+        mist: body.mist,
+        notes: body.notes,
+        clientId: body.clientId,
+      })
+      .returning();
 
-    store.incidents.set(incident.id, incident);
+    const mapped = mapIncident(incident!);
 
     broadcast({
       type: 'incident.created',
       eventId,
-      payload: { incident },
-      timestamp: now,
+      payload: { incident: mapped },
+      timestamp: mapped.createdAt,
     });
 
-    return reply.code(201).send({ incident });
+    return reply.code(201).send({ incident: mapped });
   });
 
-  // Update incident status
+  // Update incident
   app.patch('/:id', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as Partial<{
@@ -104,27 +116,38 @@ export async function incidentRoutes(app: FastifyInstance) {
       notes: string;
     }>;
 
-    const incident = store.incidents.get(id);
-    if (!incident) {
+    const [existing] = await db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.id, id))
+      .limit(1);
+
+    if (!existing) {
       return reply.code(404).send({ error: 'Hendelse ikke funnet' });
     }
 
-    const updated = {
-      ...incident,
-      ...body,
-      updatedAt: new Date().toISOString(),
-    };
+    const [updated] = await db
+      .update(incidents)
+      .set({
+        ...(body.status && { status: body.status as typeof incidents.$inferInsert['status'] }),
+        ...(body.teamId !== undefined && { teamId: body.teamId }),
+        ...(body.acvpu && { acvpu: body.acvpu as typeof incidents.$inferInsert['acvpu'] }),
+        ...(body.notes !== undefined && { notes: body.notes }),
+        updatedAt: new Date(),
+      })
+      .where(eq(incidents.id, id))
+      .returning();
 
-    store.incidents.set(id, updated);
+    const mapped = mapIncident(updated!);
 
     broadcast({
       type: 'incident.updated',
-      eventId: updated.eventId,
-      payload: { incident: updated },
-      timestamp: updated.updatedAt,
+      eventId: mapped.eventId,
+      payload: { incident: mapped },
+      timestamp: mapped.updatedAt,
     });
 
-    return { incident: updated };
+    return { incident: mapped };
   });
 
   // Escalate an incident
@@ -133,68 +156,103 @@ export async function incidentRoutes(app: FastifyInstance) {
     const user = (request as any).user;
     const body = request.body as { path: string; reason?: string };
 
-    const incident = store.incidents.get(id);
+    const [incident] = await db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.id, id))
+      .limit(1);
+
     if (!incident) {
       return reply.code(404).send({ error: 'Hendelse ikke funnet' });
     }
 
     // Check for existing active escalation
-    const existing = Array.from(store.escalations.values()).find(
-      (e) => e.incidentId === id && !e.resolvedAt,
-    );
+    const [existing] = await db
+      .select()
+      .from(escalations)
+      .where(and(eq(escalations.incidentId, id), isNull(escalations.resolvedAt)))
+      .limit(1);
+
     if (existing) {
       return reply.code(409).send({ error: 'Hendelsen er allerede eskalert' });
     }
 
-    const now = new Date().toISOString();
-    const escalation = {
-      id: randomUUID(),
-      incidentId: id,
-      eventId: incident.eventId,
-      path: body.path,
-      reason: body.reason,
-      raisedAt: now,
-      raisedBy: user.sub || user.email || 'unknown',
-    };
+    const [escalation] = await db
+      .insert(escalations)
+      .values({
+        incidentId: id,
+        eventId: incident.eventId,
+        path: body.path as typeof escalations.$inferInsert['path'],
+        reason: body.reason,
+        raisedBy: user.sub ?? user.email ?? 'unknown',
+      })
+      .returning();
 
-    store.escalations.set(escalation.id, escalation);
+    const mapped = mapEscalation(escalation!);
 
     broadcast({
       type: 'escalation.raised',
       eventId: incident.eventId,
-      payload: { escalation, incidentId: id },
-      timestamp: now,
+      payload: { escalation: mapped, incidentId: id },
+      timestamp: mapped.raisedAt,
     });
 
-    return reply.code(201).send({ escalation });
+    return reply.code(201).send({ escalation: mapped });
   });
 
-  // Resolve an escalation
+  // Resolve escalation
   app.delete('/:id/escalate', { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    const incident = store.incidents.get(id);
+    const [incident] = await db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.id, id))
+      .limit(1);
+
     if (!incident) {
       return reply.code(404).send({ error: 'Hendelse ikke funnet' });
     }
 
-    const escalation = Array.from(store.escalations.values()).find(
-      (e) => e.incidentId === id && !e.resolvedAt,
-    );
+    const [escalation] = await db
+      .select()
+      .from(escalations)
+      .where(and(eq(escalations.incidentId, id), isNull(escalations.resolvedAt)))
+      .limit(1);
+
     if (!escalation) {
       return reply.code(404).send({ error: 'Ingen aktiv eskalering funnet' });
     }
 
-    const now = new Date().toISOString();
-    store.escalations.set(escalation.id, { ...escalation, resolvedAt: now });
+    const now = new Date();
+    await db
+      .update(escalations)
+      .set({ resolvedAt: now })
+      .where(eq(escalations.id, escalation.id));
 
     broadcast({
       type: 'escalation.resolved',
       eventId: incident.eventId,
       payload: { escalationId: escalation.id, incidentId: id },
-      timestamp: now,
+      timestamp: now.toISOString(),
     });
 
     return { ok: true };
   });
+}
+
+function mapIncident(row: typeof incidents.$inferSelect) {
+  return {
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function mapEscalation(row: typeof escalations.$inferSelect) {
+  return {
+    ...row,
+    raisedAt: row.raisedAt.toISOString(),
+    resolvedAt: row.resolvedAt?.toISOString(),
+  };
 }

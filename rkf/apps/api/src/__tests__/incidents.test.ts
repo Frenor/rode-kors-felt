@@ -1,16 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, getFirstAiderToken, getCoordinatorToken } from './helpers.js';
-import { store } from '../db/store.js';
+import { buildApp, getFirstAiderToken, getCoordinatorToken, getEventId } from './helpers.js';
 
 let app: FastifyInstance;
-// Grab the seeded event ID from the singleton store
 let eventId: string;
 
 beforeAll(async () => {
   app = await buildApp();
-  // The store is seeded with one event — pick it
-  eventId = Array.from(store.events.values())[0]!.id;
+  eventId = await getEventId(app);
 });
 
 afterAll(async () => {
@@ -85,8 +82,7 @@ describe('POST /api/incidents', () => {
     });
 
     expect(first.statusCode).toBe(201);
-    const firstBody = first.json();
-    const originalId = firstBody.incident.id;
+    const originalId = first.json().incident.id;
 
     const second = await app.inject({
       method: 'POST',
@@ -95,7 +91,6 @@ describe('POST /api/incidents', () => {
       payload,
     });
 
-    // Deduplication returns 200 (not 201) with the same incident
     const secondBody = second.json();
     expect(secondBody).toHaveProperty('incident');
     expect(secondBody.incident.id).toBe(originalId);
@@ -108,7 +103,6 @@ describe('PATCH /api/incidents/:id', () => {
     const firstAiderToken = getFirstAiderToken(eventId);
     const coordinatorToken = getCoordinatorToken();
 
-    // Create an incident first
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/incidents',

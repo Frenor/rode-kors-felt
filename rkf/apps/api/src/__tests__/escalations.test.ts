@@ -1,14 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, getFirstAiderToken, getCoordinatorToken } from './helpers.js';
-import { store } from '../db/store.js';
+import { buildApp, getFirstAiderToken, getCoordinatorToken, getEventId } from './helpers.js';
 
 let app: FastifyInstance;
 let eventId: string;
 
 beforeAll(async () => {
   app = await buildApp();
-  eventId = Array.from(store.events.values())[0]!.id;
+  eventId = await getEventId(app);
 });
 
 afterAll(async () => {
@@ -54,7 +53,6 @@ describe('POST /api/incidents/:id/escalate', () => {
     const coordToken = getCoordinatorToken();
     const incident = await createIncident(token);
 
-    // First escalation — should succeed
     await app.inject({
       method: 'POST',
       url: `/api/incidents/${incident.id}/escalate`,
@@ -62,7 +60,6 @@ describe('POST /api/incidents/:id/escalate', () => {
       payload: { path: 'path_b_113' },
     });
 
-    // Second escalation on same incident — should conflict
     const res = await app.inject({
       method: 'POST',
       url: `/api/incidents/${incident.id}/escalate`,

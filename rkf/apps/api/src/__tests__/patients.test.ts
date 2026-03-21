@@ -1,14 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, getSickbayToken } from './helpers.js';
-import { store } from '../db/store.js';
+import { buildApp, getSickbayToken, getEventId } from './helpers.js';
 
 let app: FastifyInstance;
 let eventId: string;
 
 beforeAll(async () => {
   app = await buildApp();
-  eventId = Array.from(store.events.values())[0]!.id;
+  eventId = await getEventId(app);
 });
 
 afterAll(async () => {
@@ -60,20 +59,14 @@ describe('POST /api/patients/:id/vitals', () => {
   it('appends two separate VitalReadings (append-only)', async () => {
     const token = getSickbayToken(eventId);
 
-    // Create a patient to record vitals for
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/patients',
       headers: { authorization: `Bearer ${token}` },
-      payload: {
-        eventId,
-        ageGroup: 'adult',
-        presentingComplaint: 'Chest pain',
-      },
+      payload: { eventId, ageGroup: 'adult', presentingComplaint: 'Chest pain' },
     });
     const patientId = createRes.json().patient.id;
 
-    // First vitals reading
     const first = await app.inject({
       method: 'POST',
       url: `/api/patients/${patientId}/vitals`,
@@ -83,11 +76,9 @@ describe('POST /api/patients/:id/vitals', () => {
 
     expect(first.statusCode).toBe(201);
     const firstBody = first.json();
-    expect(firstBody).toHaveProperty('vitals');
     expect(firstBody.vitals.pulse).toBe(80);
     const firstReadingId = firstBody.vitals.id;
 
-    // Second vitals reading with different values
     const second = await app.inject({
       method: 'POST',
       url: `/api/patients/${patientId}/vitals`,
@@ -96,18 +87,20 @@ describe('POST /api/patients/:id/vitals', () => {
     });
 
     expect(second.statusCode).toBe(201);
-    const secondBody = second.json();
-    expect(secondBody.vitals.pulse).toBe(90);
-    const secondReadingId = secondBody.vitals.id;
+    expect(second.json().vitals.pulse).toBe(90);
+    const secondReadingId = second.json().vitals.id;
 
-    // The two readings must have different IDs — append-only, not overwritten
+    // Different IDs confirm append-only (not overwrite)
     expect(firstReadingId).not.toBe(secondReadingId);
 
-    // Confirm both readings are present in the store
-    const stored = Array.from(store.vitals.values()).filter(
-      (v) => v.patientId === patientId,
-    );
-    expect(stored.length).toBe(2);
+    // Confirm both readings are present via GET
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.json().patient.vitalsHistory.length).toBe(2);
   });
 });
 
@@ -115,7 +108,6 @@ describe('POST /api/patients/:id/notes', () => {
   it('appends a note to the patient', async () => {
     const token = getSickbayToken(eventId);
 
-    // Create a patient
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/patients',
