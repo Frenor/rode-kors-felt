@@ -1,0 +1,154 @@
+# ═══════════════════════════════════════════════════════════════
+# E2E Tests — Playwright
+# Runs on every PR to develop or main.
+# Spins up PostgreSQL + Redis as service containers, starts the
+# API and Web in test mode, then runs all Playwright specs.
+# ═══════════════════════════════════════════════════════════════
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rkf
+          POSTGRES_PASSWORD: rkftest
+          POSTGRES_DB: rkf_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rkf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://rkf:rkftest@localhost:5432/rkf_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: e2e-test-secret-do-not-use-in-production
+      VITE_API_URL: http://localhost:4000
+
+    steps:
+      # ── Setup ────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── Database ─────────────────────────────────────────────
+      - name: Run database migrations
+        run: pnpm --filter @rkf/api db:migrate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Seed test data
+        run: pnpm --filter @rkf/api db:seed:test
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      # ── Build web ────────────────────────────────────────────
+      - name: Build web PWA
+        run: pnpm --filter @rkf/web build
+        env:
+          VITE_API_URL: ${{ env.VITE_API_URL }}
+
+      # ── Playwright browsers ──────────────────────────────────
+      - name: Install Playwright browsers
+        run: pnpm --filter @rkf/web exec playwright install --with-deps chromium
+
+      # ── Start services ───────────────────────────────────────
+      - name: Start API server
+        run: pnpm --filter @rkf/api start &
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+          JWT_SECRET: ${{ env.JWT_SECRET }}
+          PORT: 4000
+
+      - name: Wait for API to be ready
+        run: |
+          timeout 30 bash -c \
+            'until curl -sf http://localhost:4000/health; do sleep 1; done'
+
+      - name: Start Web preview server
+        run: pnpm --filter @rkf/web preview --port 3000 &
+
+      - name: Wait for Web to be ready
+        run: |
+          timeout 20 bash -c \
+            'until curl -sf http://localhost:3000; do sleep 1; done'
+
+      # ── Run E2E tests ────────────────────────────────────────
+      - name: Run Playwright tests
+        run: pnpm --filter @rkf/web test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+          # Credentials from CLAUDE.md dev seed
+          E2E_FIRST_AIDER_CODE: "123456"
+          E2E_SICK_BAY_CODE: "654321"
+          E2E_ADMIN_EMAIL: admin@rkf.no
+          E2E_ADMIN_PASSWORD: admin123
+
+      # ── Accessibility scan ───────────────────────────────────
+      # Run axe-core against the three core role pages.
+      # Zero violations required — this is a hard quality gate.
+      - name: Accessibility audit (axe-core)
+        if: success()
+        run: |
+          npx @axe-core/cli http://localhost:3000 --exit --tags wcag2a,wcag2aa,wcag21aa
+          npx @axe-core/cli http://localhost:3000/sick-bay --exit --tags wcag2a,wcag2aa,wcag21aa
+          npx @axe-core/cli http://localhost:3000/coordinator --exit --tags wcag2a,wcag2aa,wcag21aa
+
+      # ── Artifacts ────────────────────────────────────────────
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: rkf/apps/web/playwright-report/
+          retention-days: 14
+
+      - name: Upload test traces (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ github.run_id }}
+          path: rkf/apps/web/test-results/
+          retention-days: 7
