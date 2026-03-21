@@ -137,6 +137,10 @@ export async function patientRoutes(app: FastifyInstance) {
       spo2?: number;
       respiratoryRate?: number;
       painScore?: number;
+      systolicBP?: number;
+      temperature?: number;
+      onSupplementalOxygen?: boolean;
+      acvpu?: string;
     };
 
     const patient = store.patients.get(id);
@@ -152,6 +156,10 @@ export async function patientRoutes(app: FastifyInstance) {
       spo2: body.spo2,
       respiratoryRate: body.respiratoryRate,
       painScore: body.painScore,
+      systolicBP: body.systolicBP,
+      temperature: body.temperature,
+      onSupplementalOxygen: body.onSupplementalOxygen,
+      acvpu: body.acvpu,
     };
 
     store.vitals.set(reading.id, reading);

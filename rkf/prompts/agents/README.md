@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory defines the AI agent team for the Rødt Kors Felt project. Each file is a
+This directory defines the AI agent team for the Røde Kors Felt project. Each file is a
 self-contained agent prompt. When you need a specialist, paste the file's contents as the
 agent's system prompt (or use the Agent tool with the file as context).
 

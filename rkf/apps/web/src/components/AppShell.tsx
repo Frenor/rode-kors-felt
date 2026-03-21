@@ -1,6 +1,7 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { useAuthStore } from '../stores/auth';
 import { useNavigate } from 'react-router-dom';
+import { ToastContainer } from './ToastContainer';
 
 interface AppShellProps {
   children: ReactNode;
@@ -205,6 +206,8 @@ export function AppShell({ children }: AppShellProps) {
       >
         {children}
       </main>
+
+      <ToastContainer />
     </div>
   );
 }

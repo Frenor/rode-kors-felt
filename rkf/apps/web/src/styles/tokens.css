@@ -57,9 +57,11 @@
   --color-status-info-bg: rgba(30, 64, 175, 0.08);
   --color-status-info-border: rgba(30, 64, 175, 0.25);
 
-  /* AVPU — light mode values (≥ 7:1 on white) */
+  /* ACVPU — light mode values (≥ 7:1 on white) */
   --color-avpu-alert: #166534;
   --color-avpu-alert-bg: rgba(22, 101, 52, 0.1);
+  --color-avpu-confused: #1e40af;
+  --color-avpu-confused-bg: rgba(30, 64, 175, 0.1);
   --color-avpu-voice: #92400e;
   --color-avpu-voice-bg: rgba(146, 64, 14, 0.1);
   --color-avpu-pain: #b91c1c;
@@ -113,9 +115,11 @@
     --color-status-info-bg: rgba(96, 165, 250, 0.1);
     --color-status-info-border: rgba(96, 165, 250, 0.25);
 
-    /* AVPU — dark mode values (≥ 7:1 on dark surface) */
+    /* ACVPU — dark mode values (≥ 7:1 on dark surface) */
     --color-avpu-alert: #4ade80;
     --color-avpu-alert-bg: rgba(74, 222, 128, 0.12);
+    --color-avpu-confused: #60a5fa;
+    --color-avpu-confused-bg: rgba(96, 165, 250, 0.12);
     --color-avpu-voice: #fbbf24;
     --color-avpu-voice-bg: rgba(251, 191, 36, 0.12);
     --color-avpu-pain: #f87171;
@@ -167,6 +171,8 @@
 
   --color-avpu-alert: #4ade80;
   --color-avpu-alert-bg: rgba(74, 222, 128, 0.12);
+  --color-avpu-confused: #60a5fa;
+  --color-avpu-confused-bg: rgba(96, 165, 250, 0.12);
   --color-avpu-voice: #fbbf24;
   --color-avpu-voice-bg: rgba(251, 191, 36, 0.12);
   --color-avpu-pain: #f87171;

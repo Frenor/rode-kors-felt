@@ -39,7 +39,7 @@ export async function incidentRoutes(app: FastifyInstance) {
       teamId?: string;
       type: string;
       location: { lat: number; lng: number };
-      avpu?: string;
+      acvpu?: string;
       vitals?: Record<string, unknown>;
       mist?: Record<string, unknown>;
       notes?: string;
@@ -69,7 +69,7 @@ export async function incidentRoutes(app: FastifyInstance) {
       type: body.type,
       status: 'on_scene',
       location: body.location,
-      avpu: body.avpu,
+      acvpu: body.acvpu,
       vitals: body.vitals,
       mist: body.mist,
       notes: body.notes,

@@ -18,8 +18,8 @@ export type UserRole = z.infer<typeof UserRole>;
 export const IncidentType = z.enum(['medical', 'trauma', 'psychiatric', 'other']);
 export type IncidentType = z.infer<typeof IncidentType>;
 
-export const AvpuLevel = z.enum(['alert', 'voice', 'pain', 'unresponsive']);
-export type AvpuLevel = z.infer<typeof AvpuLevel>;
+export const AcvpuLevel = z.enum(['alert', 'confused', 'voice', 'pain', 'unresponsive']);
+export type AcvpuLevel = z.infer<typeof AcvpuLevel>;
 
 export const IncidentStatus = z.enum([
   'on_scene',
@@ -66,6 +66,11 @@ export const VitalReading = z.object({
   spo2: z.number().int().min(0).max(100).optional(),
   respiratoryRate: z.number().int().min(0).max(80).optional(),
   painScore: z.number().int().min(0).max(10).optional(),
+  // NEWS2 additional parameters
+  systolicBP: z.number().int().min(0).max(300).optional(),
+  temperature: z.number().min(25).max(45).optional(),
+  onSupplementalOxygen: z.boolean().optional(),
+  acvpu: AcvpuLevel.optional(),
 });
 export type VitalReading = z.infer<typeof VitalReading>;
 
@@ -92,7 +97,7 @@ export const Incident = z.object({
   type: IncidentType,
   status: IncidentStatus,
   location: GeoPoint,
-  avpu: AvpuLevel.optional(),
+  acvpu: AcvpuLevel.optional(),
   vitals: VitalReading.optional(),
   mist: MistForm.optional(),
   sbar: SbarForm.optional(),
@@ -194,6 +199,22 @@ export const WsEventType = z.enum([
   'patient.vitals_updated',
 ]);
 export type WsEventType = z.infer<typeof WsEventType>;
+
+// ═══════════════════════════════════════════════
+// NEWS2 SCORING
+// ═══════════════════════════════════════════════
+
+export type {
+  News2Input,
+  News2ParameterScores,
+  News2Result,
+} from './news2.js';
+
+export {
+  calculateNEWS2,
+  news2MonitoringLabel,
+  news2BadgeLabel,
+} from './news2.js';
 
 export const WsMessage = z.object({
   type: WsEventType,

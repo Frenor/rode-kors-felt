@@ -49,7 +49,7 @@ export interface StoredIncident {
   type: string;
   status: string;
   location: { lat: number; lng: number };
-  avpu?: string;
+  acvpu?: string;
   vitals?: Record<string, unknown>;
   mist?: Record<string, unknown>;
   sbar?: Record<string, unknown>;
@@ -83,6 +83,11 @@ export interface StoredVitalReading {
   spo2?: number;
   respiratoryRate?: number;
   painScore?: number;
+  // NEWS2 additional parameters
+  systolicBP?: number;
+  temperature?: number;
+  onSupplementalOxygen?: boolean;
+  acvpu?: string;
 }
 
 class Store {

@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Instructions for Claude Code
 
-## Project: RKF — Rødt Kors Felt (Red Cross Event Medical System)
+## Project: RKF — Røde Kors Felt (Red Cross Event Medical System)
 
 ### What This Is
 A PWA for Norwegian Red Cross event medical coordination. Three roles: First Aider (mobile), Sick Bay (tablet), Coordinator (desktop). Offline-first, real-time where connected, GDPR-compliant.

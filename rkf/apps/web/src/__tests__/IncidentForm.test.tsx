@@ -50,8 +50,8 @@ describe('IncidentForm — step 0 (incident type)', () => {
 
     // Step 1 heading
     expect(screen.getByRole('heading', { name: 'ABCDE-vurdering' })).toBeInTheDocument();
-    // AVPU fieldset legend
-    expect(screen.getByText('D — Bevissthet (AVPU)')).toBeInTheDocument();
+    // ACVPU fieldset legend
+    expect(screen.getByText('D — Bevissthet (ACVPU)')).toBeInTheDocument();
   });
 });
 

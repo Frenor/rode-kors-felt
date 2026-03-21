@@ -3,11 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
 import { api } from '../lib/api';
 
-type AvpuLevel = 'alert' | 'voice' | 'pain' | 'unresponsive';
+type AcvpuLevel = 'alert' | 'confused' | 'voice' | 'pain' | 'unresponsive';
 type IncidentType = 'medical' | 'trauma' | 'psychiatric' | 'other';
 
-const AVPU_OPTIONS: { value: AvpuLevel; label: string; short: string; color: string; bg: string }[] = [
+const ACVPU_OPTIONS: { value: AcvpuLevel; label: string; short: string; color: string; bg: string }[] = [
   { value: 'alert', label: 'Alert — Våken', short: 'A', color: 'var(--color-avpu-alert)', bg: 'var(--color-avpu-alert-bg)' },
+  { value: 'confused', label: 'Confused — Forvirret', short: 'C', color: 'var(--color-avpu-confused)', bg: 'var(--color-avpu-confused-bg)' },
   { value: 'voice', label: 'Voice — Reagerer på tiltale', short: 'V', color: 'var(--color-avpu-voice)', bg: 'var(--color-avpu-voice-bg)' },
   { value: 'pain', label: 'Pain — Reagerer på smerte', short: 'P', color: 'var(--color-avpu-pain)', bg: 'var(--color-avpu-pain-bg)' },
   { value: 'unresponsive', label: 'Unresponsive — Reagerer ikke', short: 'U', color: 'var(--color-avpu-unresponsive)', bg: 'var(--color-avpu-unresponsive-bg)' },
@@ -28,7 +29,7 @@ export function IncidentForm() {
 
   const [step, setStep] = useState(0); // 0=type, 1=AVPU+vitals, 2=MIST, 3=confirm
   const [type, setType] = useState<IncidentType | null>(null);
-  const [avpu, setAvpu] = useState<AvpuLevel | null>(null);
+  const [acvpu, setAcvpu] = useState<AcvpuLevel | null>(null);
   const [vitals, setVitals] = useState({ pulse: '', spo2: '', rr: '', pain: '' });
   const [mist, setMist] = useState({ mechanism: '', injury: '', signs: '', treatment: '' });
   const [notes, setNotes] = useState('');
@@ -46,7 +47,7 @@ export function IncidentForm() {
         teamId,
         type,
         location: { lat: 59.964, lng: 10.776 }, // MVP: placeholder, replace with GPS
-        avpu,
+        acvpu,
         clientId: crypto.randomUUID(),
         notes,
       };
@@ -150,23 +151,23 @@ export function IncidentForm() {
               marginBottom: 'var(--space-3)',
               color: 'var(--color-text)',
             }}>
-              D — Bevissthet (AVPU)
+              D — Bevissthet (ACVPU)
             </legend>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-2)' }}>
-              {AVPU_OPTIONS.map((opt) => (
+              {ACVPU_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setAvpu(opt.value)}
+                  onClick={() => setAcvpu(opt.value)}
                   role="radio"
-                  aria-checked={avpu === opt.value}
+                  aria-checked={acvpu === opt.value}
                   className="touch-target"
                   style={{
                     minHeight: 'var(--touch-comfortable)',
                     padding: 'var(--space-3)',
                     borderRadius: 'var(--radius-md)',
-                    border: `2px solid ${avpu === opt.value ? opt.color : 'var(--color-border)'}`,
-                    background: avpu === opt.value ? opt.bg : 'var(--color-surface)',
+                    border: `2px solid ${acvpu === opt.value ? opt.color : 'var(--color-border)'}`,
+                    background: acvpu === opt.value ? opt.bg : 'var(--color-surface)',
                     cursor: 'pointer',
                     textAlign: 'center',
                   }}
@@ -367,11 +368,11 @@ export function IncidentForm() {
                 <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>TYPE</span>
                 <div style={{ fontWeight: 600 }}>{INCIDENT_TYPES.find(t => t.value === type)?.label}</div>
               </div>
-              {avpu && (
+              {acvpu && (
                 <div>
-                  <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>AVPU</span>
-                  <div style={{ fontWeight: 600, color: AVPU_OPTIONS.find(a => a.value === avpu)?.color }}>
-                    {AVPU_OPTIONS.find(a => a.value === avpu)?.label}
+                  <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>ACVPU</span>
+                  <div style={{ fontWeight: 600, color: ACVPU_OPTIONS.find(a => a.value === acvpu)?.color }}>
+                    {ACVPU_OPTIONS.find(a => a.value === acvpu)?.label}
                   </div>
                 </div>
               )}
