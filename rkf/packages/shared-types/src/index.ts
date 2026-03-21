@@ -1,0 +1,204 @@
+/**
+ * @rkf/shared-types
+ *
+ * Canonical type definitions shared across web and API.
+ * All Zod schemas live here — API validates with them,
+ * frontend infers TypeScript types from them.
+ */
+
+import { z } from 'zod';
+
+// ═══════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════
+
+export const UserRole = z.enum(['admin', 'coordinator', 'sickbay', 'first_aider']);
+export type UserRole = z.infer<typeof UserRole>;
+
+export const IncidentType = z.enum(['medical', 'trauma', 'psychiatric', 'other']);
+export type IncidentType = z.infer<typeof IncidentType>;
+
+export const AvpuLevel = z.enum(['alert', 'voice', 'pain', 'unresponsive']);
+export type AvpuLevel = z.infer<typeof AvpuLevel>;
+
+export const IncidentStatus = z.enum([
+  'on_scene',
+  'transporting',
+  'at_sickbay',
+  'handed_over',
+  'resolved',
+]);
+export type IncidentStatus = z.infer<typeof IncidentStatus>;
+
+export const PatientStatus = z.enum([
+  'incoming',
+  'in_treatment',
+  'observation',
+  'discharged',
+  'transferred',
+]);
+export type PatientStatus = z.infer<typeof PatientStatus>;
+
+export const TeamTransport = z.enum(['foot', 'bike', 'vehicle', 'atv']);
+export type TeamTransport = z.infer<typeof TeamTransport>;
+
+export const EscalationType = z.enum(['auto', 'manual']);
+export type EscalationType = z.infer<typeof EscalationType>;
+
+export const EscalationPath = z.enum(['path_a_rk_ambulance', 'path_b_113']);
+export type EscalationPath = z.infer<typeof EscalationPath>;
+
+// ═══════════════════════════════════════════════
+// CORE SCHEMAS
+// ═══════════════════════════════════════════════
+
+export const GeoPoint = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+});
+export type GeoPoint = z.infer<typeof GeoPoint>;
+
+export const VitalReading = z.object({
+  id: z.string().uuid(),
+  patientId: z.string().uuid(),
+  timestamp: z.string().datetime(),
+  pulse: z.number().int().min(0).max(300).optional(),
+  spo2: z.number().int().min(0).max(100).optional(),
+  respiratoryRate: z.number().int().min(0).max(80).optional(),
+  painScore: z.number().int().min(0).max(10).optional(),
+});
+export type VitalReading = z.infer<typeof VitalReading>;
+
+export const MistForm = z.object({
+  mechanism: z.string().max(500),
+  injury: z.string().max(500),
+  signs: z.string().max(500),
+  treatment: z.string().max(500),
+});
+export type MistForm = z.infer<typeof MistForm>;
+
+export const SbarForm = z.object({
+  situation: z.string().max(500),
+  background: z.string().max(500),
+  assessment: z.string().max(500),
+  recommendation: z.string().max(500),
+});
+export type SbarForm = z.infer<typeof SbarForm>;
+
+export const Incident = z.object({
+  id: z.string().uuid(),
+  eventId: z.string().uuid(),
+  teamId: z.string().uuid().optional(),
+  type: IncidentType,
+  status: IncidentStatus,
+  location: GeoPoint,
+  avpu: AvpuLevel.optional(),
+  vitals: VitalReading.optional(),
+  mist: MistForm.optional(),
+  sbar: SbarForm.optional(),
+  notes: z.string().max(2000).optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  syncedAt: z.string().datetime().optional(),
+});
+export type Incident = z.infer<typeof Incident>;
+
+export const Patient = z.object({
+  id: z.string().uuid(),
+  eventId: z.string().uuid(),
+  incidentId: z.string().uuid().optional(),
+  status: PatientStatus,
+  ageGroup: z.enum(['child', 'adolescent', 'adult', 'elderly']).optional(),
+  gender: z.enum(['male', 'female', 'other']).optional(),
+  presentingComplaint: z.string().max(500).optional(),
+  arrivalTime: z.string().datetime(),
+  assignedClinician: z.string().max(100).optional(),
+  notes: z.array(z.object({
+    text: z.string().max(2000),
+    timestamp: z.string().datetime(),
+    author: z.string().max(100),
+  })),
+  diagnosisFlags: z.array(z.string()),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type Patient = z.infer<typeof Patient>;
+
+export const Event = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(200),
+  startDate: z.string().datetime(),
+  endDate: z.string().datetime(),
+  status: z.enum(['draft', 'active', 'archived']),
+  location: GeoPoint.optional(),
+  mapImageUrl: z.string().url().optional(),
+  mapAnchors: z.array(GeoPoint).optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type Event = z.infer<typeof Event>;
+
+export const Team = z.object({
+  id: z.string().uuid(),
+  eventId: z.string().uuid(),
+  name: z.string().min(1).max(100),
+  size: z.number().int().min(1).max(20),
+  transport: TeamTransport,
+  gear: z.array(z.string()),
+  members: z.array(z.string()),
+  currentPosition: GeoPoint.optional(),
+  lastPositionUpdate: z.string().datetime().optional(),
+});
+export type Team = z.infer<typeof Team>;
+
+// ═══════════════════════════════════════════════
+// API REQUEST / RESPONSE SCHEMAS
+// ═══════════════════════════════════════════════
+
+export const LoginRequest = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+
+export const EventCodeRequest = z.object({
+  code: z.string().length(6),
+});
+
+export const AuthResponse = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+  role: UserRole,
+  eventId: z.string().uuid().optional(),
+});
+
+export const CreateIncidentRequest = Incident.pick({
+  type: true,
+  location: true,
+  avpu: true,
+  notes: true,
+}).extend({
+  vitals: VitalReading.omit({ id: true, patientId: true, timestamp: true }).optional(),
+  mist: MistForm.optional(),
+});
+
+// ═══════════════════════════════════════════════
+// WEBSOCKET EVENT TYPES
+// ═══════════════════════════════════════════════
+
+export const WsEventType = z.enum([
+  'incident.created',
+  'incident.updated',
+  'team.position',
+  'escalation.raised',
+  'escalation.resolved',
+  'patient.vitals_updated',
+]);
+export type WsEventType = z.infer<typeof WsEventType>;
+
+export const WsMessage = z.object({
+  type: WsEventType,
+  eventId: z.string().uuid(),
+  payload: z.unknown(),
+  timestamp: z.string().datetime(),
+});
+export type WsMessage = z.infer<typeof WsMessage>;
