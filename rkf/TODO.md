@@ -43,9 +43,9 @@
 ## Sprint 4 — Mass Casualty Incident (MCI) Mode
 > **Goal:** Handle multi-patient incidents with START triage and sector coordination.
 
-- [ ] 4.1 MCI mode activation — `PATCH /events/:id/mci`, WebSocket broadcast to all clients
-- [ ] 4.2 START triage tag selector on incidents (Umiddelbar/Utsatt/Mindre/Forventet)
-- [ ] 4.3 MCI overview panel — live triage counts + color-coded map overlay
+- [x] 4.1 MCI mode activation — `PATCH /events/:id/mci`, WebSocket broadcast to all clients
+- [x] 4.2 START triage tag selector on incidents (Umiddelbar/Utsatt/Mindre/Forventet)
+- [x] 4.3 MCI overview panel — live triage counts + color-coded map overlay
 - [ ] 4.4 Resource allocation board — teams × sectors grid
 - [ ] 4.5 MCI deactivation + downloadable handover summary
 

@@ -52,6 +52,10 @@ export type EscalationType = z.infer<typeof EscalationType>;
 export const EscalationPath = z.enum(['path_a_rk_ambulance', 'path_b_113']);
 export type EscalationPath = z.infer<typeof EscalationPath>;
 
+// START triage tags (Mass Casualty Incident)
+export const TriageTag = z.enum(['immediate', 'delayed', 'minor', 'expectant']);
+export type TriageTag = z.infer<typeof TriageTag>;
+
 // ═══════════════════════════════════════════════
 // CORE SCHEMAS
 // ═══════════════════════════════════════════════
@@ -106,12 +110,21 @@ export const Incident = z.object({
   vitals: VitalReading.optional(),
   mist: MistForm.optional(),
   sbar: SbarForm.optional(),
+  triageTag: TriageTag.optional(),
   notes: z.string().max(2000).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   syncedAt: z.string().datetime().optional(),
 });
 export type Incident = z.infer<typeof Incident>;
+
+export const MciMode = z.object({
+  mciActive: z.boolean(),
+  mciActivatedAt: z.string().datetime().optional(),
+  mciActivatedBy: z.string().optional(),
+  mciSectors: z.array(z.string()).default([]),
+});
+export type MciMode = z.infer<typeof MciMode>;
 
 export const Patient = z.object({
   id: z.string().uuid(),
@@ -237,6 +250,8 @@ export const WsEventType = z.enum([
   'escalation.resolved',
   'patient.vitals_updated',
   'patient.deterioration_alert',
+  'event.mci_activated',
+  'event.mci_deactivated',
 ]);
 export type WsEventType = z.infer<typeof WsEventType>;
 

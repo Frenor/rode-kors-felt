@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { events, incidents, patients, teams } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
+import { broadcast } from './ws.js';
 
 export async function eventRoutes(app: FastifyInstance) {
   // List events
@@ -50,6 +51,45 @@ export async function eventRoutes(app: FastifyInstance) {
       .returning();
 
     return reply.code(201).send({ event: mapEvent(event!) });
+  });
+
+  // MCI mode toggle (coordinator only)
+  app.patch('/:id/mci', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user;
+    if (user.role !== 'coordinator' && user.role !== 'admin') {
+      return reply.code(403).send({ error: 'Kun koordinator kan aktivere MCI-modus' });
+    }
+
+    const { id } = request.params as { id: string };
+    const body = request.body as { mciActive: boolean; mciSectors?: string[] };
+
+    const [existing] = await db.select().from(events).where(eq(events.id, id)).limit(1);
+    if (!existing) {
+      return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    }
+
+    const now = new Date();
+    const [updated] = await db
+      .update(events)
+      .set({
+        mciActive: body.mciActive,
+        mciActivatedAt: body.mciActive ? (existing.mciActivatedAt ?? now) : null,
+        mciActivatedBy: body.mciActive ? (existing.mciActivatedBy ?? user.email ?? 'koordinator') : null,
+        mciSectors: body.mciSectors ?? existing.mciSectors,
+        updatedAt: now,
+      })
+      .where(eq(events.id, id))
+      .returning();
+
+    const wsType = body.mciActive ? 'event.mci_activated' : 'event.mci_deactivated';
+    broadcast({
+      type: wsType,
+      eventId: id,
+      payload: { mciActive: body.mciActive, activatedBy: user.email ?? 'koordinator' },
+      timestamp: now.toISOString(),
+    });
+
+    return { event: mapEvent(updated!) };
   });
 
   // Event statistics

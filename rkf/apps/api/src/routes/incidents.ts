@@ -54,6 +54,7 @@ export async function incidentRoutes(app: FastifyInstance) {
       acvpu?: string;
       vitals?: Record<string, unknown>;
       mist?: Record<string, unknown>;
+      triageTag?: string;
       notes?: string;
       clientId?: string;
     };
@@ -89,6 +90,7 @@ export async function incidentRoutes(app: FastifyInstance) {
         acvpu: body.acvpu as typeof incidents.$inferInsert['acvpu'],
         vitals: body.vitals,
         mist: body.mist,
+        triageTag: body.triageTag as typeof incidents.$inferInsert['triageTag'],
         notes: body.notes,
         clientId: body.clientId,
       })
@@ -113,6 +115,7 @@ export async function incidentRoutes(app: FastifyInstance) {
       status: string;
       teamId: string;
       acvpu: string;
+      triageTag: string;
       notes: string;
     }>;
 
@@ -133,6 +136,7 @@ export async function incidentRoutes(app: FastifyInstance) {
         ...(body.teamId !== undefined && { teamId: body.teamId }),
         ...(body.acvpu && { acvpu: body.acvpu as typeof incidents.$inferInsert['acvpu'] }),
         ...(body.notes !== undefined && { notes: body.notes }),
+        ...(body.triageTag !== undefined && { triageTag: body.triageTag as typeof incidents.$inferInsert['triageTag'] }),
         updatedAt: new Date(),
       })
       .where(eq(incidents.id, id))

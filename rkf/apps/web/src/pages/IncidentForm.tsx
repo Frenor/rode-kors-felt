@@ -6,6 +6,14 @@ import { api } from '../lib/api';
 
 type AcvpuLevel = 'alert' | 'confused' | 'voice' | 'pain' | 'unresponsive';
 type IncidentType = 'medical' | 'trauma' | 'psychiatric' | 'other';
+type TriageTag = 'immediate' | 'delayed' | 'minor' | 'expectant';
+
+const TRIAGE_OPTIONS: { value: TriageTag; label: string; color: string; bg: string; border: string }[] = [
+  { value: 'immediate', label: 'UMIDDELBAR', color: '#fff', bg: '#cc0000', border: '#aa0000' },
+  { value: 'delayed',   label: 'UTSATT',     color: '#111', bg: '#f59e0b', border: '#b45309' },
+  { value: 'minor',     label: 'MINDRE',     color: '#fff', bg: '#16a34a', border: '#15803d' },
+  { value: 'expectant', label: 'FORVENTET',  color: '#fff', bg: '#374151', border: '#1f2937' },
+];
 
 const ACVPU_OPTIONS: { value: AcvpuLevel; label: string; short: string; color: string; bg: string }[] = [
   { value: 'alert', label: 'Alert — Våken', short: 'A', color: 'var(--color-avpu-alert)', bg: 'var(--color-avpu-alert-bg)' },
@@ -116,6 +124,7 @@ export function IncidentForm() {
 
   const [step, setStep] = useState(0); // 0=type, 1=AVPU+vitals, 2=MIST, 3=confirm
   const [type, setType] = useState<IncidentType | null>(null);
+  const [triageTag, setTriageTag] = useState<TriageTag | null>(null);
   const [acvpu, setAcvpu] = useState<AcvpuLevel | null>(null);
   const [vitals, setVitals] = useState({ pulse: '', spo2: '', rr: '', pain: '' });
 
@@ -145,6 +154,7 @@ export function IncidentForm() {
         ? gpsPosition
         : { lat: 59.964, lng: 10.776 }, // fallback: Holmenkollen
         acvpu,
+        triageTag: triageTag ?? undefined,
         clientId: crypto.randomUUID(),
       };
 
@@ -235,31 +245,65 @@ export function IncidentForm() {
         </div>
       </div>
 
-      {/* Step 0: Incident Type */}
+      {/* Step 0: Incident Type + optional START triage tag */}
       {step === 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-          {INCIDENT_TYPES.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => { setType(t.value); setStep(1); }}
-              className="touch-target"
-              style={{
-                width: '100%',
-                minHeight: 'var(--touch-comfortable)',
-                padding: 'var(--space-4)',
-                borderRadius: 'var(--radius-md)',
-                border: `2px solid ${type === t.value ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                background: type === t.value ? 'var(--color-brand-dim)' : 'var(--color-surface)',
-                color: 'var(--color-text)',
-                fontSize: 'var(--text-base)',
-                fontWeight: 600,
-                textAlign: 'left',
-                cursor: 'pointer',
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {INCIDENT_TYPES.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => { setType(t.value); setStep(1); }}
+                className="touch-target"
+                style={{
+                  width: '100%',
+                  minHeight: 'var(--touch-comfortable)',
+                  padding: 'var(--space-4)',
+                  borderRadius: 'var(--radius-md)',
+                  border: `2px solid ${type === t.value ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                  background: type === t.value ? 'var(--color-brand-dim)' : 'var(--color-surface)',
+                  color: 'var(--color-text)',
+                  fontSize: 'var(--text-base)',
+                  fontWeight: 600,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* START triage tag (MCI) — optional, visible in all conditions */}
+          <fieldset style={{ border: 'none', padding: 0 }}>
+            <legend style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)', color: 'var(--color-text)' }}>
+              START-triage (MCI) — valgfritt
+            </legend>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-2)' }}>
+              {TRIAGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setTriageTag(triageTag === opt.value ? null : opt.value)}
+                  role="radio"
+                  aria-checked={triageTag === opt.value}
+                  className="touch-target"
+                  style={{
+                    minHeight: 56,
+                    borderRadius: 'var(--radius-md)',
+                    border: `3px solid ${triageTag === opt.value ? opt.border : 'transparent'}`,
+                    background: opt.bg,
+                    color: opt.color,
+                    fontWeight: 700,
+                    fontSize: 'var(--text-sm)',
+                    cursor: 'pointer',
+                    opacity: triageTag !== null && triageTag !== opt.value ? 0.5 : 1,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
         </div>
       )}
 

@@ -34,6 +34,7 @@ export const patientStatusEnum = pgEnum('patient_status', [
   'incoming', 'in_treatment', 'observation', 'discharged', 'transferred',
 ]);
 export const escalationPathEnum = pgEnum('escalation_path', ['path_a_rk_ambulance', 'path_b_113']);
+export const triageTagEnum = pgEnum('triage_tag', ['immediate', 'delayed', 'minor', 'expectant']);
 
 // ─── Tables ──────────────────────────────────────────────────────
 
@@ -43,6 +44,10 @@ export const events = pgTable('events', {
   startDate: timestamp('start_date', { withTimezone: true }).notNull(),
   endDate: timestamp('end_date', { withTimezone: true }).notNull(),
   status: eventStatusEnum('status').notNull().default('draft'),
+  mciActive: boolean('mci_active').notNull().default(false),
+  mciActivatedAt: timestamp('mci_activated_at', { withTimezone: true }),
+  mciActivatedBy: varchar('mci_activated_by', { length: 255 }),
+  mciSectors: text('mci_sectors').array().notNull().default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -87,6 +92,7 @@ export const incidents = pgTable('incidents', {
   vitals: jsonb('vitals').$type<Record<string, unknown>>(),
   mist: jsonb('mist').$type<Record<string, unknown>>(),
   sbar: jsonb('sbar').$type<Record<string, unknown>>(),
+  triageTag: triageTagEnum('triage_tag'),
   notes: text('notes'),
   clientId: varchar('client_id', { length: 255 }).unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

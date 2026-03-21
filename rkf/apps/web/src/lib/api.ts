@@ -104,6 +104,13 @@ class ApiClient {
     });
   }
 
+  async toggleMci(eventId: string, mciActive: boolean, mciSectors?: string[]) {
+    return this.request<{ event: any }>(`/events/${eventId}/mci`, {
+      method: 'PATCH',
+      body: JSON.stringify({ mciActive, mciSectors }),
+    });
+  }
+
   async escalateIncident(incidentId: string, data: { path: string; reason?: string }) {
     return this.request<{ escalation: any }>(`/incidents/${incidentId}/escalate`, {
       method: 'POST',

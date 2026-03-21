@@ -56,18 +56,26 @@ export async function runMigrations(): Promise<void> {
       DO $$ BEGIN
         CREATE TYPE escalation_path AS ENUM ('path_a_rk_ambulance', 'path_b_113');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$ BEGIN
+        CREATE TYPE triage_tag AS ENUM ('immediate', 'delayed', 'minor', 'expectant');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     `);
 
     // ── Tables ─────────────────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS events (
-        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name        VARCHAR(200) NOT NULL,
-        start_date  TIMESTAMPTZ NOT NULL,
-        end_date    TIMESTAMPTZ NOT NULL,
-        status      event_status NOT NULL DEFAULT 'draft',
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name              VARCHAR(200) NOT NULL,
+        start_date        TIMESTAMPTZ NOT NULL,
+        end_date          TIMESTAMPTZ NOT NULL,
+        status            event_status NOT NULL DEFAULT 'draft',
+        mci_active        BOOLEAN NOT NULL DEFAULT FALSE,
+        mci_activated_at  TIMESTAMPTZ,
+        mci_activated_by  VARCHAR(255),
+        mci_sectors       TEXT[] NOT NULL DEFAULT '{}',
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS users (
@@ -110,6 +118,7 @@ export async function runMigrations(): Promise<void> {
         vitals      JSONB,
         mist        JSONB,
         sbar        JSONB,
+        triage_tag  triage_tag,
         notes       TEXT,
         client_id   VARCHAR(255) UNIQUE,
         created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -167,6 +176,16 @@ export async function runMigrations(): Promise<void> {
         on_supplemental_oxygen  BOOLEAN,
         acvpu                   acvpu_level
       );
+    `);
+
+    // ── Idempotent column additions for existing databases ────────
+    await client.query(`
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_active       BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_activated_at TIMESTAMPTZ;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_activated_by VARCHAR(255);
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_sectors      TEXT[] NOT NULL DEFAULT '{}';
+
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS triage_tag triage_tag;
     `);
 
     await client.query('COMMIT');

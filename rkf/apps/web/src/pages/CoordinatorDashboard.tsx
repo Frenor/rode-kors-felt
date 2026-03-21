@@ -35,6 +35,9 @@ export function CoordinatorDashboard() {
   const [escalateReason, setEscalateReason] = useState('');
   const [escalating, setEscalating] = useState(false);
   const [deteriorationAlerts, setDeteriorationAlerts] = useState<Array<{ patientId: string; news2Score: number; ratePerHour: number; receivedAt: string }>>([]);
+  const [mciActive, setMciActive] = useState(false);
+  const [mciActivatedBy, setMciActivatedBy] = useState<string | null>(null);
+  const [togglingMci, setTogglingMci] = useState(false);
 
   // Nytt koordinatoroppdrag state
   const [showNewOppdrag, setShowNewOppdrag] = useState(false);
@@ -96,6 +99,10 @@ export function CoordinatorDashboard() {
       setIncidents(incRes.incidents);
       setStats(statsRes);
       setTeams(evtRes.teams ?? []);
+      if (evtRes.event?.mciActive !== undefined) {
+        setMciActive(evtRes.event.mciActive);
+        setMciActivatedBy(evtRes.event.mciActivatedBy ?? null);
+      }
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [eventId]);
@@ -127,6 +134,13 @@ export function CoordinatorDashboard() {
             prev.map((i) => (i.id === incidentId ? { ...i, activeEscalation: null } : i)),
           );
         }
+      } else if (msg.type === 'event.mci_activated') {
+        const { activatedBy } = (msg.payload as any) ?? {};
+        setMciActive(true);
+        setMciActivatedBy(activatedBy ?? null);
+      } else if (msg.type === 'event.mci_deactivated') {
+        setMciActive(false);
+        setMciActivatedBy(null);
       } else if (msg.type === 'patient.deterioration_alert') {
         const { patientId, trend, news2Score } = (msg.payload as any) ?? {};
         if (patientId && trend) {
@@ -164,6 +178,16 @@ export function CoordinatorDashboard() {
     }
   };
 
+  const handleToggleMci = async () => {
+    if (!eventId) return;
+    setTogglingMci(true);
+    try {
+      await api.toggleMci(eventId, !mciActive);
+    } finally {
+      setTogglingMci(false);
+    }
+  };
+
   const handleScrollToIncident = (incidentId: string) => {
     document.getElementById(`inc-${incidentId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
@@ -172,23 +196,39 @@ export function CoordinatorDashboard() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
         <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}>Koordinator</h1>
-        {!isDemo && (
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
           <button
-            onClick={() => { setApiKeyDraft(apiKey); setShowApiKeyInput(true); }}
-            title="Konfigurer Anthropic API-nøkkel for AI-triage"
+            onClick={handleToggleMci}
+            disabled={togglingMci}
             style={{
-              padding: 'var(--space-2) var(--space-3)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-              background: hasKey ? 'var(--color-status-ok-bg)' : 'var(--color-surface)',
-              color: hasKey ? 'var(--color-status-ok)' : 'var(--color-text-muted)',
-              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+              padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)',
+              border: `2px solid ${mciActive ? 'var(--color-status-critical)' : 'var(--color-border)'}`,
+              background: mciActive ? 'var(--color-status-critical)' : 'transparent',
+              color: mciActive ? 'white' : 'var(--color-text-muted)',
+              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
               cursor: 'pointer',
             }}
           >
-            {hasKey ? '✓ AI aktiv' : '⚙ API-nøkkel'}
+            {mciActive ? '⚠ MCI AKTIV' : 'MCI-modus'}
           </button>
-        )}
+          {!isDemo && (
+            <button
+              onClick={() => { setApiKeyDraft(apiKey); setShowApiKeyInput(true); }}
+              title="Konfigurer Anthropic API-nøkkel for AI-triage"
+              style={{
+                padding: 'var(--space-2) var(--space-3)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                background: hasKey ? 'var(--color-status-ok-bg)' : 'var(--color-surface)',
+                color: hasKey ? 'var(--color-status-ok)' : 'var(--color-text-muted)',
+                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                cursor: 'pointer',
+              }}
+            >
+              {hasKey ? '✓ AI aktiv' : '⚙ API-nøkkel'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* API key modal */}
@@ -506,6 +546,68 @@ export function CoordinatorDashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* MCI overview panel */}
+      {mciActive && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            marginBottom: 'var(--space-4)', padding: 'var(--space-4)',
+            borderRadius: 'var(--radius-md)',
+            border: '2px solid var(--color-status-critical)',
+            background: 'var(--color-status-critical-bg)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
+            <div>
+              <span style={{ fontWeight: 700, color: 'var(--color-status-critical)', fontSize: 'var(--text-sm)' }}>
+                MASSEULYKKE — MCI-MODUS AKTIV
+              </span>
+              {mciActivatedBy && (
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginLeft: 'var(--space-2)' }}>
+                  (aktivert av {mciActivatedBy})
+                </span>
+              )}
+            </div>
+            <button
+              onClick={handleToggleMci}
+              disabled={togglingMci}
+              style={{
+                fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--color-status-critical)', background: 'transparent',
+                color: 'var(--color-status-critical)', cursor: 'pointer', fontWeight: 600,
+              }}
+            >
+              Deaktiver MCI
+            </button>
+          </div>
+
+          {/* START triage tag counts */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
+            {[
+              { tag: 'immediate', label: 'Umiddelbar', color: '#d00', bg: '#fee' },
+              { tag: 'delayed', label: 'Utsatt', color: '#b60', bg: '#fef3c7' },
+              { tag: 'minor', label: 'Mindre', color: 'var(--color-status-ok)', bg: 'var(--color-status-ok-bg)' },
+              { tag: 'expectant', label: 'Forventet', color: 'var(--color-text-subtle)', bg: 'var(--color-surface-sunken)' },
+            ].map(({ tag, label, color, bg }) => {
+              const count = incidents.filter((i: any) => i.triageTag === tag).length;
+              return (
+                <div key={tag} style={{
+                  textAlign: 'center', padding: 'var(--space-3)',
+                  borderRadius: 'var(--radius-md)', background: bg,
+                  border: `1px solid ${color}`,
+                }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xl)', fontWeight: 700, color }}>
+                    {count}
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color, fontWeight: 600 }}>{label}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
