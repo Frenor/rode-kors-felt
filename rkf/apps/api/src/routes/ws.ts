@@ -8,6 +8,9 @@ import { teams } from '../db/schema.js';
 // Connected coordinator clients
 const clients = new Set<any>();
 
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const HEARTBEAT_TIMEOUT_MS = 10_000;
+
 export async function wsHandler(app: FastifyInstance) {
   app.get('/', { websocket: true }, (socket, request) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
@@ -27,6 +30,40 @@ export async function wsHandler(app: FastifyInstance) {
     clients.add(socket);
     app.log.info(`WebSocket tilkoblet (${clients.size} klienter)`);
 
+    // ── Heartbeat ────────────────────────────────────────────────
+    let isAlive = true;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+    const heartbeat = setInterval(() => {
+      if (!isAlive) {
+        // No pong received in time — terminate stale connection
+        app.log.warn('WebSocket heartbeat timeout — avslutter forbindelsen');
+        clearInterval(heartbeat);
+        socket.terminate();
+        return;
+      }
+      isAlive = false;
+      socket.ping();
+
+      // If pong doesn't arrive within HEARTBEAT_TIMEOUT_MS, terminate on next tick
+      timeoutHandle = setTimeout(() => {
+        if (!isAlive) {
+          app.log.warn('WebSocket pong timeout — avslutter forbindelsen');
+          clearInterval(heartbeat);
+          socket.terminate();
+        }
+      }, HEARTBEAT_TIMEOUT_MS);
+    }, HEARTBEAT_INTERVAL_MS);
+
+    socket.on('pong', () => {
+      isAlive = true;
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+    });
+
+    // ── Message handling ─────────────────────────────────────────
     socket.on('message', (raw: Buffer) => {
       try {
         const message = JSON.parse(raw.toString());
@@ -35,7 +72,6 @@ export async function wsHandler(app: FastifyInstance) {
           const parsed = TeamPositionPayload.safeParse(message.payload);
           if (parsed.success) {
             const { teamId, position } = parsed.data;
-            // Persist to DB (fire-and-forget — position loss on failure is acceptable)
             db.update(teams)
               .set({ currentPosition: position, lastPositionUpdate: new Date() })
               .where(eq(teams.id, teamId))
@@ -53,7 +89,10 @@ export async function wsHandler(app: FastifyInstance) {
       }
     });
 
+    // ── Cleanup ──────────────────────────────────────────────────
     socket.on('close', () => {
+      clearInterval(heartbeat);
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       clients.delete(socket);
       app.log.info(`WebSocket frakoblet (${clients.size} klienter)`);
     });

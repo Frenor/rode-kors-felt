@@ -13,7 +13,7 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const { role, eventName, logout, accessToken } = useAuthStore();
-  const { connect, disconnect } = useWsStore();
+  const { connect, disconnect, status: wsStatus } = useWsStore();
   const navigate = useNavigate();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [theme, setTheme] = useState<'auto' | 'light' | 'dark'>('auto');
@@ -133,27 +133,43 @@ export function AppShell({ children }: AppShellProps) {
 
         <div style={{ flex: 1 }} />
 
-        {/* Online indicator */}
-        <div
-          role="status"
-          aria-live="polite"
-          aria-label={isOnline ? 'Tilkoblet' : 'Frakoblet — data lagres lokalt'}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            color: isOnline ? 'var(--color-status-ok)' : 'var(--color-status-warning)',
-          }}
-        >
-          <div style={{
-            width: 8, height: 8,
-            borderRadius: 'var(--radius-full)',
-            background: isOnline ? 'var(--color-status-ok)' : 'var(--color-status-warning)',
-          }} />
-          {isOnline ? 'Tilkoblet' : 'Frakoblet'}
-        </div>
+        {/* Connection indicator */}
+        {(() => {
+          const connected = isOnline && wsStatus === 'connected';
+          const reconnecting = isOnline && wsStatus === 'reconnecting';
+          const color = connected
+            ? 'var(--color-status-ok)'
+            : reconnecting
+              ? 'var(--color-status-warning)'
+              : 'var(--color-status-critical)';
+          const label = connected
+            ? 'Tilkoblet'
+            : reconnecting
+              ? 'Kobler til…'
+              : 'Frakoblet';
+          return (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-label={label}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--text-xs)',
+                color,
+              }}
+            >
+              <div style={{
+                width: 8, height: 8,
+                borderRadius: 'var(--radius-full)',
+                background: color,
+              }} />
+              {label}
+            </div>
+          );
+        })()}
 
         {/* Theme toggle */}
         <div role="group" aria-label="Temavalg" style={{ display: 'flex', gap: 2 }}>
@@ -196,10 +212,11 @@ export function AppShell({ children }: AppShellProps) {
         </button>
       </header>
 
-      {/* Offline banner */}
+      {/* Network offline banner */}
       {!isOnline && (
         <div
           role="alert"
+          aria-live="assertive"
           style={{
             background: 'var(--color-status-warning-bg)',
             borderBottom: '1px solid var(--color-status-warning-border)',
@@ -212,6 +229,39 @@ export function AppShell({ children }: AppShellProps) {
         >
           Frakoblet — hendelser lagres lokalt og synkroniseres når tilkoblingen er tilbake
           {queueCount > 0 && ` (${queueCount} i kø)`}
+        </div>
+      )}
+
+      {/* WebSocket reconnecting banner (shown when online but WS dropped) */}
+      {isOnline && wsStatus === 'reconnecting' && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            background: 'var(--color-status-warning-bg)',
+            borderBottom: '1px solid var(--color-status-warning-border)',
+            padding: 'var(--space-2) var(--space-4)',
+            textAlign: 'center',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-sm)',
+            color: 'var(--color-status-warning)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 'var(--space-2)',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 8, height: 8,
+              borderRadius: 'var(--radius-full)',
+              background: 'var(--color-status-warning)',
+              animation: 'pulse 1.5s ease-in-out infinite',
+              flexShrink: 0,
+            }}
+          />
+          Gjenoppretter sanntidsforbindelsen — siste data kan mangle
         </div>
       )}
 
