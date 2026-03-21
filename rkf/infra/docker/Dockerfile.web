@@ -1,0 +1,37 @@
+# ═══════════════════════════════════════════════
+# RKF Web — Multi-stage Dockerfile
+# Builds Vite PWA → serves via nginx
+# ═══════════════════════════════════════════════
+
+# — Stage 1: Install dependencies —
+FROM node:20-alpine AS deps
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+WORKDIR /app
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/web/package.json apps/web/
+COPY packages/shared-types/package.json packages/shared-types/
+COPY packages/ui/package.json packages/ui/
+RUN pnpm install --frozen-lockfile --filter @rkf/web --filter @rkf/shared-types --filter @rkf/ui
+
+# — Stage 2: Build —
+FROM node:20-alpine AS build
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/packages/ ./packages/
+COPY . .
+RUN pnpm --filter @rkf/web build
+
+# — Stage 3: Serve —
+FROM nginx:1.27-alpine AS production
+
+COPY --from=build /app/apps/web/dist /usr/share/nginx/html
+COPY infra/docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD wget -qO- http://localhost:80/health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]
