@@ -30,7 +30,7 @@ export default function App() {
   const { isAuthenticated, role } = useAuthStore();
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         {/* Public routes */}
         <Route path="/" element={
