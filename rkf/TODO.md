@@ -10,33 +10,33 @@
 ## Sprint 1 — Persistent Database
 > **Goal:** Replace in-memory store with PostgreSQL + Drizzle ORM. No data lost on restart.
 
-- [ ] 1.1 Drizzle schema definitions — `apps/api/src/db/schema.ts`
-- [ ] 1.2 Migration setup + seed script — `drizzle.config.ts`, `pnpm db:migrate`
-- [ ] 1.3 Replace in-memory store in all API routes
-- [ ] 1.4 Connection pool + `{ db: "ok" }` in `/health`
-- [ ] 1.5 Docker Compose persistent volume + auto-migrate on API startup
+- [x] 1.1 Drizzle schema definitions — `apps/api/src/db/schema.ts`
+- [x] 1.2 Migration setup + seed script — `drizzle.config.ts`, `pnpm db:migrate`
+- [x] 1.3 Replace in-memory store in all API routes
+- [x] 1.4 Connection pool + `{ db: "ok" }` in `/health`
+- [x] 1.5 Docker Compose persistent volume + auto-migrate on API startup
 
 ---
 
 ## Sprint 2 — Real-time Reliability
 > **Goal:** Coordinators never silently lose real-time updates.
 
-- [ ] 2.1 WebSocket heartbeat on server (30s ping, 10s timeout)
-- [ ] 2.2 Client reconnection with exponential backoff (1→2→4→8→30s cap)
-- [ ] 2.3 Connection status banner in AppShell (amber = reconnecting, red = offline)
-- [ ] 2.4 Offline sync queue auto-flush on reconnect
-- [ ] 2.5 WebSocket auth token refresh on 401
+- [x] 2.1 WebSocket heartbeat on server (30s ping, 10s timeout)
+- [x] 2.2 Client reconnection with exponential backoff (1→2→4→8→30s cap)
+- [x] 2.3 Connection status banner in AppShell (amber = reconnecting, red = offline)
+- [x] 2.4 Offline sync queue auto-flush on reconnect
+- [x] 2.5 WebSocket auth token refresh on 401
 
 ---
 
 ## Sprint 3 — Clinical Intelligence
 > **Goal:** Detect patient deterioration earlier. Structured handovers. Medication tracking.
 
-- [ ] 3.1 NEWS2 trend detection — `calculateNEWS2Trend()` in `shared-types/src/news2.ts`
-- [ ] 3.2 Deterioration alert in Sick Bay UI + vibration API
-- [ ] 3.3 SBAR chip form — required before patient status → `transferred`
-- [ ] 3.4 Medication administration log (schema + `POST /patients/:id/medications` + UI)
-- [ ] 3.5 "Kritiske pasienter" deterioration panel in coordinator dashboard
+- [x] 3.1 NEWS2 trend detection — `calculateNEWS2Trend()` in `shared-types/src/news2.ts`
+- [x] 3.2 Deterioration alert in Sick Bay UI + vibration API
+- [x] 3.3 SBAR chip form — required before patient status → `transferred`
+- [x] 3.4 Medication administration log (schema + `POST /patients/:id/medications` + UI)
+- [x] 3.5 "Kritiske pasienter" deterioration panel in coordinator dashboard
 
 ---
 

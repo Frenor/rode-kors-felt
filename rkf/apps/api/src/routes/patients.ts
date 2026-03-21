@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { incidents, patients, vitalReadings } from '../db/schema.js';
+import { incidents, medicationRecords, patients, vitalReadings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 
@@ -172,6 +172,66 @@ export async function patientRoutes(app: FastifyInstance) {
       .returning();
 
     return { patient: mapPatient(updated!) };
+  });
+
+  // Record medication administration (append-only)
+  app.post('/:id/medications', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as {
+      drug: string;
+      dose?: string;
+      route?: string;
+      givenBy?: string;
+    };
+
+    const [patient] = await db
+      .select()
+      .from(patients)
+      .where(eq(patients.id, id))
+      .limit(1);
+
+    if (!patient) {
+      return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    }
+
+    const [record] = await db
+      .insert(medicationRecords)
+      .values({
+        patientId: id,
+        eventId: patient.eventId,
+        drug: body.drug,
+        dose: body.dose,
+        route: body.route,
+        givenBy: body.givenBy,
+      })
+      .returning();
+
+    return reply.code(201).send({
+      medication: {
+        ...record!,
+        givenAt: record!.givenAt.toISOString(),
+      },
+    });
+  });
+
+  // List medication records for a patient
+  app.get('/:id/medications', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const [patient] = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
+    if (!patient) {
+      return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    }
+
+    const records = await db
+      .select()
+      .from(medicationRecords)
+      .where(eq(medicationRecords.patientId, id))
+      .orderBy(desc(medicationRecords.givenAt));
+
+    return {
+      medications: records.map((r) => ({ ...r, givenAt: r.givenAt.toISOString() })),
+    };
   });
 
   // Record vitals (append-only — never overwrite)

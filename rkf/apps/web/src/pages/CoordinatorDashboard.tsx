@@ -34,6 +34,7 @@ export function CoordinatorDashboard() {
   const [escalatePath, setEscalatePath] = useState<string>('path_a_rk_ambulance');
   const [escalateReason, setEscalateReason] = useState('');
   const [escalating, setEscalating] = useState(false);
+  const [deteriorationAlerts, setDeteriorationAlerts] = useState<Array<{ patientId: string; news2Score: number; ratePerHour: number; receivedAt: string }>>([]);
 
   // Nytt koordinatoroppdrag state
   const [showNewOppdrag, setShowNewOppdrag] = useState(false);
@@ -125,6 +126,14 @@ export function CoordinatorDashboard() {
           setIncidents((prev) =>
             prev.map((i) => (i.id === incidentId ? { ...i, activeEscalation: null } : i)),
           );
+        }
+      } else if (msg.type === 'patient.deterioration_alert') {
+        const { patientId, trend, news2Score } = (msg.payload as any) ?? {};
+        if (patientId && trend) {
+          setDeteriorationAlerts((prev) => {
+            const filtered = prev.filter((a) => a.patientId !== patientId);
+            return [{ patientId, news2Score, ratePerHour: trend.ratePerHour, receivedAt: new Date().toISOString() }, ...filtered];
+          });
         }
       } else if (msg.type === 'team.position') {
         const { teamId, position } = (msg.payload as any) ?? {};
@@ -434,6 +443,69 @@ export function CoordinatorDashboard() {
                 {creating ? 'Oppretter...' : 'Opprett og tildel'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Kritiske pasienter — deterioration panel */}
+      {deteriorationAlerts.length > 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            marginBottom: 'var(--space-4)', padding: 'var(--space-4)',
+            borderRadius: 'var(--radius-md)',
+            border: '2px solid var(--color-status-critical)',
+            background: 'var(--color-status-critical-bg)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+            <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--color-status-critical)' }}>
+              Kritiske pasienter — NEWS2 stiger raskt
+            </h3>
+            <button
+              onClick={() => setDeteriorationAlerts([])}
+              style={{ fontSize: 'var(--text-xs)', background: 'transparent', border: 'none', color: 'var(--color-text-subtle)', cursor: 'pointer' }}
+            >
+              Fjern alle
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {[...deteriorationAlerts].sort((a, b) => b.ratePerHour - a.ratePerHour).map((alert) => (
+              <div key={alert.patientId} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: 'var(--space-2) var(--space-3)',
+                borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)',
+                border: '1px solid var(--color-status-critical)',
+              }}>
+                <div>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>
+                    ↑ NEWS2 {alert.news2Score}
+                  </span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginLeft: 'var(--space-2)' }}>
+                    +{alert.ratePerHour.toFixed(1)} poeng/t
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <button
+                    onClick={() => setEscalateTarget(alert.patientId)}
+                    style={{
+                      fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-status-critical)', background: 'transparent',
+                      color: 'var(--color-status-critical)', cursor: 'pointer', fontWeight: 600,
+                    }}
+                  >
+                    Eskalér
+                  </button>
+                  <button
+                    onClick={() => setDeteriorationAlerts((prev) => prev.filter((a) => a.patientId !== alert.patientId))}
+                    style={{ fontSize: 'var(--text-xs)', background: 'transparent', border: 'none', color: 'var(--color-text-subtle)', cursor: 'pointer' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

@@ -236,8 +236,43 @@ export const WsEventType = z.enum([
   'escalation.raised',
   'escalation.resolved',
   'patient.vitals_updated',
+  'patient.deterioration_alert',
 ]);
 export type WsEventType = z.infer<typeof WsEventType>;
+
+// ═══════════════════════════════════════════════
+// NEWS2 SCORING
+// ═══════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════
+// MEDICATION RECORD
+// ═══════════════════════════════════════════════
+
+export const MedicationDrug = z.enum([
+  'oxygen', 'aspirin', 'GTN', 'morphine', 'naloxone', 'glucose', 'adrenaline', 'other',
+]);
+
+export const MedicationRoute = z.enum(['oral', 'IV', 'IM', 'inhaled', 'sublingual', 'other']);
+
+export const MedicationRecord = z.object({
+  id: z.string().uuid(),
+  patientId: z.string().uuid(),
+  eventId: z.string().uuid(),
+  drug: MedicationDrug,
+  dose: z.string().max(100).optional(),
+  route: MedicationRoute.optional(),
+  givenAt: z.string().datetime(),
+  givenBy: z.string().max(100).optional(),
+});
+export type MedicationRecord = z.infer<typeof MedicationRecord>;
+
+export const CreateMedicationRequest = MedicationRecord.pick({
+  drug: true,
+  dose: true,
+  route: true,
+  givenBy: true,
+});
+export type CreateMedicationRequest = z.infer<typeof CreateMedicationRequest>;
 
 // ═══════════════════════════════════════════════
 // NEWS2 SCORING
@@ -247,10 +282,12 @@ export type {
   News2Input,
   News2ParameterScores,
   News2Result,
+  News2Trend,
 } from './news2.js';
 
 export {
   calculateNEWS2,
+  calculateNEWS2Trend,
   news2MonitoringLabel,
   news2BadgeLabel,
 } from './news2.js';

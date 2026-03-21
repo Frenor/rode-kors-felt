@@ -123,6 +123,17 @@ export const patients = pgTable('patients', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const medicationRecords = pgTable('medication_records', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  patientId: uuid('patient_id').notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+  drug: varchar('drug', { length: 100 }).notNull(),
+  dose: varchar('dose', { length: 100 }),
+  route: varchar('route', { length: 50 }),
+  givenAt: timestamp('given_at', { withTimezone: true }).notNull().defaultNow(),
+  givenBy: varchar('given_by', { length: 100 }),
+});
+
 export const vitalReadings = pgTable('vital_readings', {
   id: uuid('id').primaryKey().defaultRandom(),
   patientId: uuid('patient_id').notNull().references(() => patients.id, { onDelete: 'cascade' }),

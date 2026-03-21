@@ -143,6 +143,17 @@ export async function runMigrations(): Promise<void> {
         updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS medication_records (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id  UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+        event_id    UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        drug        VARCHAR(100) NOT NULL,
+        dose        VARCHAR(100),
+        route       VARCHAR(50),
+        given_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        given_by    VARCHAR(100)
+      );
+
       CREATE TABLE IF NOT EXISTS vital_readings (
         id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         patient_id              UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,

@@ -5,6 +5,7 @@ import { useWsStore } from '../stores/ws';
 import { api } from '../lib/api';
 import {
   calculateNEWS2,
+  calculateNEWS2Trend,
   news2MonitoringLabel,
   news2BadgeLabel,
   type News2Result,
@@ -54,6 +55,7 @@ export function SickBayDashboard() {
   const { eventId } = useAuthStore();
   const addToast = useNotificationStore((s) => s.add);
   const onMessage = useWsStore((s) => s.onMessage);
+  const wsSend = useWsStore((s) => s.send);
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showIntake, setShowIntake] = useState(false);
@@ -64,6 +66,15 @@ export function SickBayDashboard() {
   const [intakeForm, setIntakeForm] = useState({
     ageGroup: 'adult', presentingComplaint: '', assignedClinician: '',
   });
+
+  // SBAR handover state
+  const [sbarPatient, setSbarPatient] = useState<any | null>(null);
+  const [sbarForm, setSbarForm] = useState({ situation: '', background: '', assessment: '', recommendation: '' });
+
+  // Medication state
+  const [medPatientId, setMedPatientId] = useState<string | null>(null);
+  const [medForm, setMedForm] = useState({ drug: 'oxygen', dose: '', route: 'inhaled', givenBy: '' });
+  const [medications, setMedications] = useState<Record<string, any[]>>({}); // keyed by patientId
 
   const fetchPatients = () => {
     if (!eventId) return;
@@ -127,6 +138,51 @@ export function SickBayDashboard() {
     }, delayMs);
   };
 
+  const handleStatusChange = async (patientId: string, status: string, patient?: any) => {
+    // Require SBAR before transferring
+    if (status === 'transferred' && patient) {
+      setSbarPatient(patient);
+      setSbarForm({
+        situation: patient.presentingComplaint || '',
+        background: '',
+        assessment: patient.latestVitals
+          ? `NEWS2 ${calculateNEWS2(patient.latestVitals).total}`
+          : '',
+        recommendation: '',
+      });
+      return; // Show SBAR modal first
+    }
+    await api.updatePatient(patientId, { status });
+    fetchPatients();
+  };
+
+  const handleSbarSubmit = async () => {
+    if (!sbarPatient) return;
+    const sbarNote = [
+      `S: ${sbarForm.situation}`,
+      `B: ${sbarForm.background}`,
+      `A: ${sbarForm.assessment}`,
+      `R: ${sbarForm.recommendation}`,
+    ].join('\n');
+    await api.addPatientNote(sbarPatient.id, sbarNote, 'SBAR-overlevering');
+    await api.updatePatient(sbarPatient.id, { status: 'transferred' });
+    setSbarPatient(null);
+    setSbarForm({ situation: '', background: '', assessment: '', recommendation: '' });
+    fetchPatients();
+  };
+
+  const handleLoadMedications = async (patientId: string) => {
+    const { medications: meds } = await api.getMedications(patientId);
+    setMedications((prev) => ({ ...prev, [patientId]: meds }));
+  };
+
+  const handleRecordMedication = async (patientId: string) => {
+    await api.recordMedication(patientId, medForm);
+    await handleLoadMedications(patientId);
+    setMedForm({ drug: 'oxygen', dose: '', route: 'inhaled', givenBy: '' });
+    setMedPatientId(null);
+  };
+
   const handleRecordVitals = async (patient: any) => {
     const vf = vitalsForm;
     const vitalsPayload: Record<string, unknown> = {
@@ -141,24 +197,43 @@ export function SickBayDashboard() {
 
     await api.recordVitals(patient.id, vitalsPayload as Record<string, number | undefined>);
 
-    // Calculate NEWS2 from the submitted values and schedule monitoring reminder
-    const news2Result = calculateNEWS2({
+    // Build the new reading in the same shape as vitalsHistory entries
+    const newReading = {
+      timestamp: new Date().toISOString(),
       respiratoryRate: vf.rr ? parseInt(vf.rr) : undefined,
       spo2: vf.spo2 ? parseInt(vf.spo2) : undefined,
       systolicBP: vf.bp ? parseInt(vf.bp) : undefined,
       pulse: vf.pulse ? parseInt(vf.pulse) : undefined,
       acvpu: (vf.acvpu || undefined) as AcvpuLevel | undefined,
       temperature: vf.temp ? parseFloat(vf.temp) : undefined,
-    });
+      painScore: vf.pain ? parseInt(vf.pain) : undefined,
+    };
+
+    // Calculate NEWS2 from the submitted values and schedule monitoring reminder
+    const news2Result = calculateNEWS2(newReading);
     scheduleMonitoringReminder(patient, news2Result);
+
+    // Detect deterioration trend from vitals history
+    const allReadings = [newReading, ...(patient.vitalsHistory ?? [])];
+    const trend = calculateNEWS2Trend(allReadings);
+    if (trend.direction === 'rising' && trend.ratePerHour >= 2) {
+      navigator.vibrate?.([200, 100, 200]);
+      addToast({
+        patientId: patient.id,
+        message: `ADVARSEL: NEWS2 stiger raskt — umiddelbar vurdering påkrevd (${patient.presentingComplaint || 'Pasient'})`,
+        level: 'urgent',
+        autoDismissMs: 0,
+      });
+      wsSend({
+        type: 'patient.deterioration_alert',
+        eventId,
+        payload: { patientId: patient.id, trend, news2Score: news2Result.total },
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     setVitalsForm({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
     setSelectedPatient(null);
-    fetchPatients();
-  };
-
-  const handleStatusChange = async (patientId: string, status: string) => {
-    await api.updatePatient(patientId, { status });
     fetchPatients();
   };
 
@@ -261,6 +336,76 @@ export function SickBayDashboard() {
         </div>
       )}
 
+      {/* SBAR handover modal */}
+      {sbarPatient && (
+        <div
+          role="dialog"
+          aria-label="SBAR-overlevering"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
+            background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 'var(--space-4)',
+          }}
+        >
+          <div style={{
+            background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-6)', maxWidth: 520, width: '100%',
+          }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-1)' }}>
+              SBAR-overlevering
+            </h2>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-4)' }}>
+              Alle felt må fylles ut før pasienten kan overføres.
+            </p>
+
+            {(['situation', 'background', 'assessment', 'recommendation'] as const).map((field) => {
+              const labels = { situation: 'S — Situasjon', background: 'B — Bakgrunn', assessment: 'A — Vurdering', recommendation: 'R — Anbefaling' };
+              return (
+                <div key={field} style={{ marginBottom: 'var(--space-3)' }}>
+                  <label htmlFor={`sbar-${field}`} style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
+                    {labels[field]}
+                  </label>
+                  <textarea
+                    id={`sbar-${field}`}
+                    value={sbarForm[field]}
+                    onChange={(e) => setSbarForm(f => ({ ...f, [field]: e.target.value }))}
+                    rows={2}
+                    style={{
+                      width: '100%', padding: 'var(--space-2)', borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)',
+                      color: 'var(--color-text)', fontSize: 'var(--text-sm)', resize: 'vertical',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                </div>
+              );
+            })}
+
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <button onClick={() => setSbarPatient(null)} className="touch-target" style={{
+                flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text)', cursor: 'pointer',
+              }}>
+                Avbryt
+              </button>
+              <button
+                onClick={handleSbarSubmit}
+                disabled={!sbarForm.situation || !sbarForm.background || !sbarForm.assessment || !sbarForm.recommendation}
+                className="touch-target"
+                style={{
+                  flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
+                  border: 'none', background: 'var(--color-status-critical)', color: 'white',
+                  fontWeight: 600, cursor: 'pointer', opacity: (!sbarForm.situation || !sbarForm.background || !sbarForm.assessment || !sbarForm.recommendation) ? 0.5 : 1,
+                }}
+              >
+                Bekreft overføring
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Patient list */}
       {loading ? (
         <p style={{ color: 'var(--color-text-subtle)' }}>Laster pasienter...</p>
@@ -277,6 +422,9 @@ export function SickBayDashboard() {
             const sc = statusColors[patient.status] || { color: 'var(--color-text-subtle)', bg: 'var(--color-surface-sunken)' };
             const news2 = patient.latestVitals ? calculateNEWS2(patient.latestVitals) : null;
             const n2colors = news2 ? news2Colors[news2.alertLevel] : null;
+            const trend = patient.vitalsHistory?.length >= 2 ? calculateNEWS2Trend(patient.vitalsHistory) : null;
+            const trendArrow = trend?.direction === 'rising' ? '↑' : trend?.direction === 'falling' ? '↓' : trend ? '→' : null;
+            const trendColor = trend?.direction === 'rising' ? 'var(--color-status-critical)' : trend?.direction === 'falling' ? 'var(--color-status-ok)' : 'var(--color-text-subtle)';
 
             return (
               <article
@@ -296,18 +444,28 @@ export function SickBayDashboard() {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-                    {/* NEWS2 badge */}
+                    {/* NEWS2 badge + trend arrow */}
                     {news2 && n2colors && (
-                      <span
-                        aria-label={`${news2BadgeLabel(news2)}: ${news2MonitoringLabel(news2)}`}
-                        title={news2MonitoringLabel(news2)}
-                        style={{
-                          fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
-                          padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                          background: n2colors.bg, color: n2colors.color,
-                        }}
-                      >
-                        {news2BadgeLabel(news2)}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <span
+                          aria-label={`${news2BadgeLabel(news2)}: ${news2MonitoringLabel(news2)}`}
+                          title={news2MonitoringLabel(news2)}
+                          style={{
+                            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
+                            padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                            background: n2colors.bg, color: n2colors.color,
+                          }}
+                        >
+                          {news2BadgeLabel(news2)}
+                        </span>
+                        {trendArrow && (
+                          <span
+                            aria-label={`Trend: ${trend?.direction}`}
+                            style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: trendColor }}
+                          >
+                            {trendArrow}
+                          </span>
+                        )}
                       </span>
                     )}
                     {/* Status badge */}
@@ -362,7 +520,15 @@ export function SickBayDashboard() {
                     }}>
                     {selectedPatient === patient.id ? '✕ Lukk' : '+ Vitale tegn'}
                   </button>
-                  {patient.status !== 'discharged' && (
+                  <button onClick={() => { setMedPatientId(medPatientId === patient.id ? null : patient.id); if (medPatientId !== patient.id) handleLoadMedications(patient.id); }}
+                    className="touch-target" style={{
+                      minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border)', background: 'transparent',
+                      fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', cursor: 'pointer',
+                    }}>
+                    {medPatientId === patient.id ? '✕ Lukk' : '+ Medikament'}
+                  </button>
+                  {patient.status !== 'discharged' && patient.status !== 'transferred' && (
                     <button onClick={() => handleStatusChange(patient.id, 'discharged')}
                       className="touch-target" style={{
                         minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
@@ -372,7 +538,89 @@ export function SickBayDashboard() {
                       Skriv ut
                     </button>
                   )}
+                  {patient.status !== 'discharged' && patient.status !== 'transferred' && (
+                    <button onClick={() => handleStatusChange(patient.id, 'transferred', patient)}
+                      className="touch-target" style={{
+                        minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-status-critical)', background: 'transparent',
+                        fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-status-critical)', cursor: 'pointer',
+                      }}>
+                      Overfør
+                    </button>
+                  )}
                 </div>
+
+                {/* Medication panel (inline) */}
+                {medPatientId === patient.id && (
+                  <div style={{
+                    marginTop: 'var(--space-3)', padding: 'var(--space-3)',
+                    background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
+                  }}>
+                    <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Medikamentlogg</h4>
+
+                    {/* Existing medication records */}
+                    {(medications[patient.id] ?? []).length > 0 && (
+                      <div style={{ marginBottom: 'var(--space-3)' }}>
+                        {(medications[patient.id] ?? []).map((med: any, i: number) => (
+                          <div key={i} style={{
+                            display: 'flex', gap: 'var(--space-2)', fontSize: 'var(--text-xs)',
+                            fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)',
+                            padding: 'var(--space-1) 0', borderBottom: '1px solid var(--color-border)',
+                          }}>
+                            <span style={{ color: 'var(--color-text)', fontWeight: 600 }}>{med.drug}</span>
+                            {med.dose && <span>{med.dose}</span>}
+                            {med.route && <span>({med.route})</span>}
+                            {med.givenBy && <span>— {med.givenBy}</span>}
+                            <span style={{ marginLeft: 'auto' }}>{new Date(med.givenAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* New medication form */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                      <div>
+                        <label htmlFor={`med-drug-${patient.id}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Medikament</label>
+                        <select id={`med-drug-${patient.id}`} value={medForm.drug}
+                          onChange={(e) => setMedForm(f => ({ ...f, drug: e.target.value }))}
+                          style={{ width: '100%', height: 36, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}>
+                          {['oxygen', 'aspirin', 'gtn', 'morfin', 'nalokson', 'glukose', 'adrenalin', 'annet'].map(d => (
+                            <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor={`med-route-${patient.id}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Administrasjonsvei</label>
+                        <select id={`med-route-${patient.id}`} value={medForm.route}
+                          onChange={(e) => setMedForm(f => ({ ...f, route: e.target.value }))}
+                          style={{ width: '100%', height: 36, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}>
+                          {['inhaled', 'oral', 'iv', 'im', 'sublingual'].map(r => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor={`med-dose-${patient.id}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Dose</label>
+                        <input id={`med-dose-${patient.id}`} type="text" value={medForm.dose} placeholder="f.eks. 5 mg"
+                          onChange={(e) => setMedForm(f => ({ ...f, dose: e.target.value }))}
+                          style={{ width: '100%', height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }} />
+                      </div>
+                      <div>
+                        <label htmlFor={`med-by-${patient.id}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Gitt av</label>
+                        <input id={`med-by-${patient.id}`} type="text" value={medForm.givenBy} placeholder="Navn"
+                          onChange={(e) => setMedForm(f => ({ ...f, givenBy: e.target.value }))}
+                          style={{ width: '100%', height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }} />
+                      </div>
+                    </div>
+                    <button onClick={() => handleRecordMedication(patient.id)} style={{
+                      width: '100%', minHeight: 36, borderRadius: 'var(--radius-sm)',
+                      border: 'none', background: 'var(--color-brand)', color: 'white',
+                      fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
+                    }}>
+                      Registrer medikament
+                    </button>
+                  </div>
+                )}
 
                 {/* Vitals entry (expanded) */}
                 {selectedPatient === patient.id && (

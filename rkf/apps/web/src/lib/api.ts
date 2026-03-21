@@ -156,6 +156,20 @@ class ApiClient {
       body: JSON.stringify(vitals),
     });
   }
+
+  async recordMedication(
+    patientId: string,
+    data: { drug: string; dose?: string; route?: string; givenBy?: string },
+  ) {
+    return this.request<{ medication: any }>(`/patients/${patientId}/medications`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getMedications(patientId: string) {
+    return this.request<{ medications: any[] }>(`/patients/${patientId}/medications`);
+  }
 }
 
 export const api = new ApiClient();

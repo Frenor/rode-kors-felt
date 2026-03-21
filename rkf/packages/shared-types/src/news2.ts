@@ -147,6 +147,73 @@ function deriveMonitoringMinutes(total: number, hasParameterScore3: boolean): nu
   return 720;                         // 12 hours
 }
 
+// ─── Trend detection ─────────────────────────────────────────────
+
+export interface News2Trend {
+  /** Direction of change between the two most recent readings */
+  direction: 'rising' | 'stable' | 'falling';
+  /** Raw difference in NEWS2 score (positive = worsening) */
+  deltaScore: number;
+  /** Estimated rate of change per hour (based on timestamp gap) */
+  ratePerHour: number;
+}
+
+/**
+ * Calculate NEWS2 score trend from a list of vital readings.
+ *
+ * @param readings — ordered newest-first (as returned by the API)
+ * @returns Trend based on two most recent readings; 'stable' if only one reading.
+ *
+ * Clinical threshold: Δ ≥ 2 in any 60-minute window is clinically significant.
+ * (Royal College of Physicians NEWS2 guidance, 2017)
+ */
+export function calculateNEWS2Trend(
+  readings: Array<{
+    respiratoryRate?: number | null;
+    spo2?: number | null;
+    systolicBP?: number | null;
+    pulse?: number | null;
+    acvpu?: string | null;
+    temperature?: number | null;
+    timestamp: string;
+  }>,
+): News2Trend {
+  if (readings.length < 2) {
+    return { direction: 'stable', deltaScore: 0, ratePerHour: 0 };
+  }
+
+  const [newest, previous] = [readings[0]!, readings[1]!];
+
+  const newestScore = calculateNEWS2({
+    respiratoryRate: newest.respiratoryRate ?? undefined,
+    spo2: newest.spo2 ?? undefined,
+    systolicBP: newest.systolicBP ?? undefined,
+    pulse: newest.pulse ?? undefined,
+    acvpu: (newest.acvpu ?? undefined) as News2Input['acvpu'],
+    temperature: newest.temperature ?? undefined,
+  }).total;
+
+  const previousScore = calculateNEWS2({
+    respiratoryRate: previous.respiratoryRate ?? undefined,
+    spo2: previous.spo2 ?? undefined,
+    systolicBP: previous.systolicBP ?? undefined,
+    pulse: previous.pulse ?? undefined,
+    acvpu: (previous.acvpu ?? undefined) as News2Input['acvpu'],
+    temperature: previous.temperature ?? undefined,
+  }).total;
+
+  const deltaScore = newestScore - previousScore;
+
+  const timeDiffMs =
+    new Date(newest.timestamp).getTime() - new Date(previous.timestamp).getTime();
+  const timeDiffHours = timeDiffMs > 0 ? timeDiffMs / 3_600_000 : 1;
+  const ratePerHour = deltaScore / timeDiffHours;
+
+  const direction = deltaScore >= 2 ? 'rising' : deltaScore <= -2 ? 'falling' : 'stable';
+
+  return { direction, deltaScore, ratePerHour };
+}
+
 // ─── Display helpers (Norwegian) ─────────────────────────────────
 
 /** Norwegian label for monitoring interval */
