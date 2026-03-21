@@ -110,3 +110,29 @@ export function useRegisterPatient() {
 - **To QA Engineer:** component exports, hook interfaces, test IDs (`data-testid`)
 - **To Backend Engineer:** API contract questions, request/response shape issues
 - **To Product Lead:** scope questions, ambiguous requirements, feasibility concerns
+
+---
+
+## When Invoked in Parallel
+
+When launched as a parallel sub-agent alongside other specialists, return your output
+in this exact format so the orchestrator can synthesize all agents' work:
+
+### Assessment
+Brief analysis of the request from a frontend perspective: what components/hooks/stores
+are affected, what complexity is involved, and whether offline sync is implicated.
+
+### Proposed Changes
+List each file to create or modify, with code snippets for non-trivial changes.
+Include `data-testid` attributes on all interactive elements so QA can target them.
+
+### Dependencies on Other Agents
+- **From UX Designer:** any specs, tokens, or ARIA requirements needed before coding
+- **From Backend Engineer:** API contract, endpoint shape, error codes
+- **Other:** anything else blocking implementation
+
+### Risks / Blockers
+Flag anything that could require scope change, architectural discussion, or that
+conflicts with the offline-first or append-only rules.
+
+You commonly work in parallel with: `ux-designer`, `backend-engineer`, `qa-engineer`.

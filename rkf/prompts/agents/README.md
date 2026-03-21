@@ -43,28 +43,52 @@ Product Lead        ← you talk to this agent
 
 ---
 
-## How to Invoke an Agent
+## How to Invoke Agents (Parallel-First)
 
-### Via the Claude Code Agent tool
+**Default: launch multiple agents in parallel.** Do not invoke one agent at a time
+when specialists can work simultaneously. For how to classify requests and select
+agents, see the routing matrix in `rkf/CLAUDE.md`.
+
+### Parallel Invocation via Claude Code Agent tool
+
+Send a single message with multiple Agent tool calls — one per specialist:
 
 ```
-Use Agent tool with:
+# Example: full-stack feature → 4 agents in parallel
+
+Agent tool call 1:
   subagent_type: general-purpose
-  prompt: <contents of the agent file> + "\n\n---\n\nTask:\n" + <your task>
+  prompt: <contents of frontend-engineer.md> + non-negotiables + specific sub-task
+
+Agent tool call 2:
+  subagent_type: general-purpose
+  prompt: <contents of backend-engineer.md> + non-negotiables + specific sub-task
+
+Agent tool call 3:
+  subagent_type: general-purpose
+  prompt: <contents of ux-designer.md> + non-negotiables + specific sub-task
+
+Agent tool call 4:
+  subagent_type: general-purpose
+  prompt: <contents of qa-engineer.md> + non-negotiables + specific sub-task
 ```
 
-### Via the Claude Code CLI
+Collect all four responses, resolve any conflicts, then implement.
 
-```
-/agent prompts/agents/frontend-engineer.md
-```
+### When Sequential Invocation Is Acceptable
+
+Only invoke agents one-at-a-time when there is a hard dependency:
+- UX Designer spec must be finalised before Frontend Engineer implements pixel-perfect UI
+- Backend Engineer schema must be agreed before QA Engineer writes seed scripts
+- DevOps Engineer needs Backend Engineer's env var list before updating secrets config
+
+In all other cases: **parallel first**.
 
 ### Escalation Protocol
 
-- Any agent can flag a **blocker** back to the Product Lead.
-- The Product Lead decides priority and re-assigns or resolves.
-- The Field User is invoked by the Product Lead for usability reviews — never directly
-  by engineers.
+- Any agent can flag a **blocker** back to the orchestrating Claude Code session.
+- Resolve conflicts using priority order: Safety > Offline > Accessibility > GDPR > Performance > DX.
+- A single Field User blocker is a **P0** — stops all work until resolved.
 
 ---
 
