@@ -22,6 +22,7 @@ export const AcvpuLevel = z.enum(['alert', 'confused', 'voice', 'pain', 'unrespo
 export type AcvpuLevel = z.infer<typeof AcvpuLevel>;
 
 export const IncidentStatus = z.enum([
+  'dispatched',
   'on_scene',
   'transporting',
   'at_sickbay',
@@ -29,6 +30,9 @@ export const IncidentStatus = z.enum([
   'resolved',
 ]);
 export type IncidentStatus = z.infer<typeof IncidentStatus>;
+
+export const IncidentSource = z.enum(['field', 'coordinator']);
+export type IncidentSource = z.infer<typeof IncidentSource>;
 
 export const PatientStatus = z.enum([
   'incoming',
@@ -96,6 +100,7 @@ export const Incident = z.object({
   teamId: z.string().uuid().optional(),
   type: IncidentType,
   status: IncidentStatus,
+  source: IncidentSource.default('field'),
   location: GeoPoint,
   acvpu: AcvpuLevel.optional(),
   vitals: VitalReading.optional(),
@@ -181,7 +186,9 @@ export const CreateIncidentRequest = Incident.pick({
   location: true,
   acvpu: true,
   notes: true,
+  source: true,
 }).extend({
+  teamId: z.string().uuid().optional(),
   vitals: VitalReading.omit({ id: true, patientId: true, timestamp: true }).optional(),
   mist: MistForm.optional(),
 });

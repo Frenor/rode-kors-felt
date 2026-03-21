@@ -39,6 +39,7 @@ export async function incidentRoutes(app: FastifyInstance) {
       eventId: string;
       teamId?: string;
       type: string;
+      source?: 'field' | 'coordinator';
       location: { lat: number; lng: number };
       acvpu?: string;
       vitals?: Record<string, unknown>;
@@ -63,13 +64,15 @@ export async function incidentRoutes(app: FastifyInstance) {
     }
 
     const now = new Date().toISOString();
+    const source = body.source ?? 'field';
     const incident = {
       id: randomUUID(),
       eventId,
       teamId: body.teamId,
       type: body.type,
-      status: 'on_scene',
-      location: body.location,
+      source,
+      status: source === 'coordinator' ? 'dispatched' : 'on_scene',
+      location: body.location ?? { lat: 59.9139, lng: 10.7522 },
       acvpu: body.acvpu,
       vitals: body.vitals,
       mist: body.mist,
