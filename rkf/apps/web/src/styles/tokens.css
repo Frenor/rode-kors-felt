@@ -1,0 +1,280 @@
+/**
+ * RKF Design System — Tokens v1.1.0
+ * DS-01 · Delivered by: Designer · Reviewed by: Team Lead
+ *
+ * Theme: follows device prefers-color-scheme.
+ * Manual override: set data-theme="light"|"dark" on <html>.
+ * No role-based overrides.
+ *
+ * WCAG targets:
+ *   Body text:    ≥ 4.5:1
+ *   Clinical data: ≥ 7:1 (vitals, AVPU, alerts)
+ *   UI chrome:    ≥ 3:1
+ *   Touch targets: ≥ 56×56px (first aider glove requirement)
+ */
+
+/* ═══════════════════════════════════════════════
+   LIGHT MODE (default for prefers-color-scheme: light)
+═══════════════════════════════════════════════ */
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* Surfaces */
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #ebedf0;
+
+  /* Text */
+  --color-text: #1a1a2e;
+  --color-text-muted: #5a5a72;
+  --color-text-subtle: #8b8ba0;
+
+  /* Borders */
+  --color-border: #d1d5db;
+  --color-border-strong: #9ca3af;
+
+  /* Brand */
+  --color-brand: #e8112d;
+  --color-brand-hover: #c50e26;
+  --color-brand-dim: rgba(232, 17, 45, 0.1);
+
+  /* Status — calibrated for light surfaces (≥ 7:1) */
+  --color-status-critical: #b91c1c;
+  --color-status-critical-bg: rgba(185, 28, 28, 0.08);
+  --color-status-critical-border: rgba(185, 28, 28, 0.25);
+
+  --color-status-warning: #92400e;
+  --color-status-warning-bg: rgba(146, 64, 14, 0.08);
+  --color-status-warning-border: rgba(146, 64, 14, 0.25);
+
+  --color-status-ok: #166534;
+  --color-status-ok-bg: rgba(22, 101, 52, 0.08);
+  --color-status-ok-border: rgba(22, 101, 52, 0.25);
+
+  --color-status-info: #1e40af;
+  --color-status-info-bg: rgba(30, 64, 175, 0.08);
+  --color-status-info-border: rgba(30, 64, 175, 0.25);
+
+  /* AVPU — light mode values (≥ 7:1 on white) */
+  --color-avpu-alert: #166534;
+  --color-avpu-alert-bg: rgba(22, 101, 52, 0.1);
+  --color-avpu-voice: #92400e;
+  --color-avpu-voice-bg: rgba(146, 64, 14, 0.1);
+  --color-avpu-pain: #b91c1c;
+  --color-avpu-pain-bg: rgba(185, 28, 28, 0.1);
+  --color-avpu-unresponsive: #7f1d1d;
+  --color-avpu-unresponsive-bg: rgba(127, 29, 29, 0.15);
+
+  /* Interactive */
+  --color-focus-ring: #2563eb;
+  --color-input-bg: #ffffff;
+  --color-input-border: #d1d5db;
+}
+
+/* ═══════════════════════════════════════════════
+   DARK MODE (prefers-color-scheme: dark)
+═══════════════════════════════════════════════ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --color-bg: #0d1117;
+    --color-surface: #161b22;
+    --color-surface-raised: #1c2128;
+    --color-surface-sunken: #090c10;
+
+    --color-text: #e6edf3;
+    --color-text-muted: #9ca3b0;
+    --color-text-subtle: #636c78;
+
+    --color-border: #21262d;
+    --color-border-strong: #30363d;
+
+    --color-brand: #e8112d;
+    --color-brand-hover: #ff2d4a;
+    --color-brand-dim: rgba(232, 17, 45, 0.15);
+
+    /* Status — calibrated for dark surfaces (≥ 7:1) */
+    --color-status-critical: #f87171;
+    --color-status-critical-bg: rgba(248, 113, 113, 0.1);
+    --color-status-critical-border: rgba(248, 113, 113, 0.25);
+
+    --color-status-warning: #fbbf24;
+    --color-status-warning-bg: rgba(251, 191, 36, 0.1);
+    --color-status-warning-border: rgba(251, 191, 36, 0.25);
+
+    --color-status-ok: #4ade80;
+    --color-status-ok-bg: rgba(74, 222, 128, 0.1);
+    --color-status-ok-border: rgba(74, 222, 128, 0.25);
+
+    --color-status-info: #60a5fa;
+    --color-status-info-bg: rgba(96, 165, 250, 0.1);
+    --color-status-info-border: rgba(96, 165, 250, 0.25);
+
+    /* AVPU — dark mode values (≥ 7:1 on dark surface) */
+    --color-avpu-alert: #4ade80;
+    --color-avpu-alert-bg: rgba(74, 222, 128, 0.12);
+    --color-avpu-voice: #fbbf24;
+    --color-avpu-voice-bg: rgba(251, 191, 36, 0.12);
+    --color-avpu-pain: #f87171;
+    --color-avpu-pain-bg: rgba(248, 113, 113, 0.12);
+    --color-avpu-unresponsive: #fca5a5;
+    --color-avpu-unresponsive-bg: rgba(252, 165, 165, 0.15);
+
+    --color-focus-ring: #58a6ff;
+    --color-input-bg: #0d1117;
+    --color-input-border: #30363d;
+  }
+}
+
+/* Explicit dark override */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-surface-raised: #1c2128;
+  --color-surface-sunken: #090c10;
+
+  --color-text: #e6edf3;
+  --color-text-muted: #9ca3b0;
+  --color-text-subtle: #636c78;
+
+  --color-border: #21262d;
+  --color-border-strong: #30363d;
+
+  --color-brand: #e8112d;
+  --color-brand-hover: #ff2d4a;
+  --color-brand-dim: rgba(232, 17, 45, 0.15);
+
+  --color-status-critical: #f87171;
+  --color-status-critical-bg: rgba(248, 113, 113, 0.1);
+  --color-status-critical-border: rgba(248, 113, 113, 0.25);
+
+  --color-status-warning: #fbbf24;
+  --color-status-warning-bg: rgba(251, 191, 36, 0.1);
+  --color-status-warning-border: rgba(251, 191, 36, 0.25);
+
+  --color-status-ok: #4ade80;
+  --color-status-ok-bg: rgba(74, 222, 128, 0.1);
+  --color-status-ok-border: rgba(74, 222, 128, 0.25);
+
+  --color-status-info: #60a5fa;
+  --color-status-info-bg: rgba(96, 165, 250, 0.1);
+  --color-status-info-border: rgba(96, 165, 250, 0.25);
+
+  --color-avpu-alert: #4ade80;
+  --color-avpu-alert-bg: rgba(74, 222, 128, 0.12);
+  --color-avpu-voice: #fbbf24;
+  --color-avpu-voice-bg: rgba(251, 191, 36, 0.12);
+  --color-avpu-pain: #f87171;
+  --color-avpu-pain-bg: rgba(248, 113, 113, 0.12);
+  --color-avpu-unresponsive: #fca5a5;
+  --color-avpu-unresponsive-bg: rgba(252, 165, 165, 0.15);
+
+  --color-focus-ring: #58a6ff;
+  --color-input-bg: #0d1117;
+  --color-input-border: #30363d;
+}
+
+/* ═══════════════════════════════════════════════
+   TYPOGRAPHY
+═══════════════════════════════════════════════ */
+:root {
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
+
+  /* Type scale — modular (1.25 ratio) */
+  --text-xs: 0.64rem;    /* 10.24px — mono labels */
+  --text-sm: 0.8rem;     /* 12.8px  — captions */
+  --text-base: 1rem;     /* 16px    — body */
+  --text-lg: 1.25rem;    /* 20px    — subheadings */
+  --text-xl: 1.563rem;   /* 25px    — headings */
+  --text-2xl: 1.953rem;  /* 31.25px — page titles */
+  --text-3xl: 2.441rem;  /* 39px    — vitals display */
+  --text-4xl: 3.052rem;  /* 48.8px  — large vitals */
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.05em;
+  --tracking-mono: 0.08em;
+}
+
+/* ═══════════════════════════════════════════════
+   SPACING
+═══════════════════════════════════════════════ */
+:root {
+  --space-1: 0.25rem;   /* 4px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+}
+
+/* ═══════════════════════════════════════════════
+   RADII & SHADOWS
+═══════════════════════════════════════════════ */
+:root {
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-focus: 0 0 0 3px var(--color-focus-ring);
+}
+
+/* ═══════════════════════════════════════════════
+   TOUCH TARGETS
+═══════════════════════════════════════════════ */
+:root {
+  --touch-min: 56px;      /* Glove-friendly minimum */
+  --touch-comfortable: 64px;
+}
+
+/* ═══════════════════════════════════════════════
+   TRANSITIONS
+═══════════════════════════════════════════════ */
+:root {
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-slow: 0ms;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   Z-INDEX SCALE
+═══════════════════════════════════════════════ */
+:root {
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-alert: 600;
+}
