@@ -13,6 +13,7 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    { name: 'tablet', use: { ...devices['iPad (gen 7)'] } },
   ],
   webServer: {
     command: 'pnpm --filter @rkf/api dev & pnpm --filter @rkf/web dev',

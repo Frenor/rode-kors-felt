@@ -10,7 +10,7 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Rødt Kors Felt',
+        name: 'Røde Kors Felt',
         short_name: 'RKF',
         description: 'Event Medical System — Norwegian Red Cross',
         theme_color: '#E8112D',

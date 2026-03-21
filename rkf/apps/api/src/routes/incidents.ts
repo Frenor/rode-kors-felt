@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { store } from '../db/store.js';
 import { requireAuth } from '../middleware/auth.js';
+import { broadcast } from './ws.js';
 
 export async function incidentRoutes(app: FastifyInstance) {
   // List incidents for an event
@@ -79,6 +80,14 @@ export async function incidentRoutes(app: FastifyInstance) {
     };
 
     store.incidents.set(incident.id, incident);
+
+    broadcast({
+      type: 'incident.created',
+      eventId,
+      payload: { incident },
+      timestamp: now,
+    });
+
     return reply.code(201).send({ incident });
   });
 
@@ -88,7 +97,7 @@ export async function incidentRoutes(app: FastifyInstance) {
     const body = request.body as Partial<{
       status: string;
       teamId: string;
-      avpu: string;
+      acvpu: string;
       notes: string;
     }>;
 
@@ -104,6 +113,85 @@ export async function incidentRoutes(app: FastifyInstance) {
     };
 
     store.incidents.set(id, updated);
+
+    broadcast({
+      type: 'incident.updated',
+      eventId: updated.eventId,
+      payload: { incident: updated },
+      timestamp: updated.updatedAt,
+    });
+
     return { incident: updated };
+  });
+
+  // Escalate an incident
+  app.post('/:id/escalate', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const user = (request as any).user;
+    const body = request.body as { path: string; reason?: string };
+
+    const incident = store.incidents.get(id);
+    if (!incident) {
+      return reply.code(404).send({ error: 'Hendelse ikke funnet' });
+    }
+
+    // Check for existing active escalation
+    const existing = Array.from(store.escalations.values()).find(
+      (e) => e.incidentId === id && !e.resolvedAt,
+    );
+    if (existing) {
+      return reply.code(409).send({ error: 'Hendelsen er allerede eskalert' });
+    }
+
+    const now = new Date().toISOString();
+    const escalation = {
+      id: randomUUID(),
+      incidentId: id,
+      eventId: incident.eventId,
+      path: body.path,
+      reason: body.reason,
+      raisedAt: now,
+      raisedBy: user.sub || user.email || 'unknown',
+    };
+
+    store.escalations.set(escalation.id, escalation);
+
+    broadcast({
+      type: 'escalation.raised',
+      eventId: incident.eventId,
+      payload: { escalation, incidentId: id },
+      timestamp: now,
+    });
+
+    return reply.code(201).send({ escalation });
+  });
+
+  // Resolve an escalation
+  app.delete('/:id/escalate', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const incident = store.incidents.get(id);
+    if (!incident) {
+      return reply.code(404).send({ error: 'Hendelse ikke funnet' });
+    }
+
+    const escalation = Array.from(store.escalations.values()).find(
+      (e) => e.incidentId === id && !e.resolvedAt,
+    );
+    if (!escalation) {
+      return reply.code(404).send({ error: 'Ingen aktiv eskalering funnet' });
+    }
+
+    const now = new Date().toISOString();
+    store.escalations.set(escalation.id, { ...escalation, resolvedAt: now });
+
+    broadcast({
+      type: 'escalation.resolved',
+      eventId: incident.eventId,
+      payload: { escalationId: escalation.id, incidentId: id },
+      timestamp: now,
+    });
+
+    return { ok: true };
   });
 }

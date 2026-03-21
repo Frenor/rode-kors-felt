@@ -179,12 +179,44 @@ export const AuthResponse = z.object({
 export const CreateIncidentRequest = Incident.pick({
   type: true,
   location: true,
-  avpu: true,
+  acvpu: true,
   notes: true,
 }).extend({
   vitals: VitalReading.omit({ id: true, patientId: true, timestamp: true }).optional(),
   mist: MistForm.optional(),
 });
+
+// ═══════════════════════════════════════════════
+// ESCALATION SCHEMAS
+// ═══════════════════════════════════════════════
+
+export const Escalation = z.object({
+  id: z.string().uuid(),
+  incidentId: z.string().uuid(),
+  eventId: z.string().uuid(),
+  path: EscalationPath,
+  reason: z.string().max(500).optional(),
+  raisedAt: z.string().datetime(),
+  resolvedAt: z.string().datetime().optional(),
+  raisedBy: z.string(),
+});
+export type Escalation = z.infer<typeof Escalation>;
+
+export const CreateEscalationRequest = z.object({
+  path: EscalationPath,
+  reason: z.string().max(500).optional(),
+});
+export type CreateEscalationRequest = z.infer<typeof CreateEscalationRequest>;
+
+// ═══════════════════════════════════════════════
+// WEBSOCKET PAYLOAD SCHEMAS
+// ═══════════════════════════════════════════════
+
+export const TeamPositionPayload = z.object({
+  teamId: z.string().uuid(),
+  position: GeoPoint,
+});
+export type TeamPositionPayload = z.infer<typeof TeamPositionPayload>;
 
 // ═══════════════════════════════════════════════
 // WEBSOCKET EVENT TYPES

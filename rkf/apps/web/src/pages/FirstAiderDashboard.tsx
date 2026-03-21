@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
+import { useTeamPositionBroadcast } from '../hooks/useTeamPositionBroadcast';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { offlineQueueDb } from '../lib/offline-queue';
 import { api } from '../lib/api';
 
 export function FirstAiderDashboard() {
@@ -9,6 +12,16 @@ export function FirstAiderDashboard() {
   const [incidents, setIncidents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  // Broadcast GPS position every 30s when team is selected
+  useTeamPositionBroadcast(selectedTeam);
+
+  // Live offline queue count from IndexedDB
+  const queuedIncidents = useLiveQuery(
+    () => offlineQueueDb.queue.toArray(),
+    [],
+    [],
+  );
 
   useEffect(() => {
     if (!eventId) return;
@@ -97,6 +110,38 @@ export function FirstAiderDashboard() {
         Meld hendelse
       </button>
 
+      {/* Queued (offline) incidents */}
+      {queuedIncidents && queuedIncidents.length > 0 && (
+        <section aria-labelledby="queued-heading" style={{ marginBottom: 'var(--space-4)' }}>
+          <h2
+            id="queued-heading"
+            style={{
+              fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
+              color: 'var(--color-status-warning)', textTransform: 'uppercase',
+              letterSpacing: 'var(--tracking-mono)', marginBottom: 'var(--space-3)',
+            }}
+          >
+            Venter på nettverk ({queuedIncidents.length})
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {queuedIncidents.map((item) => (
+              <div key={item.clientId} style={{
+                padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-status-warning-border)',
+                background: 'var(--color-status-warning-bg)',
+              }}>
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                  color: 'var(--color-status-warning)',
+                }}>
+                  ⏳ Lagret lokalt — synkroniseres automatisk
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Recent incidents */}
       <section aria-labelledby="recent-heading">
         <h2
@@ -158,13 +203,13 @@ export function FirstAiderDashboard() {
                     {statusLabels[incident.status] || incident.status}
                   </span>
                 </div>
-                {incident.avpu && (
+                {incident.acvpu && (
                   <span style={{
                     fontFamily: 'var(--font-mono)',
                     fontSize: 'var(--text-xs)',
                     color: 'var(--color-text-muted)',
                   }}>
-                    AVPU: {incident.avpu.toUpperCase()}
+                    ACVPU: {incident.acvpu.toUpperCase()}
                   </span>
                 )}
                 <div style={{

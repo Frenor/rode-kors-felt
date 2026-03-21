@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { store } from '../db/store.js';
 import { requireAuth } from '../middleware/auth.js';
+import { broadcast } from './ws.js';
 
 export async function patientRoutes(app: FastifyInstance) {
   // List patients for an event
@@ -163,6 +164,14 @@ export async function patientRoutes(app: FastifyInstance) {
     };
 
     store.vitals.set(reading.id, reading);
+
+    broadcast({
+      type: 'patient.vitals_updated',
+      eventId: patient.eventId,
+      payload: { patientId: id, vitals: reading },
+      timestamp: reading.timestamp,
+    });
+
     return reply.code(201).send({ vitals: reading });
   });
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../stores/auth';
 import { useNotificationStore } from '../stores/notifications';
+import { useWsStore } from '../stores/ws';
 import { api } from '../lib/api';
 import {
   calculateNEWS2,
@@ -52,6 +53,7 @@ const ageLabels: Record<string, string> = {
 export function SickBayDashboard() {
   const { eventId } = useAuthStore();
   const addToast = useNotificationStore((s) => s.add);
+  const onMessage = useWsStore((s) => s.onMessage);
   const [patients, setPatients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showIntake, setShowIntake] = useState(false);
@@ -73,9 +75,26 @@ export function SickBayDashboard() {
 
   useEffect(() => {
     fetchPatients();
-    const iv = setInterval(fetchPatients, 15000);
-    return () => clearInterval(iv);
   }, [eventId]);
+
+  // Live vitals updates via WebSocket — update specific patient in state
+  useEffect(() => {
+    const off = onMessage((msg) => {
+      if (msg.type === 'patient.vitals_updated') {
+        const { patientId, vitals } = (msg.payload as any) ?? {};
+        if (patientId && vitals) {
+          setPatients((prev) =>
+            prev.map((p) =>
+              p.id === patientId
+                ? { ...p, latestVitals: vitals, vitalsHistory: [vitals, ...(p.vitalsHistory ?? [])] }
+                : p,
+            ),
+          );
+        }
+      }
+    });
+    return off;
+  }, [onMessage]);
 
   const handleIntake = async () => {
     if (!eventId) return;
@@ -90,7 +109,7 @@ export function SickBayDashboard() {
     if (result.alertLevel === 'high') {
       addToast({
         patientId: patient.id,
-        message: `${name}: NEWS2 ${result.total} — Kontinuerlig overvåkning påkrevd`,
+        message: `${name}: NEWS2 ${result.total} — Kontinuerlig overvåkning påkrevd. Vurder eskalering — kontakt koordinator`,
         level: 'urgent',
         autoDismissMs: 0,
       });

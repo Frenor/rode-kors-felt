@@ -1,4 +1,5 @@
 import { useAuthStore } from '../stores/auth';
+import { enqueue } from './offline-queue';
 
 const API_BASE = '/api';
 
@@ -77,9 +78,26 @@ class ApiClient {
   }
 
   async createIncident(data: Record<string, unknown>) {
+    if (!navigator.onLine) {
+      const clientId = await enqueue(data);
+      return { incident: { id: clientId, _queued: true, ...data } };
+    }
     return this.request<{ incident: any }>('/incidents', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  }
+
+  async escalateIncident(incidentId: string, data: { path: string; reason?: string }) {
+    return this.request<{ escalation: any }>(`/incidents/${incidentId}/escalate`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async resolveEscalation(incidentId: string) {
+    return this.request<{ ok: boolean }>(`/incidents/${incidentId}/escalate`, {
+      method: 'DELETE',
     });
   }
 

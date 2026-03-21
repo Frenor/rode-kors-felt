@@ -24,6 +24,19 @@ export interface StoredTeam {
   transport: string;
   gear: string[];
   members: string[];
+  currentPosition?: { lat: number; lng: number };
+  lastPositionUpdate?: string;
+}
+
+export interface StoredEscalation {
+  id: string;
+  incidentId: string;
+  eventId: string;
+  path: string;
+  reason?: string;
+  raisedAt: string;
+  resolvedAt?: string;
+  raisedBy: string;
 }
 
 export interface StoredAccessCode {
@@ -98,6 +111,7 @@ class Store {
   incidents: Map<string, StoredIncident> = new Map();
   patients: Map<string, StoredPatient> = new Map();
   vitals: Map<string, StoredVitalReading> = new Map();
+  escalations: Map<string, StoredEscalation> = new Map();
   sessions: Map<string, { userId: string; role: string; eventId?: string }> = new Map();
 
   constructor() {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
+import { useGeolocation } from '../hooks/useGeolocation';
 import { api } from '../lib/api';
 
 type AcvpuLevel = 'alert' | 'confused' | 'voice' | 'pain' | 'unresponsive';
@@ -21,11 +22,28 @@ const INCIDENT_TYPES: { value: IncidentType; label: string }[] = [
   { value: 'other', label: 'Annet' },
 ];
 
+const GPS_STATUS_LABELS: Record<string, string> = {
+  idle: '⏳ Henter…',
+  acquiring: '⏳ Henter…',
+  ok: '📍 Lokasjon klar',
+  denied: '⚠ Lokasjon utilgjengelig',
+  unavailable: '⚠ Lokasjon utilgjengelig',
+};
+
+const GPS_STATUS_COLORS: Record<string, string> = {
+  ok: 'var(--color-status-ok)',
+  denied: 'var(--color-status-warning)',
+  unavailable: 'var(--color-status-warning)',
+  acquiring: 'var(--color-text-subtle)',
+  idle: 'var(--color-text-subtle)',
+};
+
 export function IncidentForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const { eventId } = useAuthStore();
   const { teamId } = (location.state as { teamId?: string }) || {};
+  const { position: gpsPosition, status: gpsStatus } = useGeolocation();
 
   const [step, setStep] = useState(0); // 0=type, 1=AVPU+vitals, 2=MIST, 3=confirm
   const [type, setType] = useState<IncidentType | null>(null);
@@ -46,7 +64,9 @@ export function IncidentForm() {
         eventId,
         teamId,
         type,
-        location: { lat: 59.964, lng: 10.776 }, // MVP: placeholder, replace with GPS
+        location: gpsStatus === 'ok' && gpsPosition
+        ? gpsPosition
+        : { lat: 59.964, lng: 10.776 }, // fallback: Holmenkollen
         acvpu,
         clientId: crypto.randomUUID(),
         notes,
@@ -65,8 +85,12 @@ export function IncidentForm() {
         payload.mist = mist;
       }
 
-      await api.createIncident(payload);
-      navigate('/firstaid');
+      const result = await api.createIncident(payload);
+      if ((result.incident as any)?._queued) {
+        navigate('/firstaid', { state: { queued: true } });
+      } else {
+        navigate('/firstaid');
+      }
     } catch (err: any) {
       setError(err.message || 'Kunne ikke sende hendelse');
       setSubmitting(false);
@@ -143,6 +167,16 @@ export function IncidentForm() {
       {/* Step 1: AVPU + Vitals (ABCDE assessment) */}
       {step === 1 && (
         <div>
+          {/* GPS status pill */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+            color: GPS_STATUS_COLORS[gpsStatus],
+            marginBottom: 'var(--space-4)',
+          }}>
+            {GPS_STATUS_LABELS[gpsStatus]}
+          </div>
+
           {/* AVPU selector — glove-friendly 56px+ */}
           <fieldset style={{ border: 'none', marginBottom: 'var(--space-6)' }}>
             <legend style={{

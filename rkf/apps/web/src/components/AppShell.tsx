@@ -1,17 +1,38 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { useAuthStore } from '../stores/auth';
+import { useWsStore } from '../stores/ws';
+import { useOfflineSync } from '../hooks/useOfflineSync';
 import { useNavigate } from 'react-router-dom';
 import { ToastContainer } from './ToastContainer';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { offlineQueueDb } from '../lib/offline-queue';
 
 interface AppShellProps {
   children: ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { role, eventName, logout } = useAuthStore();
+  const { role, eventName, logout, accessToken } = useAuthStore();
+  const { connect, disconnect } = useWsStore();
   const navigate = useNavigate();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [theme, setTheme] = useState<'auto' | 'light' | 'dark'>('auto');
+
+  // Offline sync for first aiders
+  useOfflineSync();
+
+  // Pending queue count for banner
+  const queueCount = useLiveQuery(
+    () => offlineQueueDb.queue.where('status').equals('pending').count(),
+    [],
+    0,
+  );
+
+  // Connect WebSocket for all authenticated roles
+  useEffect(() => {
+    if (accessToken) connect(accessToken);
+    return () => disconnect();
+  }, [accessToken, connect, disconnect]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -190,6 +211,7 @@ export function AppShell({ children }: AppShellProps) {
           }}
         >
           Frakoblet — hendelser lagres lokalt og synkroniseres når tilkoblingen er tilbake
+          {queueCount > 0 && ` (${queueCount} i kø)`}
         </div>
       )}
 
