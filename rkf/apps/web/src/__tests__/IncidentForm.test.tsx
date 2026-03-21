@@ -84,7 +84,7 @@ describe('IncidentForm — step 1 (AVPU + vitals)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Neste: MIST →' }));
 
     // Step 2 shows MIST labels
-    expect(screen.getByText(/M — Mechanism/)).toBeInTheDocument();
+    expect(screen.getByText(/M — Skademekanisme/)).toBeInTheDocument();
   });
 });
 
@@ -95,13 +95,13 @@ describe('IncidentForm — step 2 (MIST)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Neste: MIST →' }));
   }
 
-  it('shows all four MIST textarea labels', () => {
+  it('shows all four MIST section labels', () => {
     goToStep2();
 
-    expect(screen.getByText(/M — Mechanism/)).toBeInTheDocument();
-    expect(screen.getByText(/I — Injury/)).toBeInTheDocument();
-    expect(screen.getByText(/S — Signs/)).toBeInTheDocument();
-    expect(screen.getByText(/T — Treatment/)).toBeInTheDocument();
+    expect(screen.getByText(/M — Skademekanisme/)).toBeInTheDocument();
+    expect(screen.getByText(/I — Skade/)).toBeInTheDocument();
+    expect(screen.getByText(/S — Tegn/)).toBeInTheDocument();
+    expect(screen.getByText(/T — Behandling/)).toBeInTheDocument();
   });
 });
 

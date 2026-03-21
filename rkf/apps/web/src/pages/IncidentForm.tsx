@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
 import { useGeolocation } from '../hooks/useGeolocation';
@@ -21,6 +21,75 @@ const INCIDENT_TYPES: { value: IncidentType; label: string }[] = [
   { value: 'psychiatric', label: 'Psykiatrisk' },
   { value: 'other', label: 'Annet' },
 ];
+
+// ─── MIST chip section component ────────────────────────────────────────────
+
+interface MistChipSectionProps {
+  label: string;
+  chips: string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+  note: string;
+  onNote: (value: string) => void;
+  notePlaceholder: string;
+  multiSelect?: boolean;
+}
+
+function MistChipSection({ label, chips, selected, onToggle, note, onNote, notePlaceholder, multiSelect }: MistChipSectionProps) {
+  const chipStyle = (active: boolean): React.CSSProperties => ({
+    minHeight: 44,
+    padding: '0 var(--space-3)',
+    borderRadius: 'var(--radius-sm)',
+    border: `2px solid ${active ? 'var(--color-brand)' : 'var(--color-border)'}`,
+    background: active ? 'var(--color-brand-dim)' : 'transparent',
+    color: 'var(--color-text)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 'var(--text-sm)',
+    fontWeight: active ? 700 : 400,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  });
+
+  return (
+    <div style={{ marginBottom: 'var(--space-4)' }}>
+      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+        {label}
+      </div>
+      <div role={multiSelect ? undefined : 'radiogroup'} style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+        {chips.map((chip) => {
+          const active = selected.includes(chip);
+          return (
+            <button
+              key={chip}
+              type="button"
+              role={multiSelect ? undefined : 'radio'}
+              aria-checked={multiSelect ? undefined : active}
+              aria-pressed={multiSelect ? active : undefined}
+              onClick={() => onToggle(chip)}
+              style={chipStyle(active)}
+            >
+              {active ? '✓ ' : ''}{chip}
+            </button>
+          );
+        })}
+      </div>
+      {(selected.includes('Annet') || note) && (
+        <textarea
+          value={note}
+          onChange={(e) => onNote(e.target.value)}
+          placeholder={notePlaceholder}
+          rows={1}
+          style={{
+            width: '100%', padding: 'var(--space-2)',
+            borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+            background: 'var(--color-input-bg)', color: 'var(--color-text)',
+            fontSize: 'var(--text-sm)', resize: 'none',
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
 const GPS_STATUS_LABELS: Record<string, string> = {
   idle: '⏳ Henter…',
@@ -49,8 +118,16 @@ export function IncidentForm() {
   const [type, setType] = useState<IncidentType | null>(null);
   const [acvpu, setAcvpu] = useState<AcvpuLevel | null>(null);
   const [vitals, setVitals] = useState({ pulse: '', spo2: '', rr: '', pain: '' });
-  const [mist, setMist] = useState({ mechanism: '', injury: '', signs: '', treatment: '' });
-  const [notes, setNotes] = useState('');
+
+  // MIST — chip selections + optional free-text overrides
+  const [mistMechanism, setMistMechanism] = useState<string[]>([]);
+  const [mistMechanismNote, setMistMechanismNote] = useState('');
+  const [mistInjury, setMistInjury] = useState<string[]>([]);
+  const [mistInjuryNote, setMistInjuryNote] = useState('');
+  const [mistSignsNote, setMistSignsNote] = useState('');
+  const [mistTreatment, setMistTreatment] = useState<string[]>([]);
+  const [mistTreatmentNote, setMistTreatmentNote] = useState('');
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -69,7 +146,6 @@ export function IncidentForm() {
         : { lat: 59.964, lng: 10.776 }, // fallback: Holmenkollen
         acvpu,
         clientId: crypto.randomUUID(),
-        notes,
       };
 
       if (vitals.pulse || vitals.spo2 || vitals.rr || vitals.pain) {
@@ -81,8 +157,31 @@ export function IncidentForm() {
         };
       }
 
-      if (mist.mechanism || mist.injury || mist.signs || mist.treatment) {
-        payload.mist = mist;
+      // Build MIST strings from chips + free-text
+      const mechanism = [
+        ...mistMechanism,
+        ...(mistMechanismNote ? [mistMechanismNote] : []),
+      ].join(', ');
+      const injury = [
+        ...mistInjury,
+        ...(mistInjuryNote ? [mistInjuryNote] : []),
+      ].join(', ');
+      // Signs: auto-generate from vitals + ACVPU, append free-text
+      const autoSigns = [
+        acvpu ? `ACVPU: ${acvpu}` : '',
+        vitals.pulse ? `Puls: ${vitals.pulse}` : '',
+        vitals.spo2 ? `SpO₂: ${vitals.spo2}%` : '',
+        vitals.rr ? `RF: ${vitals.rr}/min` : '',
+        vitals.pain ? `Smerte: ${vitals.pain}/10` : '',
+      ].filter(Boolean).join(', ');
+      const signs = [autoSigns, mistSignsNote].filter(Boolean).join(' — ');
+      const treatment = [
+        ...mistTreatment,
+        ...(mistTreatmentNote ? [mistTreatmentNote] : []),
+      ].join(', ');
+
+      if (mechanism || injury || signs || treatment) {
+        payload.mist = { mechanism, injury, signs, treatment };
       }
 
       const result = await api.createIncident(payload);
@@ -303,72 +402,73 @@ export function IncidentForm() {
         </div>
       )}
 
-      {/* Step 2: MIST report */}
+      {/* Step 2: MIST — chip-based quick entry */}
       {step === 2 && (
         <div>
-          {[
-            { key: 'mechanism', label: 'M — Mechanism (Skademekanisme)', placeholder: 'Hva skjedde?' },
-            { key: 'injury', label: 'I — Injury (Skade)', placeholder: 'Hvilke skader observeres?' },
-            { key: 'signs', label: 'S — Signs (Tegn/symptomer)', placeholder: 'Vitale tegn, symptomer...' },
-            { key: 'treatment', label: 'T — Treatment (Behandling gitt)', placeholder: 'Hva er gjort?' },
-          ].map((field) => (
-            <div key={field.key} style={{ marginBottom: 'var(--space-4)' }}>
-              <label
-                htmlFor={`mist-${field.key}`}
-                style={{
-                  display: 'block',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 600,
-                  marginBottom: 'var(--space-1)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                {field.label}
-              </label>
-              <textarea
-                id={`mist-${field.key}`}
-                value={mist[field.key as keyof typeof mist]}
-                onChange={(e) => setMist((m) => ({ ...m, [field.key]: e.target.value }))}
-                placeholder={field.placeholder}
-                rows={2}
-                style={{
-                  width: '100%',
-                  padding: 'var(--space-3)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-input-border)',
-                  background: 'var(--color-input-bg)',
-                  color: 'var(--color-text)',
-                  fontFamily: 'var(--font-sans)',
-                  fontSize: 'var(--text-base)',
-                  resize: 'vertical',
-                  minHeight: 'var(--touch-comfortable)',
-                }}
-              />
-            </div>
-          ))}
+          <MistChipSection
+            label="M — Skademekanisme"
+            chips={['Fall', 'Kollisjon', 'Hjerterelatert', 'Termisk', 'Psykisk', 'Annet']}
+            selected={mistMechanism}
+            onToggle={(v) => setMistMechanism((s) => s.includes(v) ? s.filter((x) => x !== v) : [...s, v])}
+            note={mistMechanismNote}
+            onNote={setMistMechanismNote}
+            notePlaceholder="Annen mekanisme..."
+          />
 
-          {/* Free-text notes */}
+          <MistChipSection
+            label="I — Skade / kroppsdel"
+            chips={['Hode', 'Nakke', 'Bryst', 'Mage', 'Arm', 'Ben', 'Rygg', 'Ingen synlig']}
+            selected={mistInjury}
+            onToggle={(v) => setMistInjury((s) => s.includes(v) ? s.filter((x) => x !== v) : [...s, v])}
+            note={mistInjuryNote}
+            onNote={setMistInjuryNote}
+            notePlaceholder="Annen skade..."
+            multiSelect
+          />
+
+          {/* S — Signs: auto-populated from steg 1, editable */}
           <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="notes" style={{
-              display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600,
-              marginBottom: 'var(--space-1)', color: 'var(--color-text)',
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+              S — Tegn / symptomer
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+              color: 'var(--color-text-subtle)', marginBottom: 'var(--space-2)',
+              padding: 'var(--space-2)', background: 'var(--color-surface-sunken)',
+              borderRadius: 'var(--radius-sm)',
             }}>
-              Tilleggsnotater
-            </label>
+              {[
+                acvpu ? `ACVPU: ${acvpu}` : '',
+                vitals.pulse ? `Puls: ${vitals.pulse}` : '',
+                vitals.spo2 ? `SpO₂: ${vitals.spo2}%` : '',
+                vitals.rr ? `RF: ${vitals.rr}/min` : '',
+                vitals.pain ? `Smerte: ${vitals.pain}/10` : '',
+              ].filter(Boolean).join(' · ') || 'Ingen vitale tegn registrert'}
+            </div>
             <textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Annen relevant informasjon..."
+              value={mistSignsNote}
+              onChange={(e) => setMistSignsNote(e.target.value)}
+              placeholder="Tilleggssymptomer..."
               rows={2}
               style={{
-                width: '100%', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)',
-                color: 'var(--color-text)', fontFamily: 'var(--font-sans)',
-                fontSize: 'var(--text-base)', resize: 'vertical',
+                width: '100%', padding: 'var(--space-2)',
+                borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                fontSize: 'var(--text-sm)', resize: 'none',
               }}
             />
           </div>
+
+          <MistChipSection
+            label="T — Behandling gitt"
+            chips={['Ro / støtte', 'Iskompresse', 'Bandasje', 'Oksygen', 'HLR', 'Stabilt sideleie', 'Intet']}
+            selected={mistTreatment}
+            onToggle={(v) => setMistTreatment((s) => s.includes(v) ? s.filter((x) => x !== v) : [...s, v])}
+            note={mistTreatmentNote}
+            onNote={setMistTreatmentNote}
+            notePlaceholder="Annen behandling..."
+            multiSelect
+          />
 
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button onClick={() => setStep(1)} className="touch-target" style={{
@@ -421,17 +521,34 @@ export function IncidentForm() {
                   </div>
                 </div>
               )}
-              {(mist.mechanism || mist.injury || mist.signs || mist.treatment) && (
+              {/* MIST summary from chips */}
+              {(mistMechanism.length > 0 || mistInjury.length > 0 || mistTreatment.length > 0) && (
                 <div>
                   <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>MIST</span>
-                  <div style={{ fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }}>
-                    {mist.mechanism && <div><strong>M:</strong> {mist.mechanism}</div>}
-                    {mist.injury && <div><strong>I:</strong> {mist.injury}</div>}
-                    {mist.signs && <div><strong>S:</strong> {mist.signs}</div>}
-                    {mist.treatment && <div><strong>T:</strong> {mist.treatment}</div>}
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }}>
+                    {mistMechanism.length > 0 && <div><strong>M:</strong> {[...mistMechanism, mistMechanismNote].filter(Boolean).join(', ')}</div>}
+                    {mistInjury.length > 0 && <div><strong>I:</strong> {[...mistInjury, mistInjuryNote].filter(Boolean).join(', ')}</div>}
+                    <div><strong>S:</strong> {[
+                      acvpu ? `ACVPU: ${acvpu}` : '',
+                      vitals.pulse ? `Puls: ${vitals.pulse}` : '',
+                      vitals.spo2 ? `SpO₂: ${vitals.spo2}%` : '',
+                      vitals.rr ? `RF: ${vitals.rr}/min` : '',
+                      vitals.pain ? `Smerte: ${vitals.pain}/10` : '',
+                      mistSignsNote,
+                    ].filter(Boolean).join(' · ') || '—'}</div>
+                    {mistTreatment.length > 0 && <div><strong>T:</strong> {[...mistTreatment, mistTreatmentNote].filter(Boolean).join(', ')}</div>}
                   </div>
                 </div>
               )}
+              {/* GPS status on confirm */}
+              <div>
+                <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>POSISJON</span>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: GPS_STATUS_COLORS[gpsStatus] }}>
+                  {gpsStatus === 'ok' && gpsPosition
+                    ? `📍 ${gpsPosition.lat.toFixed(4)}, ${gpsPosition.lng.toFixed(4)}`
+                    : '⚠ Fallback-posisjon (arrangementet)'}
+                </div>
+              </div>
             </div>
           </div>
 
