@@ -151,6 +151,8 @@ export function CodeEntryPage() {
 
         {/* Numpad — glove-friendly 56px+ targets */}
         <div
+          role="group"
+          aria-label="Talltastatur for arrangementskode"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
