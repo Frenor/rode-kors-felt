@@ -30,11 +30,9 @@ jobs:
           version: 9.15.4
 
       - name: Install dependencies
-        working-directory: rkf
         run: pnpm install --frozen-lockfile
 
       - name: Build web app
-        working-directory: rkf
         env:
           # Repo name becomes the sub-path on GitHub Pages:
           # https://<org>.github.io/<repo>/
@@ -48,7 +46,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: rkf/apps/web/dist
+          path: apps/web/dist
 
   deploy:
     name: Publish to Pages

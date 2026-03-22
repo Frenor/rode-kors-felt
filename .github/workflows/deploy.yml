@@ -108,7 +108,7 @@ jobs:
         if: github.event.inputs.rollback_image == ''
         uses: docker/build-push-action@v5
         with:
-          context: rkf/apps/api
+          context: apps/api
           push: true
           tags: ${{ steps.meta-api.outputs.tags }}
           cache-from: type=gha
@@ -118,7 +118,7 @@ jobs:
         if: github.event.inputs.rollback_image == ''
         uses: docker/build-push-action@v5
         with:
-          context: rkf/apps/web
+          context: apps/web
           push: true
           tags: ${{ steps.meta-web.outputs.tags }}
           build-args: |
