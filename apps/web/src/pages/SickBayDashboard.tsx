@@ -52,6 +52,16 @@ const ageLabels: Record<string, string> = {
   child: 'Barn', adolescent: 'Ungdom', adult: 'Voksen', elderly: 'Eldre',
 };
 
+type PatientStatusKey = 'incoming' | 'in_treatment' | 'observation' | 'discharged' | 'transferred';
+
+const STATUS_TRANSITIONS: Record<PatientStatusKey, PatientStatusKey[]> = {
+  incoming: ['in_treatment', 'observation'],
+  in_treatment: ['observation', 'discharged', 'transferred'],
+  observation: ['in_treatment', 'discharged', 'transferred'],
+  discharged: [],
+  transferred: [],
+};
+
 const routeLabels: Record<string, string> = {
   inhaled: 'Inhalasjon',
   oral: 'Per os (svelget)',
@@ -738,26 +748,61 @@ export function SickBayDashboard() {
                   >
                     Logg
                   </button>
-                  {patient.status !== 'discharged' && patient.status !== 'transferred' && (
-                    <button onClick={() => handleStatusChange(patient.id, 'discharged')}
-                      className="touch-target" style={{
-                        minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-border)', background: 'transparent',
-                        fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-status-ok)', cursor: 'pointer',
-                      }}>
-                      Skriv ut
-                    </button>
-                  )}
-                  {patient.status !== 'discharged' && patient.status !== 'transferred' && (
-                    <button onClick={() => handleStatusChange(patient.id, 'transferred', patient)}
-                      className="touch-target" style={{
-                        minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-status-critical)', background: 'transparent',
-                        fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-status-critical)', cursor: 'pointer',
-                      }}>
-                      Overfør
-                    </button>
-                  )}
+                  {/* Inline status transition control */}
+                  {(() => {
+                    const currentStatus = patient.status as PatientStatusKey;
+                    const nextStatuses = STATUS_TRANSITIONS[currentStatus] ?? [];
+                    if (nextStatuses.length === 0) return null;
+                    return (
+                      <section
+                        aria-label="Endre pasientstatus"
+                        data-testid={`patient-status-${patient.id}`}
+                        style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}
+                      >
+                        <span
+                          id={`status-current-${patient.id}`}
+                          aria-live="polite"
+                          style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}
+                        >
+                          Status:
+                        </span>
+                        <div role="group" aria-label="Mulige statusendringer" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                          {nextStatuses.map((nextStatus) => {
+                            const sc = statusColors[nextStatus] ?? { color: 'var(--color-text-subtle)', bg: 'transparent' };
+                            const isTransfer = nextStatus === 'transferred';
+                            return (
+                              <button
+                                key={nextStatus}
+                                data-testid={`status-btn-${nextStatus}`}
+                                className="touch-target"
+                                aria-label={`${statusLabels[nextStatus]}${isTransfer ? ' (krever SBAR)' : ''}`}
+                                aria-describedby={`status-current-${patient.id}`}
+                                onClick={() =>
+                                  isTransfer
+                                    ? handleStatusChange(patient.id, 'transferred', patient)
+                                    : handleStatusChange(patient.id, nextStatus)
+                                }
+                                style={{
+                                  minHeight: 'var(--touch-min)',
+                                  padding: '0 var(--space-3)',
+                                  borderRadius: 'var(--radius-sm)',
+                                  border: `1px ${isTransfer ? 'dashed' : 'solid'} ${sc.color}`,
+                                  background: 'transparent',
+                                  fontSize: 'var(--text-xs)',
+                                  fontFamily: 'var(--font-mono)',
+                                  color: sc.color,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                → {statusLabels[nextStatus]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })()}
                 </div>
 
                 {/* Medication panel (inline) */}
