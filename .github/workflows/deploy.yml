@@ -1,0 +1,213 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      rollback_image:
+        description: 'Docker image tag to roll back to (leave blank for new deploy)'
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # Never cancel an in-flight deploy
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-central-1.amazonaws.com
+  API_REPO: rkf/api
+  WEB_REPO: rkf/web
+
+jobs:
+  # ── Pre-flight check ──────────────────────────────────────────────
+  validate:
+    name: Pre-deploy validation
+    runs-on: ubuntu-latest
+    if: github.event.inputs.rollback_image == ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+
+  # ── Build & push Docker images ────────────────────────────────────
+  build:
+    name: Build images
+    runs-on: ubuntu-latest
+    needs: validate
+    if: always() && (needs.validate.result == 'success' || github.event.inputs.rollback_image != '')
+    outputs:
+      api_image: ${{ steps.meta-api.outputs.tags }}
+      web_image: ${{ steps.meta-web.outputs.tags }}
+      short_sha: ${{ steps.sha.outputs.short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Rollback path — skip build, tag existing image
+      - name: Tag rollback image
+        if: github.event.inputs.rollback_image != ''
+        run: |
+          docker pull ${{ env.ECR_REGISTRY }}/${{ env.API_REPO }}:${{ github.event.inputs.rollback_image }}
+          docker tag  ${{ env.ECR_REGISTRY }}/${{ env.API_REPO }}:${{ github.event.inputs.rollback_image }} \
+                      ${{ env.ECR_REGISTRY }}/${{ env.API_REPO }}:${{ steps.sha.outputs.short }}
+          docker push ${{ env.ECR_REGISTRY }}/${{ env.API_REPO }}:${{ steps.sha.outputs.short }}
+
+      # Normal deploy path
+      - name: Set up Docker Buildx
+        if: github.event.inputs.rollback_image == ''
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta — API
+        id: meta-api
+        if: github.event.inputs.rollback_image == ''
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ECR_REGISTRY }}/${{ env.API_REPO }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=raw,value=latest
+
+      - name: Docker meta — Web
+        id: meta-web
+        if: github.event.inputs.rollback_image == ''
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ECR_REGISTRY }}/${{ env.WEB_REPO }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=raw,value=latest
+
+      - name: Build & push API image
+        if: github.event.inputs.rollback_image == ''
+        uses: docker/build-push-action@v5
+        with:
+          context: rkf/apps/api
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Web image
+        if: github.event.inputs.rollback_image == ''
+        uses: docker/build-push-action@v5
+        with:
+          context: rkf/apps/web
+          push: true
+          tags: ${{ steps.meta-web.outputs.tags }}
+          build-args: |
+            VITE_API_BASE_URL=/api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Deploy to ECS Fargate ─────────────────────────────────────────
+  deploy:
+    name: Deploy ECS
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download current API task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition rkf-api \
+            --query taskDefinition \
+            > api-task-def.json
+
+      - name: Update API task definition image
+        id: api-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: api-task-def.json
+          container-name: api
+          image: ${{ env.ECR_REGISTRY }}/${{ env.API_REPO }}:${{ needs.build.outputs.short_sha }}
+
+      - name: Deploy API to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.api-task-def.outputs.task-definition }}
+          service: rkf-api
+          cluster: rkf-production
+          wait-for-service-stability: true
+          wait-for-minutes: 10
+
+      - name: Smoke test — health check
+        run: |
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              https://${{ secrets.PRODUCTION_API_HOST }}/api/health)
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: got HTTP $STATUS, retrying in 10s..."
+            sleep 10
+          done
+          echo "Health check failed after 5 attempts — triggering rollback"
+          exit 1
+
+      - name: Auto-rollback on smoke-test failure
+        if: failure()
+        run: |
+          PREV_TASK=$(aws ecs describe-services \
+            --cluster rkf-production --services rkf-api \
+            --query 'services[0].deployments[?status==`PRIMARY`].taskDefinition' \
+            --output text)
+          echo "Rolling back to: $PREV_TASK"
+          aws ecs update-service \
+            --cluster rkf-production \
+            --service rkf-api \
+            --task-definition "$PREV_TASK" \
+            --force-new-deployment
+          echo "Rollback initiated"
+
+  # ── Post-deploy notification ──────────────────────────────────────
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [build, deploy]
+    if: always()
+    steps:
+      - name: Slack notification
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
