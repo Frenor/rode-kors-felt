@@ -51,6 +51,14 @@ const ageLabels: Record<string, string> = {
   child: 'Barn', adolescent: 'Ungdom', adult: 'Voksen', elderly: 'Eldre',
 };
 
+const routeLabels: Record<string, string> = {
+  inhaled: 'Inhalasjon',
+  oral: 'Per os (svelget)',
+  iv: 'Intravenøst (IV)',
+  im: 'Intramuskulært (IM)',
+  sublingual: 'Under tungen (SL)',
+};
+
 export function SickBayDashboard() {
   const { eventId } = useAuthStore();
   const addToast = useNotificationStore((s) => s.add);
@@ -60,16 +68,59 @@ export function SickBayDashboard() {
   const [loading, setLoading] = useState(true);
   const [showIntake, setShowIntake] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<string | null>(null);
-  const [vitalsForm, setVitalsForm] = useState({
-    pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' as AcvpuLevel | '',
-  });
+  type VitalsFormShape = {
+    pulse: string; spo2: string; rr: string; pain: string; bp: string; temp: string; acvpu: AcvpuLevel | '';
+  };
+  const EMPTY_VITALS_FORM: VitalsFormShape = {
+    pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '',
+  };
+  // Keyed by patientId so each patient gets its own isolated form state.
+  const [vitalsFormMap, setVitalsFormMap] = useState<Record<string, VitalsFormShape>>({});
+  const getVitalsForm = (patientId: string): VitalsFormShape =>
+    vitalsFormMap[patientId] ?? EMPTY_VITALS_FORM;
+  const setPatientVitalsForm = (patientId: string, updater: (prev: VitalsFormShape) => VitalsFormShape) =>
+    setVitalsFormMap((prev) => ({ ...prev, [patientId]: updater(prev[patientId] ?? EMPTY_VITALS_FORM) }));
+  const clearPatientVitalsForm = (patientId: string) =>
+    setVitalsFormMap((prev) => { const next = { ...prev }; delete next[patientId]; return next; });
   const [intakeForm, setIntakeForm] = useState({
     ageGroup: 'adult', presentingComplaint: '', assignedClinician: '',
   });
 
   // SBAR handover state
   const [sbarPatient, setSbarPatient] = useState<any | null>(null);
-  const [sbarForm, setSbarForm] = useState({ situation: '', background: '', assessment: '', recommendation: '' });
+  const [sbarForm, setSbarForm] = useState({
+    situation: '',
+    background: '',
+    assessment: '',
+    recommendation: '',
+    // AMK fields (Issue 4)
+    amkTidspunkt: '',
+    amkReferanse: '',
+    amkEta: '',
+    amkFølger: '',
+  });
+
+  // Note state (Issue 3)
+  const [notePatientId, setNotePatientId] = useState<string | null>(null);
+  const [noteForm, setNoteForm] = useState({ text: '', author: '' });
+
+  // History timeline toggle
+  const [showHistoryFor, setShowHistoryFor] = useState<Set<string>>(new Set());
+  const toggleHistory = (patientId: string) =>
+    setShowHistoryFor((prev) => {
+      const next = new Set(prev);
+      if (next.has(patientId)) next.delete(patientId);
+      else next.add(patientId);
+      return next;
+    });
+
+  const handleAddNote = async (patientId: string) => {
+    if (!noteForm.text.trim()) return;
+    await api.addPatientNote(patientId, noteForm.text.trim(), noteForm.author.trim() || 'Ukjent');
+    setNoteForm({ text: '', author: '' });
+    setNotePatientId(null);
+    fetchPatients();
+  };
 
   // Medication state
   const [medPatientId, setMedPatientId] = useState<string | null>(null);
@@ -149,6 +200,10 @@ export function SickBayDashboard() {
           ? `NEWS2 ${calculateNEWS2(patient.latestVitals).total}`
           : '',
         recommendation: '',
+        amkTidspunkt: new Date().toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }),
+        amkReferanse: '',
+        amkEta: '',
+        amkFølger: '',
       });
       return; // Show SBAR modal first
     }
@@ -158,16 +213,23 @@ export function SickBayDashboard() {
 
   const handleSbarSubmit = async () => {
     if (!sbarPatient) return;
+    const amkLines = [
+      sbarForm.amkTidspunkt ? `AMK-samtale: ${sbarForm.amkTidspunkt}` : null,
+      sbarForm.amkReferanse ? `Ambulansenummer/AMK-ref: ${sbarForm.amkReferanse}` : null,
+      sbarForm.amkEta ? `Forventet ankomst (ETA): ${sbarForm.amkEta}` : null,
+      sbarForm.amkFølger ? `Følger pasienten: ${sbarForm.amkFølger}` : null,
+    ].filter(Boolean);
     const sbarNote = [
       `S: ${sbarForm.situation}`,
       `B: ${sbarForm.background}`,
       `A: ${sbarForm.assessment}`,
       `R: ${sbarForm.recommendation}`,
+      ...(amkLines.length > 0 ? ['', '--- AMK ---', ...amkLines] : []),
     ].join('\n');
     await api.addPatientNote(sbarPatient.id, sbarNote, 'SBAR-overlevering');
     await api.updatePatient(sbarPatient.id, { status: 'transferred' });
     setSbarPatient(null);
-    setSbarForm({ situation: '', background: '', assessment: '', recommendation: '' });
+    setSbarForm({ situation: '', background: '', assessment: '', recommendation: '', amkTidspunkt: '', amkReferanse: '', amkEta: '', amkFølger: '' });
     fetchPatients();
   };
 
@@ -184,7 +246,7 @@ export function SickBayDashboard() {
   };
 
   const handleRecordVitals = async (patient: any) => {
-    const vf = vitalsForm;
+    const vf = getVitalsForm(patient.id);
     const vitalsPayload: Record<string, unknown> = {
       pulse: vf.pulse ? parseInt(vf.pulse) : undefined,
       spo2: vf.spo2 ? parseInt(vf.spo2) : undefined,
@@ -232,7 +294,7 @@ export function SickBayDashboard() {
       });
     }
 
-    setVitalsForm({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
+    clearPatientVitalsForm(patient.id);
     setSelectedPatient(null);
     fetchPatients();
   };
@@ -382,6 +444,66 @@ export function SickBayDashboard() {
               );
             })}
 
+            {/* Issue 4: AMK fields */}
+            <div style={{ marginTop: 'var(--space-3)', marginBottom: 'var(--space-3)', padding: 'var(--space-3)', background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)' }}>
+              <p style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-subtle)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                AMK (113) — valgfritt
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+                <div>
+                  <label htmlFor="sbar-amk-tid" style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+                    Tidspunkt for AMK-samtale
+                  </label>
+                  <input
+                    id="sbar-amk-tid"
+                    type="text"
+                    value={sbarForm.amkTidspunkt}
+                    onChange={(e) => setSbarForm(f => ({ ...f, amkTidspunkt: e.target.value }))}
+                    style={{ width: '100%', height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="sbar-amk-ref" style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+                    Ambulansenummer / AMK-referanse
+                  </label>
+                  <input
+                    id="sbar-amk-ref"
+                    type="text"
+                    value={sbarForm.amkReferanse}
+                    placeholder="f.eks. AMB-42"
+                    onChange={(e) => setSbarForm(f => ({ ...f, amkReferanse: e.target.value }))}
+                    style={{ width: '100%', height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="sbar-amk-eta" style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+                    Forventet ankomsttid (ETA)
+                  </label>
+                  <input
+                    id="sbar-amk-eta"
+                    type="text"
+                    value={sbarForm.amkEta}
+                    placeholder="f.eks. 14:35"
+                    onChange={(e) => setSbarForm(f => ({ ...f, amkEta: e.target.value }))}
+                    style={{ width: '100%', height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="sbar-amk-følger" style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+                    Hvem følger pasienten
+                  </label>
+                  <input
+                    id="sbar-amk-følger"
+                    type="text"
+                    value={sbarForm.amkFølger}
+                    placeholder="Navn / funksjon"
+                    onChange={(e) => setSbarForm(f => ({ ...f, amkFølger: e.target.value }))}
+                    style={{ width: '100%', height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <button onClick={() => setSbarPatient(null)} className="touch-target" style={{
                 flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
@@ -418,10 +540,29 @@ export function SickBayDashboard() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {patients.map((patient) => {
+          {[...patients].sort((a, b) => {
+            const order: Record<string, number> = { high: 0, medium: 1, low: 2, routine: 3 };
+            const aLevel = a.latestVitals ? calculateNEWS2(a.latestVitals).alertLevel : 'none';
+            const bLevel = b.latestVitals ? calculateNEWS2(b.latestVitals).alertLevel : 'none';
+            const aRank = aLevel === 'none' ? 4 : (order[aLevel] ?? 4);
+            const bRank = bLevel === 'none' ? 4 : (order[bLevel] ?? 4);
+            return aRank - bRank;
+          }).map((patient) => {
             const sc = statusColors[patient.status] || { color: 'var(--color-text-subtle)', bg: 'var(--color-surface-sunken)' };
             const news2 = patient.latestVitals ? calculateNEWS2(patient.latestVitals) : null;
             const n2colors = news2 ? news2Colors[news2.alertLevel] : null;
+            // Identify which NEWS2 sub-scores are null (parameter not recorded).
+            // Used to render a "lower bound" warning next to the badge.
+            const news2MissingLabels: string[] = news2 ? ([
+              ['respiratoryRate', 'RF'],
+              ['spo2', 'SpO₂'],
+              ['systolicBP', 'BT'],
+              ['pulse', 'Puls'],
+              ['consciousness', 'Bevissthet'],
+              ['temperature', 'Temp'],
+            ] as [keyof News2Result['scores'], string][])
+              .filter(([key]) => news2.scores[key] === null)
+              .map(([, label]) => label) : [];
             const trend = patient.vitalsHistory?.length >= 2 ? calculateNEWS2Trend(patient.vitalsHistory) : null;
             const trendArrow = trend?.direction === 'rising' ? '↑' : trend?.direction === 'falling' ? '↓' : trend ? '→' : null;
             const trendColor = trend?.direction === 'rising' ? 'var(--color-status-critical)' : trend?.direction === 'falling' ? 'var(--color-status-ok)' : 'var(--color-text-subtle)';
@@ -447,25 +588,43 @@ export function SickBayDashboard() {
                     {/* NEWS2 badge + trend arrow */}
                     {news2 && n2colors && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <span
-                          aria-label={`${news2BadgeLabel(news2)}: ${news2MonitoringLabel(news2)}`}
-                          title={news2MonitoringLabel(news2)}
-                          style={{
-                            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
-                            padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                            background: n2colors.bg, color: n2colors.color,
-                          }}
-                        >
-                          {news2BadgeLabel(news2)}
-                        </span>
-                        {trendArrow && (
-                          <span
-                            aria-label={`Trend: ${trend?.direction}`}
-                            style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: trendColor }}
-                          >
-                            {trendArrow}
+                        <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <span
+                              aria-label={`${news2BadgeLabel(news2)}${news2MissingLabels.length > 0 ? ' (ufullstendig score)' : ''}: ${news2MonitoringLabel(news2)}`}
+                              style={{
+                                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
+                                padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                background: n2colors.bg, color: n2colors.color,
+                              }}
+                            >
+                              {news2BadgeLabel(news2)}{news2MissingLabels.length > 0 ? '*' : ''}
+                            </span>
+                            {trendArrow && (
+                              <span
+                                aria-label={`Trend: ${trend?.direction}`}
+                                style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: trendColor }}
+                              >
+                                {trendArrow}
+                              </span>
+                            )}
                           </span>
-                        )}
+                          {news2MissingLabels.length > 0 && (
+                            <span style={{
+                              fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
+                              color: 'var(--color-text-subtle)', fontStyle: 'italic',
+                            }}>
+                              * {news2MissingLabels.join(', ')} ikke målt
+                            </span>
+                          )}
+                          {/* Issue 6: monitoring interval visible on card, not only as tooltip */}
+                          <span style={{
+                            fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
+                            color: n2colors.color,
+                          }}>
+                            {news2MonitoringLabel(news2)}
+                          </span>
+                        </span>
                       </span>
                     )}
                     {/* Status badge */}
@@ -528,6 +687,38 @@ export function SickBayDashboard() {
                     }}>
                     {medPatientId === patient.id ? '✕ Lukk' : '+ Medikament'}
                   </button>
+                  {/* Issue 3: direct note-adding */}
+                  <button
+                    onClick={() => {
+                      if (notePatientId === patient.id) {
+                        setNotePatientId(null);
+                        setNoteForm({ text: '', author: '' });
+                      } else {
+                        setNotePatientId(patient.id);
+                        setNoteForm({ text: '', author: '' });
+                      }
+                    }}
+                    className="touch-target"
+                    style={{
+                      minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border)', background: 'transparent',
+                      fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', cursor: 'pointer',
+                    }}
+                  >
+                    {notePatientId === patient.id ? '✕ Lukk' : '+ Notat'}
+                  </button>
+                  <button
+                    onClick={() => { toggleHistory(patient.id); if (medPatientId !== patient.id) handleLoadMedications(patient.id); }}
+                    className="touch-target"
+                    style={{
+                      minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
+                      border: `1px solid ${showHistoryFor.has(patient.id) ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                      background: showHistoryFor.has(patient.id) ? 'var(--color-brand-dim)' : 'transparent',
+                      fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', cursor: 'pointer',
+                    }}
+                  >
+                    Logg
+                  </button>
                   {patient.status !== 'discharged' && patient.status !== 'transferred' && (
                     <button onClick={() => handleStatusChange(patient.id, 'discharged')}
                       className="touch-target" style={{
@@ -569,7 +760,7 @@ export function SickBayDashboard() {
                           }}>
                             <span style={{ color: 'var(--color-text)', fontWeight: 600 }}>{med.drug}</span>
                             {med.dose && <span>{med.dose}</span>}
-                            {med.route && <span>({med.route})</span>}
+                            {med.route && <span>({routeLabels[med.route] ?? med.route})</span>}
                             {med.givenBy && <span>— {med.givenBy}</span>}
                             <span style={{ marginLeft: 'auto' }}>{new Date(med.givenAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
@@ -594,8 +785,8 @@ export function SickBayDashboard() {
                         <select id={`med-route-${patient.id}`} value={medForm.route}
                           onChange={(e) => setMedForm(f => ({ ...f, route: e.target.value }))}
                           style={{ width: '100%', height: 36, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}>
-                          {['inhaled', 'oral', 'iv', 'im', 'sublingual'].map(r => (
-                            <option key={r} value={r}>{r}</option>
+                          {(Object.keys(routeLabels) as Array<keyof typeof routeLabels>).map(r => (
+                            <option key={r} value={r}>{routeLabels[r]}</option>
                           ))}
                         </select>
                       </div>
@@ -618,6 +809,63 @@ export function SickBayDashboard() {
                       fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
                     }}>
                       Registrer medikament
+                    </button>
+                  </div>
+                )}
+
+                {/* Note panel (Issue 3) */}
+                {notePatientId === patient.id && (
+                  <div style={{
+                    marginTop: 'var(--space-3)', padding: 'var(--space-3)',
+                    background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
+                  }}>
+                    <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Nytt notat</h4>
+                    <div style={{ marginBottom: 'var(--space-2)' }}>
+                      <label htmlFor={`note-author-${patient.id}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                        Forfatter
+                      </label>
+                      <input
+                        id={`note-author-${patient.id}`}
+                        type="text"
+                        value={noteForm.author}
+                        placeholder="Navn (valgfritt)"
+                        onChange={(e) => setNoteForm((f) => ({ ...f, author: e.target.value }))}
+                        style={{
+                          width: '100%', height: 36, padding: '0 var(--space-2)',
+                          borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                          background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)',
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: 'var(--space-2)' }}>
+                      <label htmlFor={`note-text-${patient.id}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                        Notat
+                      </label>
+                      <textarea
+                        id={`note-text-${patient.id}`}
+                        value={noteForm.text}
+                        placeholder="Skriv notat her..."
+                        rows={3}
+                        onChange={(e) => setNoteForm((f) => ({ ...f, text: e.target.value }))}
+                        style={{
+                          width: '100%', padding: 'var(--space-2)',
+                          borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                          background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                          fontSize: 'var(--text-xs)', resize: 'vertical', fontFamily: 'inherit',
+                        }}
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleAddNote(patient.id)}
+                      disabled={!noteForm.text.trim()}
+                      style={{
+                        width: '100%', minHeight: 36, borderRadius: 'var(--radius-sm)',
+                        border: 'none', background: 'var(--color-brand)', color: 'white',
+                        fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
+                        opacity: noteForm.text.trim() ? 1 : 0.5,
+                      }}
+                    >
+                      Lagre notat
                     </button>
                   </div>
                 )}
@@ -646,8 +894,8 @@ export function SickBayDashboard() {
                             id={`v-${patient.id}-${f.key}`}
                             type="number"
                             inputMode={f.inputMode}
-                            value={vitalsForm[f.key as keyof typeof vitalsForm]}
-                            onChange={(e) => setVitalsForm(v => ({ ...v, [f.key]: e.target.value }))}
+                            value={getVitalsForm(patient.id)[f.key as keyof VitalsFormShape]}
+                            onChange={(e) => setPatientVitalsForm(patient.id, (v) => ({ ...v, [f.key]: e.target.value }))}
                             placeholder={f.placeholder}
                             style={{
                               width: '100%', height: 44, textAlign: 'center',
@@ -670,8 +918,8 @@ export function SickBayDashboard() {
                             key={opt.value}
                             type="button"
                             role="radio"
-                            aria-checked={vitalsForm.acvpu === opt.value}
-                            onClick={() => setVitalsForm(v => ({
+                            aria-checked={getVitalsForm(patient.id).acvpu === opt.value}
+                            onClick={() => setPatientVitalsForm(patient.id, (v) => ({
                               ...v,
                               acvpu: v.acvpu === opt.value ? '' : opt.value,
                             }))}
@@ -680,8 +928,8 @@ export function SickBayDashboard() {
                               minHeight: 36,
                               padding: '0 var(--space-2)',
                               borderRadius: 'var(--radius-sm)',
-                              border: `1px solid ${vitalsForm.acvpu === opt.value ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                              background: vitalsForm.acvpu === opt.value ? 'var(--color-brand-dim)' : 'transparent',
+                              border: `1px solid ${getVitalsForm(patient.id).acvpu === opt.value ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                              background: getVitalsForm(patient.id).acvpu === opt.value ? 'var(--color-brand-dim)' : 'transparent',
                               color: 'var(--color-text)',
                               fontFamily: 'var(--font-mono)',
                               fontSize: 'var(--text-xs)',
@@ -704,6 +952,102 @@ export function SickBayDashboard() {
                     </button>
                   </div>
                 )}
+
+                {/* Patient history timeline */}
+                {showHistoryFor.has(patient.id) && (() => {
+                  const vitalsEntries = (patient.vitalsHistory ?? []).map((v: any) => ({
+                    type: 'vitals' as const, time: v.timestamp, data: v,
+                  }));
+                  const noteEntries = (patient.notes ?? []).map((n: any) => ({
+                    type: 'note' as const, time: n.createdAt, data: n,
+                  }));
+                  const medEntries = (medications[patient.id] ?? []).map((m: any) => ({
+                    type: 'medication' as const, time: m.givenAt, data: m,
+                  }));
+                  const timeline = [...vitalsEntries, ...noteEntries, ...medEntries]
+                    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+                  return (
+                    <div style={{
+                      marginTop: 'var(--space-3)', padding: 'var(--space-3)',
+                      background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
+                    }}>
+                      <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+                        Logg / Historikk
+                      </h4>
+                      {timeline.length === 0 ? (
+                        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                          Ingen historikk ennå.
+                        </p>
+                      ) : timeline.map((entry, i) => {
+                        const timeStr = new Date(entry.time).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+                        if (entry.type === 'vitals') {
+                          const v = entry.data;
+                          const n2 = calculateNEWS2(v);
+                          const n2c = news2Colors[n2.alertLevel];
+                          return (
+                            <div key={i} style={{
+                              display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start',
+                              padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-border)',
+                            }}>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap', minWidth: 38 }}>{timeStr}</span>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--radius-full)', background: n2c.bg, color: n2c.color, whiteSpace: 'nowrap' }}>
+                                NEWS2 {n2.total}
+                              </span>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flexWrap: 'wrap' }}>
+                                {[
+                                  v.pulse && `Puls ${v.pulse}`,
+                                  v.spo2 && `SpO₂ ${v.spo2}%`,
+                                  v.respiratoryRate && `RF ${v.respiratoryRate}`,
+                                  v.systolicBP && `BT ${v.systolicBP}`,
+                                  v.temperature && `Temp ${v.temperature}°C`,
+                                  v.acvpu && `ACVPU ${v.acvpu}`,
+                                  v.painScore != null && `Smerte ${v.painScore}/10`,
+                                ].filter(Boolean).join(' · ')}
+                              </span>
+                            </div>
+                          );
+                        }
+                        if (entry.type === 'note') {
+                          return (
+                            <div key={i} style={{
+                              display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start',
+                              padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-border)',
+                            }}>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap', minWidth: 38 }}>{timeStr}</span>
+                              <div style={{ flex: 1 }}>
+                                {entry.data.author && (
+                                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-subtle)', marginBottom: 2, display: 'block' }}>
+                                    {entry.data.author}
+                                  </span>
+                                )}
+                                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', whiteSpace: 'pre-wrap' }}>
+                                  {entry.data.text}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        if (entry.type === 'medication') {
+                          return (
+                            <div key={i} style={{
+                              display: 'flex', gap: 'var(--space-2)', alignItems: 'center',
+                              padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-border)',
+                            }}>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap', minWidth: 38 }}>{timeStr}</span>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-status-warning)' }}>Rx</span>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text)' }}>
+                                {entry.data.drug}{entry.data.dose && ` ${entry.data.dose}`}
+                                {entry.data.route && ` (${routeLabels[entry.data.route] ?? entry.data.route})`}
+                                {entry.data.givenBy && ` — ${entry.data.givenBy}`}
+                              </span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  );
+                })()}
               </article>
             );
           })}
