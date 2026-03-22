@@ -9,7 +9,7 @@
  *  - Offline: status update is queued when navigator.onLine is false
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { SickBayDashboard } from '../pages/SickBayDashboard';
 
