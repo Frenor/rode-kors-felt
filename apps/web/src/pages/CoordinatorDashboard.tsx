@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth';
 import { useWsStore } from '../stores/ws';
 import { api } from '../lib/api';
 import { EventMap } from '../components/EventMap';
+import { FocusTrap } from '../components/FocusTrap';
 import { assessTriage, type TriageAssessment, type TriageLevel } from '../lib/llm-triage';
 import { useLLMApiKey } from '../hooks/useLLMApiKey';
 
@@ -289,6 +290,7 @@ export function CoordinatorDashboard() {
             alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
           }}
         >
+          <FocusTrap onEscape={() => setShowApiKeyInput(false)}>
           <div style={{
             background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
             padding: 'var(--space-6)', maxWidth: 440, width: '100%',
@@ -327,6 +329,7 @@ export function CoordinatorDashboard() {
               </button>
             </div>
           </div>
+          </FocusTrap>
         </div>
       )}
 
@@ -342,6 +345,7 @@ export function CoordinatorDashboard() {
             alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
           }}
         >
+          <FocusTrap onEscape={() => { setEscalateTarget(null); setEscalateReason(''); }}>
           <div style={{
             background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
             padding: 'var(--space-6)', maxWidth: 440, width: '100%',
@@ -415,6 +419,7 @@ export function CoordinatorDashboard() {
               </button>
             </div>
           </div>
+          </FocusTrap>
         </div>
       )}
 
@@ -430,6 +435,7 @@ export function CoordinatorDashboard() {
             alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
           }}
         >
+          <FocusTrap onEscape={() => { setShowNewOppdrag(false); setNewNote(''); setNewTeamId(''); setNewType('medical'); }}>
           <div style={{
             background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
             padding: 'var(--space-6)', maxWidth: 480, width: '100%',
@@ -532,6 +538,7 @@ export function CoordinatorDashboard() {
               </button>
             </div>
           </div>
+          </FocusTrap>
         </div>
       )}
 
@@ -567,8 +574,12 @@ export function CoordinatorDashboard() {
                 border: '1px solid var(--color-status-critical)',
               }}>
                 <div>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>
-                    ↑ NEWS2 {alert.news2Score}
+                  <span
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700 }}
+                    aria-label={`NEWS2 stiger — score ${alert.news2Score}`}
+                  >
+                    {/* Icon is decorative; label above conveys the meaning */}
+                    <span aria-hidden="true">↑ </span>NEWS2 {alert.news2Score}
                   </span>
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginLeft: 'var(--space-2)' }}>
                     +{alert.ratePerHour.toFixed(1)} poeng/t
@@ -577,6 +588,7 @@ export function CoordinatorDashboard() {
                 <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
                   <button
                     onClick={() => setEscalateTarget(alert.patientId)}
+                    aria-label={`Eskalér pasient med NEWS2 ${alert.news2Score}`}
                     style={{
                       fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
                       border: '1px solid var(--color-status-critical)', background: 'transparent',
@@ -587,9 +599,10 @@ export function CoordinatorDashboard() {
                   </button>
                   <button
                     onClick={() => setDeteriorationAlerts((prev) => prev.filter((a) => a.patientId !== alert.patientId))}
+                    aria-label={`Fjern varsel for pasient med NEWS2 ${alert.news2Score}`}
                     style={{ fontSize: 'var(--text-xs)', background: 'transparent', border: 'none', color: 'var(--color-text-subtle)', cursor: 'pointer' }}
                   >
-                    ✕
+                    <span aria-hidden="true">✕</span>
                   </button>
                 </div>
               </div>
@@ -601,8 +614,9 @@ export function CoordinatorDashboard() {
       {/* MCI overview panel */}
       {mciActive && (
         <div
-          role="status"
-          aria-live="polite"
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
           style={{
             marginBottom: 'var(--space-4)', padding: 'var(--space-4)',
             borderRadius: 'var(--radius-md)',

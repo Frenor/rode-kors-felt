@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth';
 import { useNotificationStore } from '../stores/notifications';
 import { useWsStore } from '../stores/ws';
 import { api } from '../lib/api';
+import { FocusTrap } from '../components/FocusTrap';
 import {
   calculateNEWS2,
   calculateNEWS2Trend,
@@ -324,6 +325,7 @@ export function SickBayDashboard() {
             padding: 'var(--space-4)',
           }}
         >
+          <FocusTrap onEscape={() => setShowIntake(false)}>
           <div style={{
             background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
             padding: 'var(--space-6)', maxWidth: 480, width: '100%',
@@ -395,6 +397,7 @@ export function SickBayDashboard() {
               </button>
             </div>
           </div>
+          </FocusTrap>
         </div>
       )}
 
@@ -410,6 +413,7 @@ export function SickBayDashboard() {
             padding: 'var(--space-4)',
           }}
         >
+          <FocusTrap onEscape={() => setSbarPatient(null)}>
           <div style={{
             background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
             padding: 'var(--space-6)', maxWidth: 520, width: '100%',
@@ -535,6 +539,7 @@ export function SickBayDashboard() {
               </button>
             </div>
           </div>
+          </FocusTrap>
         </div>
       )}
 
@@ -650,12 +655,16 @@ export function SickBayDashboard() {
 
                 {/* Latest vitals display — responsive wrap */}
                 {patient.latestVitals && (
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
-                    gap: 'var(--space-2)',
-                    marginBottom: 'var(--space-3)',
-                  }}>
+                  <div
+                    aria-live="polite"
+                    aria-label={`Siste vitale tegn for pasient`}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
+                      gap: 'var(--space-2)',
+                      marginBottom: 'var(--space-3)',
+                    }}
+                  >
                     {[
                       { label: 'Puls', value: patient.latestVitals.pulse, unit: 'bpm' },
                       { label: 'SpO₂', value: patient.latestVitals.spo2, unit: '%' },
