@@ -126,19 +126,23 @@ export function LoginPage() {
             />
           </div>
 
-          {error && (
-            <div role="alert" style={{
+          <div
+            id="login-form-error"
+            role="alert"
+            aria-atomic="true"
+            style={{
               color: 'var(--color-status-critical)',
               fontSize: 'var(--text-sm)',
-              marginBottom: 'var(--space-4)',
-            }}>
-              {error}
-            </div>
-          )}
+              marginBottom: error ? 'var(--space-4)' : 0,
+            }}
+          >
+            {error || ''}
+          </div>
 
           <button
             type="submit"
             disabled={loading}
+            aria-describedby="login-form-error"
             className="touch-target"
             style={{
               width: '100%',

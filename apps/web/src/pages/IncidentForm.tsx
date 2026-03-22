@@ -332,7 +332,11 @@ export function IncidentForm() {
             }}>
               D — Bevissthet (ACVPU)
             </legend>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-2)' }}>
+            <div
+              role="radiogroup"
+              aria-label="Bevissthetsgrad — AVPU"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-2)' }}
+            >
               {ACVPU_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -634,14 +638,17 @@ export function IncidentForm() {
             </div>
           </div>
 
-          {error && (
-            <div role="alert" style={{
+          <div
+            id="incident-form-error"
+            role="alert"
+            aria-atomic="true"
+            style={{
               color: 'var(--color-status-critical)', fontSize: 'var(--text-sm)',
-              marginBottom: 'var(--space-4)',
-            }}>
-              {error}
-            </div>
-          )}
+              marginBottom: error ? 'var(--space-4)' : 0,
+            }}
+          >
+            {error || ''}
+          </div>
 
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button onClick={() => setStep(2)} className="touch-target" style={{
@@ -651,7 +658,7 @@ export function IncidentForm() {
             }}>
               ← Rediger
             </button>
-            <button onClick={handleSubmit} disabled={submitting} className="touch-target" style={{
+            <button onClick={handleSubmit} disabled={submitting} aria-describedby="incident-form-error" className="touch-target" style={{
               flex: 2, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
               border: 'none', background: 'var(--color-brand)', color: 'white',
               fontSize: 'var(--text-base)', fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer',
