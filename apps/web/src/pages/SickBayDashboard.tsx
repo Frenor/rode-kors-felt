@@ -754,40 +754,53 @@ export function SickBayDashboard() {
                     const nextStatuses = STATUS_TRANSITIONS[currentStatus] ?? [];
                     if (nextStatuses.length === 0) return null;
                     return (
-                      <div
+                      <section
+                        aria-label="Endre pasientstatus"
                         data-testid={`patient-status-${patient.id}`}
                         style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}
                       >
-                        {nextStatuses.map((nextStatus) => {
-                          const sc = statusColors[nextStatus] ?? { color: 'var(--color-text-subtle)', bg: 'transparent' };
-                          return (
-                            <button
-                              key={nextStatus}
-                              data-testid={`status-btn-${nextStatus}`}
-                              className="touch-target"
-                              onClick={() =>
-                                nextStatus === 'transferred'
-                                  ? handleStatusChange(patient.id, 'transferred', patient)
-                                  : handleStatusChange(patient.id, nextStatus)
-                              }
-                              style={{
-                                minHeight: 40,
-                                padding: '0 var(--space-3)',
-                                borderRadius: 'var(--radius-sm)',
-                                border: `1px solid ${sc.color}`,
-                                background: 'transparent',
-                                fontSize: 'var(--text-xs)',
-                                fontFamily: 'var(--font-mono)',
-                                color: sc.color,
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              → {statusLabels[nextStatus]}
-                            </button>
-                          );
-                        })}
-                      </div>
+                        <span
+                          id={`status-current-${patient.id}`}
+                          aria-live="polite"
+                          style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}
+                        >
+                          Status:
+                        </span>
+                        <div role="group" aria-label="Mulige statusendringer" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                          {nextStatuses.map((nextStatus) => {
+                            const sc = statusColors[nextStatus] ?? { color: 'var(--color-text-subtle)', bg: 'transparent' };
+                            const isTransfer = nextStatus === 'transferred';
+                            return (
+                              <button
+                                key={nextStatus}
+                                data-testid={`status-btn-${nextStatus}`}
+                                className="touch-target"
+                                aria-label={`${statusLabels[nextStatus]}${isTransfer ? ' (krever SBAR)' : ''}`}
+                                aria-describedby={`status-current-${patient.id}`}
+                                onClick={() =>
+                                  isTransfer
+                                    ? handleStatusChange(patient.id, 'transferred', patient)
+                                    : handleStatusChange(patient.id, nextStatus)
+                                }
+                                style={{
+                                  minHeight: 'var(--touch-min)',
+                                  padding: '0 var(--space-3)',
+                                  borderRadius: 'var(--radius-sm)',
+                                  border: `1px ${isTransfer ? 'dashed' : 'solid'} ${sc.color}`,
+                                  background: 'transparent',
+                                  fontSize: 'var(--text-xs)',
+                                  fontFamily: 'var(--font-mono)',
+                                  color: sc.color,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                → {statusLabels[nextStatus]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
                     );
                   })()}
                 </div>
