@@ -1,4 +1,7 @@
 {
+  "env": {
+    "GH_TOKEN": ""
+  },
   "permissions": {
     "allow": [
       "Bash(git:*)",
@@ -16,8 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd=$(jq -r '.tool_input.command'); if echo \"$cmd\" | grep -qE 'git push'; then branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); if [ -n \"$branch\" ] && ! gh pr view \"$branch\" --json number >/dev/null 2>&1; then gh pr create --fill --base main --head \"$branch\" 2>/dev/null || true; fi; fi",
-            "statusMessage": "Checking for open PR..."
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if echo \"$cmd\" | grep -qE 'git push'; then if [ -z \"$GH_TOKEN\" ]; then echo '{\"systemMessage\": \"PR not created: set GH_TOKEN in .claude/settings.json env to auto-create PRs after git push.\"}'; exit 0; fi; branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); if [ -n \"$branch\" ] && ! GH_TOKEN=\"$GH_TOKEN\" gh pr view \"$branch\" --repo Frenor/rode-kors-felt --json number >/dev/null 2>&1; then GH_TOKEN=\"$GH_TOKEN\" gh pr create --repo Frenor/rode-kors-felt --fill --base main --head \"$branch\" && echo '{\"systemMessage\": \"PR created on GitHub.\"}' || true; fi; fi",
+            "statusMessage": "Auto-creating PR..."
           }
         ]
       }
