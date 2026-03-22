@@ -454,13 +454,23 @@ export function SickBayDashboard() {
                   <label htmlFor="sbar-amk-tid" style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
                     Tidspunkt for AMK-samtale
                   </label>
-                  <input
-                    id="sbar-amk-tid"
-                    type="text"
-                    value={sbarForm.amkTidspunkt}
-                    onChange={(e) => setSbarForm(f => ({ ...f, amkTidspunkt: e.target.value }))}
-                    style={{ width: '100%', height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}
-                  />
+                  <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                    <input
+                      id="sbar-amk-tid"
+                      type="text"
+                      value={sbarForm.amkTidspunkt}
+                      onChange={(e) => setSbarForm(f => ({ ...f, amkTidspunkt: e.target.value }))}
+                      style={{ flex: 1, height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSbarForm(f => ({ ...f, amkTidspunkt: new Date().toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }) }))}
+                      title="Sett til nå"
+                      style={{ height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      Nå
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label htmlFor="sbar-amk-ref" style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
