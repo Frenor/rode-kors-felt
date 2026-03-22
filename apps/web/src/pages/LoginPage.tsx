@@ -22,6 +22,8 @@ export function LoginPage() {
         accessToken: res.accessToken,
         refreshToken: res.refreshToken,
         role: res.role,
+        eventId: (res as any).eventId ?? (import.meta.env.VITE_DEMO_MODE === 'true' ? 'demo-event' : undefined),
+        eventName: (res as any).eventName ?? (import.meta.env.VITE_DEMO_MODE === 'true' ? 'Demo-arrangement' : undefined),
       });
       navigate('/coordinator');
     } catch (err: any) {
