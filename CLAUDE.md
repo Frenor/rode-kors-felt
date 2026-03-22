@@ -19,7 +19,7 @@ docs/         — ADRs, design specs, API docs
 - Frontend: React 19, TypeScript, Vite, Tailwind CSS v4, Zustand, TanStack Query, Dexie.js, Leaflet
 - Backend: Fastify 5, TypeScript, Drizzle ORM, PostgreSQL 16, Redis 7
 - Infra: AWS ECS Fargate, RDS, ElastiCache, Terraform, Docker
-- CI: GitHub Actions (was GitLab CI, migrated)
+- CI: GitHub Actions (`.github/workflows/`)
 
 ### Key Commands
 ```bash
@@ -56,22 +56,23 @@ docker compose up -d      # Start Postgres + Redis locally
 1. Offline-first: all writes go to IndexedDB first, sync when online
 1. Vitals validation: pulse 20-220, SpO₂ 50-100, RF 4-60, pain 0-10
 
-### Current State (as of 2026-03-21)
-- Sprint 1 in progress
-- Working MVP prototype in `docs/design/mvp-prototype.jsx` (all 3 roles functional)
-- Usability study completed — see `docs/design/usability-study.jsx`
-- All high-priority usability fixes applied to MVP
-- API has in-memory store (swap to Drizzle/PostgreSQL for production)
-- Monorepo scaffold complete with all configs
+### Current State (as of 2026-03-22)
+- Sprints 1–5 substantially implemented (see TODO.md for details)
+- Sprint 6 in progress: 3/5 done (report endpoint, GitHub Actions deploy, request tracing)
+- API uses Drizzle ORM + PostgreSQL (in-memory store removed from routes)
+- `docker compose up -d` starts Postgres + Redis; API auto-migrates on startup
+- Web: 65 unit tests pass (`pnpm --filter @rkf/web test`)
+- API unit tests require running PostgreSQL (`docker compose up -d` first)
+- E2E tests (Playwright) exist for coordinator and incident flows
 
 ### What Needs Doing Next
-1. `pnpm install` and verify everything builds
-1. Wire the React components from the MVP into proper `apps/web/src/` structure
-1. Connect API routes to the frontend via TanStack Query
-1. Set up Dexie.js offline store with sync queue
-1. Add Storybook with axe-core for component development
-1. Set up GitHub Actions CI pipeline
-1. Write Playwright E2E tests for the 3 core flows
+1. Write Playwright E2E test for the full incident-to-discharge chain (Oppgave 1)
+1. Verify event isolation with automated tests (Oppgave 2)
+1. Verify append-only enforcement with automated tests (Oppgave 3)
+1. Refactor `SickBayDashboard.tsx` (large) and `CoordinatorDashboard.tsx` (large) into sub-components (Oppgave 4)
+1. Fix critical/serious axe-core a11y violations — focus trap, AVPU radiogroup, MCI aria-live (Oppgave 5)
+1. Complete Terraform modules (ECS Fargate, RDS Multi-AZ, ElastiCache, ALB + ACM)
+1. Implement remaining Sprint 4–5 items: resource allocation board, MCI handover, MIST pre-fill
 
 ### Demo Credentials
 - First Aider code: `123456`

@@ -44,7 +44,7 @@ rkf/
 | Real-time | WebSockets (Fastify WS)                            |
 | Cloud     | AWS (ECS Fargate, RDS, ElastiCache) — eu-central-1 |
 | IaC       | Terraform                                          |
-| CI/CD     | GitLab CI                                          |
+| CI/CD     | GitHub Actions                                     |
 | Monitoring| OpenTelemetry → CloudWatch + Sentry                |
 
 ## Getting Started
