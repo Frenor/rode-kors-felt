@@ -27,7 +27,11 @@ export function CodeEntryPage() {
         eventName: res.eventName,
         teams: res.teams,
       });
-      navigate(res.role === 'sickbay' ? '/sickbay' : '/firstaid');
+      const dest =
+        res.role === 'sickbay' ? '/sickbay' :
+        res.role === 'coordinator' ? '/coordinator' :
+        '/firstaid';
+      navigate(dest);
     } catch (err: any) {
       setError(err.message || 'Ugyldig kode');
     } finally {

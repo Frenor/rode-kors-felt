@@ -5,7 +5,22 @@
       "Bash(pnpm:*)",
       "Bash(docker:*)",
       "Bash(docker compose:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(gh pr:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command'); if echo \"$cmd\" | grep -qE 'git push'; then branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); if [ -n \"$branch\" ] && ! gh pr view \"$branch\" --json number >/dev/null 2>&1; then gh pr create --fill --base main --head \"$branch\" 2>/dev/null || true; fi; fi",
+            "statusMessage": "Checking for open PR..."
+          }
+        ]
+      }
     ]
   }
 }
