@@ -246,6 +246,7 @@ export const WsEventType = z.enum([
   'incident.created',
   'incident.updated',
   'team.position',
+  'team.message',
   'escalation.raised',
   'escalation.resolved',
   'patient.vitals_updated',
@@ -253,6 +254,16 @@ export const WsEventType = z.enum([
   'event.mci_activated',
   'event.mci_deactivated',
 ]);
+
+export const TeamMessage = z.object({
+  id: z.string().uuid(),
+  eventId: z.string().uuid(),
+  fromTeamId: z.string().uuid().optional(),
+  toTeamId: z.string().uuid().optional(), // null = broadcast to all
+  text: z.string().min(1).max(500),
+  sentAt: z.string().datetime(),
+});
+export type TeamMessage = z.infer<typeof TeamMessage>;
 export type WsEventType = z.infer<typeof WsEventType>;
 
 // ═══════════════════════════════════════════════

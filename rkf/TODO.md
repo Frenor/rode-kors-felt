@@ -54,10 +54,10 @@
 ## Sprint 5 — Field Efficiency
 > **Goal:** Faster to scene, better field communication.
 
-- [ ] 5.1 "Naviger hit" button — opens native maps app at incident coordinates
-- [ ] 5.2 Voice-to-text for incident notes (Web Speech API, `nb-NO`)
-- [ ] 5.3 Team-to-team direct messaging via WebSocket
-- [ ] 5.4 ETA calculator on coordinator dispatch panel (Haversine + transport mode speed)
+- [x] 5.1 "Naviger hit" button — opens native maps app at incident coordinates
+- [x] 5.2 Voice-to-text for incident notes (Web Speech API, `nb-NO`)
+- [x] 5.3 Team-to-team direct messaging via WebSocket
+- [x] 5.4 ETA calculator on coordinator dispatch panel (Haversine + transport mode speed)
 - [ ] 5.5 MIST chip pre-fill from START triage tag in MCI mode
 
 ---

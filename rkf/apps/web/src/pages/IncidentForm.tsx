@@ -139,6 +139,8 @@ export function IncidentForm() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const hasSpeechApi = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   const handleSubmit = async () => {
     if (!type || !eventId) return;
@@ -489,18 +491,54 @@ export function IncidentForm() {
                 vitals.pain ? `Smerte: ${vitals.pain}/10` : '',
               ].filter(Boolean).join(' · ') || 'Ingen vitale tegn registrert'}
             </div>
-            <textarea
-              value={mistSignsNote}
-              onChange={(e) => setMistSignsNote(e.target.value)}
-              placeholder="Tilleggssymptomer..."
-              rows={2}
-              style={{
-                width: '100%', padding: 'var(--space-2)',
-                borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                fontSize: 'var(--text-sm)', resize: 'none',
-              }}
-            />
+            <div style={{ position: 'relative' }}>
+              <textarea
+                value={mistSignsNote}
+                onChange={(e) => setMistSignsNote(e.target.value)}
+                placeholder="Tilleggssymptomer..."
+                rows={2}
+                style={{
+                  width: '100%', padding: 'var(--space-2)',
+                  paddingRight: hasSpeechApi ? 48 : 'var(--space-2)',
+                  borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                  background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                  fontSize: 'var(--text-sm)', resize: 'none',
+                }}
+              />
+              {hasSpeechApi && (
+                <button
+                  type="button"
+                  aria-label={isListening ? 'Stopp taleopptak' : 'Start taleopptak'}
+                  onClick={() => {
+                    const SR = ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition) as any;
+                    const recognition = new SR();
+                    recognition.lang = 'nb-NO';
+                    recognition.continuous = false;
+                    recognition.interimResults = false;
+                    recognition.onresult = (e: any) => {
+                      const transcript = e.results[0][0].transcript as string;
+                      setMistSignsNote((prev) => prev ? `${prev} ${transcript}` : transcript);
+                      setIsListening(false);
+                    };
+                    recognition.onerror = () => setIsListening(false);
+                    recognition.onend = () => setIsListening(false);
+                    recognition.start();
+                    setIsListening(true);
+                  }}
+                  style={{
+                    position: 'absolute', top: 6, right: 6,
+                    width: 36, height: 36, borderRadius: 'var(--radius-full)',
+                    border: 'none',
+                    background: isListening ? '#cc0000' : 'var(--color-brand)',
+                    color: 'white', fontSize: 16, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    animation: isListening ? 'pulse 1s infinite' : 'none',
+                  }}
+                >
+                  🎤
+                </button>
+              )}
+            </div>
           </div>
 
           <MistChipSection

@@ -68,7 +68,21 @@ export async function wsHandler(app: FastifyInstance) {
       try {
         const message = JSON.parse(raw.toString());
 
-        if (message.type === 'team.position') {
+        if (message.type === 'team.message') {
+          // Relay team message to all clients in the same event
+          broadcast({
+            type: 'team.message',
+            eventId: message.eventId,
+            payload: {
+              id: crypto.randomUUID(),
+              fromTeamId: message.payload?.fromTeamId,
+              toTeamId: message.payload?.toTeamId ?? null,
+              text: message.payload?.text,
+              sentAt: new Date().toISOString(),
+            },
+            timestamp: new Date().toISOString(),
+          });
+        } else if (message.type === 'team.position') {
           const parsed = TeamPositionPayload.safeParse(message.payload);
           if (parsed.success) {
             const { teamId, position } = parsed.data;

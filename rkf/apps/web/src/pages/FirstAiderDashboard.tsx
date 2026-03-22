@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
+import { useGeolocation } from '../hooks/useGeolocation';
 import { useTeamPositionBroadcast } from '../hooks/useTeamPositionBroadcast';
+import { useWsStore } from '../stores/ws';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { offlineQueueDb } from '../lib/offline-queue';
 import { api } from '../lib/api';
@@ -12,6 +14,13 @@ export function FirstAiderDashboard() {
   const [incidents, setIncidents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { position: gpsPosition } = useGeolocation();
+  const wsSend = useWsStore((s) => s.send);
+  const onMessage = useWsStore((s) => s.onMessage);
+  const [messages, setMessages] = useState<Array<{ id: string; text: string; fromTeamId?: string; fromSelf: boolean; sentAt: string }>>([]);
+  const [messageText, setMessageText] = useState('');
+  const [showChat, setShowChat] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
@@ -30,6 +39,55 @@ export function FirstAiderDashboard() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [eventId]);
+
+  // Receive team messages via WebSocket
+  useEffect(() => {
+    const off = onMessage((msg) => {
+      if (msg.type === 'team.message') {
+        const payload = (msg.payload as any) ?? {};
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: payload.id ?? crypto.randomUUID(),
+            text: payload.text ?? '',
+            fromTeamId: payload.fromTeamId,
+            fromSelf: payload.fromTeamId === selectedTeam,
+            sentAt: payload.sentAt ?? new Date().toISOString(),
+          },
+        ]);
+        setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+      }
+    });
+    return off;
+  }, [onMessage, selectedTeam]);
+
+  const sendMessage = () => {
+    if (!messageText.trim() || !eventId) return;
+    wsSend({
+      type: 'team.message',
+      eventId,
+      payload: { fromTeamId: selectedTeam ?? undefined, text: messageText.trim() },
+      timestamp: new Date().toISOString(),
+    });
+    setMessageText('');
+  };
+
+  const navigateToIncident = (incident: any) => {
+    const { lat, lng } = incident.location ?? {};
+    if (lat == null || lng == null) return;
+    window.open(`https://maps.google.com/maps?daddr=${lat},${lng}`, '_blank', 'noopener');
+  };
+
+  const bearingTo = (lat: number, lng: number): string => {
+    if (!gpsPosition) return '';
+    const dLng = lng - gpsPosition.lng;
+    const y = Math.sin(dLng) * Math.cos(lat * Math.PI / 180);
+    const x = Math.cos(gpsPosition.lat * Math.PI / 180) * Math.sin(lat * Math.PI / 180) -
+      Math.sin(gpsPosition.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.cos(dLng);
+    const brng = Math.round((Math.atan2(y, x) * 180 / Math.PI + 360) % 360);
+    const dirs = ['N','NØ','Ø','SØ','S','SV','V','NV'];
+    return dirs[Math.round(brng / 45) % 8]!;
+  };
 
   const statusLabels: Record<string, string> = {
     on_scene: 'På stedet',
@@ -142,6 +200,100 @@ export function FirstAiderDashboard() {
         </section>
       )}
 
+      {/* Team chat */}
+      <section style={{ marginBottom: 'var(--space-4)' }}>
+        <button
+          onClick={() => setShowChat((v) => !v)}
+          style={{
+            width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+            color: 'var(--color-text)', cursor: 'pointer',
+          }}
+        >
+          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>Lagmelding</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+            {messages.length > 0 ? `${messages.length} meldinger` : 'Ingen meldinger'} {showChat ? '▲' : '▼'}
+          </span>
+        </button>
+
+        {showChat && (
+          <div style={{
+            marginTop: 'var(--space-2)', borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+            overflow: 'hidden',
+          }}>
+            {/* Message list */}
+            <div style={{
+              maxHeight: 220, overflowY: 'auto', padding: 'var(--space-3)',
+              display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+            }}>
+              {messages.length === 0 && (
+                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', textAlign: 'center' }}>
+                  Ingen meldinger ennå
+                </p>
+              )}
+              {messages.map((msg) => (
+                <div key={msg.id} style={{
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: msg.fromSelf ? 'flex-end' : 'flex-start',
+                }}>
+                  <div style={{
+                    maxWidth: '80%', padding: 'var(--space-2) var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    background: msg.fromSelf ? 'var(--color-brand)' : 'var(--color-surface-sunken)',
+                    color: msg.fromSelf ? 'white' : 'var(--color-text)',
+                    fontSize: 'var(--text-sm)',
+                  }}>
+                    {!msg.fromSelf && msg.fromTeamId && (
+                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, marginBottom: 2, opacity: 0.7 }}>
+                        {teams.find((t) => t.id === msg.fromTeamId)?.name ?? 'Ukjent lag'}
+                      </div>
+                    )}
+                    {msg.text}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--color-text-subtle)', marginTop: 2 }}>
+                    {new Date(msg.sentAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Input row */}
+            <div style={{
+              display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-2)',
+              borderTop: '1px solid var(--color-border)',
+            }}>
+              <input
+                type="text"
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                placeholder="Skriv melding..."
+                style={{
+                  flex: 1, height: 44, padding: '0 var(--space-3)',
+                  borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                  background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)',
+                }}
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!messageText.trim()}
+                style={{
+                  height: 44, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
+                  border: 'none', background: 'var(--color-brand)', color: 'white',
+                  fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
+                  opacity: !messageText.trim() ? 0.5 : 1,
+                }}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* Recent incidents */}
       <section aria-labelledby="recent-heading">
         <h2
@@ -212,13 +364,31 @@ export function FirstAiderDashboard() {
                     ACVPU: {incident.acvpu.toUpperCase()}
                   </span>
                 )}
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--color-text-subtle)',
-                  marginTop: 'var(--space-1)',
-                }}>
-                  {new Date(incident.createdAt).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' })}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
+                  <span style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-text-subtle)',
+                  }}>
+                    {new Date(incident.createdAt).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' })}
+                    {incident.location && gpsPosition && (
+                      <span style={{ marginLeft: 8 }}>· {bearingTo(incident.location.lat, incident.location.lng)}</span>
+                    )}
+                  </span>
+                  {incident.location && incident.status !== 'resolved' && (
+                    <button
+                      onClick={() => navigateToIncident(incident)}
+                      className="touch-target"
+                      style={{
+                        minHeight: 36, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-brand)', background: 'transparent',
+                        color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Naviger hit
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

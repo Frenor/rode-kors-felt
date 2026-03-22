@@ -188,6 +188,23 @@ export function CoordinatorDashboard() {
     }
   };
 
+  // ETA calculation — Haversine distance + transport-mode speed
+  const calcEta = (team: any, incident: any): string | null => {
+    if (!team?.currentPosition || !incident?.location) return null;
+    const toRad = (d: number) => d * Math.PI / 180;
+    const R = 6371; // km
+    const dLat = toRad(incident.location.lat - team.currentPosition.lat);
+    const dLng = toRad(incident.location.lng - team.currentPosition.lng);
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(team.currentPosition.lat)) * Math.cos(toRad(incident.location.lat)) *
+      Math.sin(dLng / 2) ** 2;
+    const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const speedKmH: Record<string, number> = { foot: 5, bike: 15, vehicle: 40, atv: 20 };
+    const speed = speedKmH[team.transport ?? 'foot'] ?? 5;
+    const minutes = Math.round((distKm / speed) * 60);
+    return minutes < 1 ? 'Under 1 min' : `ca. ${minutes} min`;
+  };
+
   const handleScrollToIncident = (incidentId: string) => {
     document.getElementById(`inc-${incidentId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
@@ -438,7 +455,9 @@ export function CoordinatorDashboard() {
             >
               <option value="">— Velg lag —</option>
               {teams.map((t: any) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>
+                  {t.name}{t.transport ? ` (${t.transport})` : ''}{t.currentPosition ? ' · GPS' : ''}
+                </option>
               ))}
             </select>
 
@@ -708,14 +727,15 @@ export function CoordinatorDashboard() {
                             K
                           </span>
                         )}
-                        {inc.status === 'dispatched' && (
-                          <span style={{
-                            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-                            color: 'var(--color-text-muted)',
-                          }}>
-                            Tildelt
-                          </span>
-                        )}
+                        {inc.status === 'dispatched' && (() => {
+                          const assignedTeam = teams.find((t: any) => t.id === inc.teamId);
+                          const eta = assignedTeam ? calcEta(assignedTeam, inc) : null;
+                          return (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                              Tildelt{assignedTeam ? `: ${assignedTeam.name}` : ''}{eta ? ` · ETA ${eta}` : ''}
+                            </span>
+                          );
+                        })()}
                         {inc.acvpu && (
                           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
                             ACVPU: {inc.acvpu.toUpperCase()}
