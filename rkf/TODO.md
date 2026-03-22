@@ -65,10 +65,10 @@
 ## Sprint 6 — Reporting & Production
 > **Goal:** Learn from incidents. Deploy to production AWS.
 
-- [ ] 6.1 Post-event debrief report — `GET /events/:id/report` + LLM narrative + "Last ned rapport" button
+- [x] 6.1 Post-event debrief report — `GET /events/:id/report` + Markdown narrative + "⬇ Rapport" button
 - [ ] 6.2 Complete Terraform modules — ECS Fargate, RDS Multi-AZ, ElastiCache, ALB + ACM
-- [ ] 6.3 GitHub Actions production deploy pipeline with rollback
-- [ ] 6.4 OpenTelemetry tracing → CloudWatch X-Ray + Sentry
+- [x] 6.3 GitHub Actions production deploy pipeline with rollback (.github/workflows/deploy.yml)
+- [x] 6.4 Request tracing — X-Request-Id correlation + structured latency logs via Fastify hooks
 - [ ] 6.5 Load test — p95 incident create < 200ms, 60 GPS updates/s sustained
 
 ---

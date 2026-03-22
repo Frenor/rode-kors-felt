@@ -104,6 +104,15 @@ class ApiClient {
     });
   }
 
+  async downloadReport(eventId: string): Promise<Blob> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE}/events/${eventId}/report`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('Kunne ikke laste ned rapport');
+    return res.blob();
+  }
+
   async toggleMci(eventId: string, mciActive: boolean, mciSectors?: string[]) {
     return this.request<{ event: any }>(`/events/${eventId}/mci`, {
       method: 'PATCH',

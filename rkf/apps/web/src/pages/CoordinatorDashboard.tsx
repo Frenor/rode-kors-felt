@@ -178,6 +178,23 @@ export function CoordinatorDashboard() {
     }
   };
 
+  const handleDownloadReport = async () => {
+    if (!eventId) return;
+    try {
+      const blob = await api.downloadReport(eventId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rkf-rapport-${eventId.slice(0, 8)}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silently fail — user will see nothing
+    }
+  };
+
   const handleToggleMci = async () => {
     if (!eventId) return;
     setTogglingMci(true);
@@ -214,6 +231,18 @@ export function CoordinatorDashboard() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
         <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}>Koordinator</h1>
         <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+          <button
+            onClick={handleDownloadReport}
+            title="Last ned debrief-rapport som Markdown"
+            style={{
+              padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+              color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-xs)', cursor: 'pointer',
+            }}
+          >
+            ⬇ Rapport
+          </button>
           <button
             onClick={handleToggleMci}
             disabled={togglingMci}

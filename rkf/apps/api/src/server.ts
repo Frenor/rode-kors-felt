@@ -35,6 +35,33 @@ async function buildServer() {
   await app.register(sensible);
   await app.register(websocket);
 
+  // ── Request tracing — correlation ID header ───────────────────────
+  // Adds X-Request-Id to every response; binds to Fastify's pino logger
+  // so all log lines within a request share the same request id.
+  app.addHook('onRequest', (request, _reply, done) => {
+    const traceId = (request.headers['x-request-id'] as string | undefined)
+      ?? crypto.randomUUID();
+    (request as any).traceId = traceId;
+    request.log = request.log.child({ traceId });
+    done();
+  });
+
+  app.addHook('onSend', (_request, reply, _payload, done) => {
+    reply.header('X-Request-Id', (_request as any).traceId ?? '');
+    done();
+  });
+
+  // ── Latency logging ───────────────────────────────────────────────
+  app.addHook('onResponse', (request, reply, done) => {
+    request.log.info({
+      method: request.method,
+      url: request.url,
+      status: reply.statusCode,
+      durationMs: reply.elapsedTime,
+    }, 'request completed');
+    done();
+  });
+
   // Health check — includes DB connectivity
   app.get('/health', async () => {
     let dbStatus = 'ok';
