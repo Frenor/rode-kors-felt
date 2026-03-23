@@ -95,9 +95,40 @@ body {
   animation: slide-up var(--duration-slow) var(--ease-out);
 }
 
+@keyframes slide-in-top {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes flash-highlight {
+  0%, 100% { background: var(--color-surface); }
+  30%       { background: var(--color-status-info-bg); }
+}
+
+@keyframes count-up-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.animate-slide-in-top {
+  animation: slide-in-top var(--duration-slow) var(--ease-out);
+}
+
+.animate-flash {
+  animation: flash-highlight 1.2s var(--ease-default);
+}
+
+.animate-count-pop {
+  animation: count-up-pop var(--duration-normal) var(--ease-out);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
-  .animate-slide-up {
+  .animate-slide-up,
+  .animate-slide-in-top,
+  .animate-flash,
+  .animate-count-pop {
     animation: none;
   }
 }

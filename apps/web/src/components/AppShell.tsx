@@ -4,8 +4,16 @@ import { useWsStore } from '../stores/ws';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import { useNavigate } from 'react-router-dom';
 import { ToastContainer } from './ToastContainer';
+import { DemoBanner } from './DemoBanner';
+import { DemoWalkthrough } from './DemoWalkthrough';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { offlineQueueDb } from '../lib/offline-queue';
+
+const IS_DEMO =
+  import.meta.env.VITE_DEMO_MODE === 'true' ||
+  (typeof window !== 'undefined' &&
+    (new URLSearchParams(window.location.search).has('demo') ||
+      sessionStorage.getItem('rkf-demo') === '1'));
 
 interface AppShellProps {
   children: ReactNode;
@@ -66,6 +74,8 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+      {/* Demo banner — shown above everything when in demo mode */}
+      {IS_DEMO && <DemoBanner eventName={eventName ?? 'Holmenkollen Skimaraton 2026'} />}
       {/* Top bar */}
       <header
         role="banner"
@@ -280,6 +290,8 @@ export function AppShell({ children }: AppShellProps) {
       </main>
 
       <ToastContainer />
+      {/* Demo walkthrough guide — floating bottom-right */}
+      {IS_DEMO && <DemoWalkthrough role={role} />}
     </div>
   );
 }

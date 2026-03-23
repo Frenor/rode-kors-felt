@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { api } from '../lib/api';
+
+// Lazy-load GPS mini-map to avoid bloating first-aider bundle
+const GpsMiniMap = lazy(() => import('./GpsMiniMap'));
 
 type AcvpuLevel = 'alert' | 'confused' | 'voice' | 'pain' | 'unresponsive';
 type IncidentType = 'medical' | 'trauma' | 'psychiatric' | 'other';
@@ -138,6 +141,7 @@ export function IncidentForm() {
   const [mistTreatmentNote, setMistTreatmentNote] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [isListening, setIsListening] = useState(false);
   const hasSpeechApi = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
@@ -200,7 +204,8 @@ export function IncidentForm() {
       if ((result.incident as any)?._queued) {
         navigate('/firstaid', { state: { queued: true } });
       } else {
-        navigate('/firstaid');
+        setSubmitted(true);
+        setTimeout(() => navigate('/firstaid'), 1500);
       }
     } catch (err: any) {
       setError(err.message || 'Kunne ikke sende hendelse');
@@ -209,6 +214,32 @@ export function IncidentForm() {
   };
 
   const stepTitles = ['Hendelsestype', 'ABCDE-vurdering', 'MIST-rapport', 'Bekreft og send'];
+
+  // Success screen — shown 1.5s before redirect
+  if (submitted) {
+    return (
+      <div className="animate-fade-in" style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        minHeight: 240, gap: 'var(--space-4)', textAlign: 'center',
+      }}>
+        <div style={{
+          width: 72, height: 72, borderRadius: '50%',
+          background: 'var(--color-status-ok-bg)',
+          border: '3px solid var(--color-status-ok)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 32,
+        }}>
+          ✓
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>Hendelse innmeldt!</div>
+          <div style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>
+            Koordinator er varslet
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in">
@@ -249,7 +280,7 @@ export function IncidentForm() {
 
       {/* Step 0: Incident Type + optional START triage tag */}
       {step === 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div key="step-0" className="animate-slide-up" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             {INCIDENT_TYPES.map((t) => (
               <button
@@ -454,7 +485,7 @@ export function IncidentForm() {
 
       {/* Step 2: MIST — chip-based quick entry */}
       {step === 2 && (
-        <div>
+        <div key="step-2" className="animate-slide-up">
           <MistChipSection
             label="M — Skademekanisme"
             chips={['Fall', 'Kollisjon', 'Hjerterelatert', 'Termisk', 'Psykisk', 'Annet']}
@@ -577,7 +608,7 @@ export function IncidentForm() {
 
       {/* Step 3: Confirm and submit */}
       {step === 3 && (
-        <div>
+        <div key="step-3" className="animate-slide-up">
           <div style={{
             padding: 'var(--space-4)', borderRadius: 'var(--radius-md)',
             border: '1px solid var(--color-border)', background: 'var(--color-surface)',
@@ -626,14 +657,23 @@ export function IncidentForm() {
                   </div>
                 </div>
               )}
-              {/* GPS status on confirm */}
+              {/* GPS minimap + status on confirm */}
               <div>
                 <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>POSISJON</span>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: GPS_STATUS_COLORS[gpsStatus] }}>
-                  {gpsStatus === 'ok' && gpsPosition
-                    ? `📍 ${gpsPosition.lat.toFixed(4)}, ${gpsPosition.lng.toFixed(4)}`
-                    : '⚠ Fallback-posisjon (arrangementet)'}
-                </div>
+                {gpsStatus === 'ok' && gpsPosition ? (
+                  <>
+                    <Suspense fallback={<div style={{ height: 150, background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)' }} />}>
+                      <GpsMiniMap lat={gpsPosition.lat} lng={gpsPosition.lng} />
+                    </Suspense>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: GPS_STATUS_COLORS[gpsStatus], marginTop: 4 }}>
+                      📍 {gpsPosition.lat.toFixed(4)}, {gpsPosition.lng.toFixed(4)}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: GPS_STATUS_COLORS[gpsStatus] }}>
+                    ⚠ Fallback-posisjon (arrangementet)
+                  </div>
+                )}
               </div>
             </div>
           </div>
