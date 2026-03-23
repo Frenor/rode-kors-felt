@@ -1,0 +1,108 @@
+/**
+ * Shared frontend types — replaces `any` in both dashboards.
+ * Enums are re-exported from @rkf/shared-types where available.
+ */
+
+export type { AcvpuLevel, PatientStatus as PatientStatusKey } from '@rkf/shared-types';
+
+export interface VitalsReading {
+  id?: string;
+  pulse?: number;
+  spo2?: number;
+  respiratoryRate?: number;
+  painScore?: number;
+  systolicBP?: number;
+  temperature?: number;
+  acvpu?: string;
+  timestamp: string;
+}
+
+export interface PatientNote {
+  id: string;
+  text: string;
+  author: string;
+  createdAt: string;
+}
+
+export interface MedicationRecord {
+  id: string;
+  drug: string;
+  dose?: string;
+  route?: string;
+  givenBy?: string;
+  givenAt: string;
+}
+
+export interface SickBayPatient {
+  id: string;
+  eventId: string;
+  ageGroup: string;
+  status: string;
+  presentingComplaint: string;
+  assignedClinician: string;
+  vitalsHistory: VitalsReading[];
+  latestVitals: VitalsReading | null;
+  notes: PatientNote[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+}
+
+export interface IncidentEscalation {
+  id?: string;
+  path: string;
+  reason?: string;
+  createdAt?: string;
+}
+
+export interface IncidentMist {
+  mechanism: string;
+  injury: string;
+  signs: string;
+  treatment: string;
+}
+
+export interface Incident {
+  id: string;
+  eventId: string;
+  type: string;
+  status: string;
+  acvpu?: string;
+  triageTag?: string;
+  teamId?: string;
+  source?: string;
+  location?: GeoPoint;
+  notes?: string;
+  activeEscalation?: IncidentEscalation | null;
+  mist?: IncidentMist;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  transport?: string;
+  currentPosition?: GeoPoint | null;
+}
+
+export interface DeteriorationAlert {
+  patientId: string;
+  news2Score: number;
+  ratePerHour: number;
+  receivedAt: string;
+}
+
+export interface EventStats {
+  totalIncidents: number;
+  activeIncidents: number;
+  resolvedIncidents: number;
+  totalPatients: number;
+  patientsInTreatment: number;
+  discharged: number;
+  [key: string]: number;
+}

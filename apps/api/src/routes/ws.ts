@@ -29,6 +29,7 @@ export async function wsHandler(app: FastifyInstance) {
 
     clients.add(socket);
     app.log.info(`WebSocket tilkoblet (${clients.size} klienter)`);
+    broadcast({ type: 'system.connected_users', payload: { count: clients.size }, timestamp: new Date().toISOString() });
 
     // ── Heartbeat ────────────────────────────────────────────────
     let isAlive = true;
@@ -109,6 +110,7 @@ export async function wsHandler(app: FastifyInstance) {
       if (timeoutHandle) clearTimeout(timeoutHandle);
       clients.delete(socket);
       app.log.info(`WebSocket frakoblet (${clients.size} klienter)`);
+      broadcast({ type: 'system.connected_users', payload: { count: clients.size }, timestamp: new Date().toISOString() });
     });
   });
 }

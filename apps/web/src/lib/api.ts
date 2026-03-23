@@ -3,7 +3,20 @@ import { enqueue } from './offline-queue';
 import { demoStore } from './demo-store';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
-const DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
+
+// Demo mode: env var (build-time) OR ?demo URL parameter (runtime)
+// Persist runtime flag to sessionStorage so it survives in-app navigation
+function detectDemoMode(): boolean {
+  if (import.meta.env.VITE_DEMO_MODE === 'true') return true;
+  if (typeof window === 'undefined') return false;
+  if (new URLSearchParams(window.location.search).has('demo')) {
+    sessionStorage.setItem('rkf-demo', '1');
+    return true;
+  }
+  return sessionStorage.getItem('rkf-demo') === '1';
+}
+
+const DEMO = detectDemoMode();
 
 class ApiClient {
   private getToken(): string | null {
@@ -61,8 +74,8 @@ class ApiClient {
   async redeemCode(code: string) {
     if (DEMO) {
       const demos: Record<string, { role: string; eventName: string }> = {
-        '123456': { role: 'first_aider', eventName: 'Demo-arrangement' },
-        '654321': { role: 'sickbay', eventName: 'Demo-arrangement' },
+        '123456': { role: 'first_aider', eventName: 'Holmenkollen Skimaraton 2026' },
+        '654321': { role: 'sickbay', eventName: 'Holmenkollen Skimaraton 2026' },
       };
       const demo = demos[code];
       if (!demo) throw new Error('Ugyldig kode (prøv 123456 eller 654321)');
@@ -72,7 +85,14 @@ class ApiClient {
         role: demo.role,
         eventId: 'demo-event',
         eventName: demo.eventName,
-        teams: [{ id: 'team-1', name: 'Demo-lag 1' }, { id: 'team-2', name: 'Demo-lag 2' }],
+        teams: [
+          { id: 'team-alpha',   name: 'Alpha',   transport: 'foot' },
+          { id: 'team-bravo',   name: 'Bravo',   transport: 'bike' },
+          { id: 'team-charlie', name: 'Charlie', transport: 'foot' },
+          { id: 'team-delta',   name: 'Delta',   transport: 'atv' },
+          { id: 'team-echo',    name: 'Echo',    transport: 'vehicle' },
+          { id: 'team-foxtrot', name: 'Foxtrot', transport: 'foot' },
+        ],
       };
     }
     return this.request<{
