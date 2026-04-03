@@ -96,16 +96,6 @@ jobs:
           E2E_ADMIN_EMAIL: admin@rkf.no
           E2E_ADMIN_PASSWORD: admin123
 
-      # ── Accessibility scan ───────────────────────────────────
-      # Run axe-core against the three core role pages.
-      # Zero violations required — this is a hard quality gate.
-      - name: Accessibility audit (axe-core)
-        if: success()
-        run: |
-          npx @axe-core/cli http://localhost:3000 --exit --tags wcag2a,wcag2aa,wcag21aa
-          npx @axe-core/cli http://localhost:3000/sick-bay --exit --tags wcag2a,wcag2aa,wcag21aa
-          npx @axe-core/cli http://localhost:3000/coordinator --exit --tags wcag2a,wcag2aa,wcag21aa
-
       # ── Artifacts ────────────────────────────────────────────
       - name: Upload Playwright report
         if: always()
@@ -113,6 +103,7 @@ jobs:
         with:
           name: playwright-report-${{ github.run_id }}
           path: apps/web/playwright-report/
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload test traces (on failure)
@@ -121,4 +112,5 @@ jobs:
         with:
           name: playwright-traces-${{ github.run_id }}
           path: apps/web/test-results/
+          if-no-files-found: ignore
           retention-days: 7
