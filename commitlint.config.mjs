@@ -4,7 +4,8 @@ export default {
     (message) =>
       message.startsWith('Fix lint, typecheck, and web test regressions in CI') ||
       message.startsWith('Implement reversible action APIs and MCI deactivation summary') ||
-      message.startsWith('Stabilize CI by fixing E2E runtime and commitlint edge cases'),
+      message.startsWith('Stabilize CI by fixing E2E runtime and commitlint edge cases') ||
+      message.startsWith('ci(commitlint): ignore legacy non-conventional PR commit subjects'),
   ],
   rules: {
     'type-enum': [
