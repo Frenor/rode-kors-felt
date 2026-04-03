@@ -8,14 +8,18 @@ interface MCIOverviewPanelProps {
   mciActivatedBy: string | null;
   incidents: Incident[];
   togglingMci: boolean;
+  downloadingSummary: boolean;
   onToggleMci: () => void;
+  onDownloadSummary: () => void;
 }
 
 export function MCIOverviewPanel({
   mciActivatedBy,
   incidents,
   togglingMci,
+  downloadingSummary,
   onToggleMci,
+  onDownloadSummary,
 }: MCIOverviewPanelProps) {
   const triageTags = [
     { tag: 'immediate', label: 'Umiddelbar', color: '#d00', bg: '#fee' },
@@ -47,17 +51,30 @@ export function MCIOverviewPanel({
             </span>
           )}
         </div>
-        <button
-          onClick={onToggleMci}
-          disabled={togglingMci}
-          style={{
-            fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-status-critical)', background: 'transparent',
-            color: 'var(--color-status-critical)', cursor: 'pointer', fontWeight: 600,
-          }}
-        >
-          Deaktiver MCI
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <button
+            onClick={onDownloadSummary}
+            disabled={downloadingSummary}
+            style={{
+              fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+              color: 'var(--color-text)', cursor: 'pointer', fontWeight: 600,
+            }}
+          >
+            Last ned overlevering
+          </button>
+          <button
+            onClick={onToggleMci}
+            disabled={togglingMci}
+            style={{
+              fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--color-status-critical)', background: 'transparent',
+              color: 'var(--color-status-critical)', cursor: 'pointer', fontWeight: 600,
+            }}
+          >
+            Deaktiver MCI
+          </button>
+        </div>
       </div>
 
       {/* START triage tag counts */}

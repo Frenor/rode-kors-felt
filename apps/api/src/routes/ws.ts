@@ -98,6 +98,18 @@ export async function wsHandler(app: FastifyInstance) {
             payload: message.payload,
             timestamp: new Date().toISOString(),
           });
+        } else if (message.type === 'team.sector_assigned') {
+          broadcast({
+            type: 'team.sector_assigned',
+            eventId: message.eventId,
+            payload: {
+              teamId: message.payload?.teamId,
+              sector: message.payload?.sector ?? null,
+              assignedBy: message.payload?.assignedBy,
+              assignedAt: message.payload?.assignedAt ?? new Date().toISOString(),
+            },
+            timestamp: new Date().toISOString(),
+          });
         }
       } catch {
         // ignore malformed messages

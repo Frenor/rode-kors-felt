@@ -49,6 +49,9 @@ export const events = pgTable('events', {
   mciActivatedAt: timestamp('mci_activated_at', { withTimezone: true }),
   mciActivatedBy: varchar('mci_activated_by', { length: 255 }),
   mciSectors: text('mci_sectors').array().notNull().default([]),
+  mciSummaryHtml: text('mci_summary_html'),
+  mciSummaryGeneratedAt: timestamp('mci_summary_generated_at', { withTimezone: true }),
+  mciSummaryGeneratedBy: varchar('mci_summary_generated_by', { length: 255 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
