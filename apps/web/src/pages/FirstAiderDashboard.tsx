@@ -21,6 +21,7 @@ export function FirstAiderDashboard() {
   const [messageText, setMessageText] = useState('');
   const [showChat, setShowChat] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [sectorAssignments, setSectorAssignments] = useState<Record<string, { sector: string; assignedAt: string }>>({});
 
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
@@ -56,6 +57,25 @@ export function FirstAiderDashboard() {
           },
         ]);
         setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+      } else if (msg.type === 'team.sector_assigned') {
+        const payload = (msg.payload as any) ?? {};
+        if (typeof payload.teamId === 'string') {
+          if (typeof payload.sector === 'string' && payload.sector.trim()) {
+            setSectorAssignments((prev) => ({
+              ...prev,
+              [payload.teamId]: {
+                sector: payload.sector,
+                assignedAt: payload.assignedAt ?? new Date().toISOString(),
+              },
+            }));
+          } else {
+            setSectorAssignments((prev) => {
+              const next = { ...prev };
+              delete next[payload.teamId];
+              return next;
+            });
+          }
+        }
       }
     });
     return off;
@@ -140,6 +160,26 @@ export function FirstAiderDashboard() {
       )}
 
       {/* Main action — 1 tap from dashboard */}
+      {selectedTeam && sectorAssignments[selectedTeam] && (
+        <section
+          aria-live="polite"
+          style={{
+            marginBottom: 'var(--space-4)',
+            padding: 'var(--space-3) var(--space-4)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-brand)',
+            background: 'var(--color-brand-dim)',
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-brand)' }}>
+            Tildelt sektor: {sectorAssignments[selectedTeam]!.sector}
+          </div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+            Oppdatert {new Date(sectorAssignments[selectedTeam]!.assignedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </section>
+      )}
+
       <button
         onClick={() => navigate('/firstaid/incident', {
           state: { teamId: selectedTeam, eventId },

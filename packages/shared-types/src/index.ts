@@ -246,6 +246,7 @@ export const WsEventType = z.enum([
   'incident.created',
   'incident.updated',
   'team.position',
+  'team.sector_assigned',
   'team.message',
   'escalation.raised',
   'escalation.resolved',

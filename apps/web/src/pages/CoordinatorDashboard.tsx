@@ -12,6 +12,7 @@ import { EscalationModal } from './Coordinator/EscalationModal';
 import { NewTaskModal } from './Coordinator/NewTaskModal';
 import { DeteriorationAlertsPanel } from './Coordinator/DeteriorationAlertsPanel';
 import { MCIOverviewPanel } from './Coordinator/MCIOverviewPanel';
+import { ResourceAllocationBoard } from './Coordinator/ResourceAllocationBoard';
 import { StatsGrid } from './Coordinator/StatsGrid';
 import { IncidentFeed } from './Coordinator/IncidentFeed';
 
@@ -23,6 +24,7 @@ const filterIncidentsByStatKey = (incs: Incident[], key: string): Incident[] => 
 
 export function CoordinatorDashboard() {
   const { eventId } = useAuthStore();
+  const wsSend = useWsStore((s) => s.send);
   const onMessage = useWsStore((s) => s.onMessage);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
@@ -35,6 +37,8 @@ export function CoordinatorDashboard() {
   const [deteriorationAlerts, setDeteriorationAlerts] = useState<DeteriorationAlert[]>([]);
   const [mciActive, setMciActive] = useState(false);
   const [mciActivatedBy, setMciActivatedBy] = useState<string | null>(null);
+  const [mciSectors, setMciSectors] = useState<string[]>([]);
+  const [teamSectorAssignments, setTeamSectorAssignments] = useState<Record<string, { sector: string; assignedAt: string }>>({});
   const [togglingMci, setTogglingMci] = useState(false);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
   const [connectedUsers, setConnectedUsers] = useState<number | undefined>(undefined);
@@ -109,6 +113,7 @@ export function CoordinatorDashboard() {
       if (evtRes.event?.mciActive !== undefined) {
         setMciActive(evtRes.event.mciActive);
         setMciActivatedBy(evtRes.event.mciActivatedBy ?? null);
+        setMciSectors(evtRes.event.mciSectors ?? []);
       }
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -153,6 +158,7 @@ export function CoordinatorDashboard() {
       } else if (msg.type === 'event.mci_deactivated') {
         setMciActive(false);
         setMciActivatedBy(null);
+        setTeamSectorAssignments({});
       } else if (msg.type === 'patient.deterioration_alert') {
         const { patientId, trend, news2Score } = (msg.payload as any) ?? {};
         if (patientId && trend) {
@@ -167,6 +173,22 @@ export function CoordinatorDashboard() {
           setTeams((prev) =>
             prev.map((t) => (t.id === teamId ? { ...t, currentPosition: position } : t)),
           );
+        }
+      } else if (msg.type === 'team.sector_assigned') {
+        const { teamId, sector, assignedAt } = (msg.payload as any) ?? {};
+        if (typeof teamId === 'string') {
+          if (typeof sector === 'string' && sector.trim()) {
+            setTeamSectorAssignments((prev) => ({
+              ...prev,
+              [teamId]: { sector, assignedAt: assignedAt ?? new Date().toISOString() },
+            }));
+          } else {
+            setTeamSectorAssignments((prev) => {
+              const next = { ...prev };
+              delete next[teamId];
+              return next;
+            });
+          }
         }
       } else if (msg.type === 'system.connected_users') {
         const { count } = (msg.payload as any) ?? {};
@@ -241,8 +263,31 @@ export function CoordinatorDashboard() {
     document.getElementById(`inc-${incidentId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
+  const handleAssignTeamToSector = (teamId: string, sector: string | null) => {
+    if (!eventId) return;
+    const assignedAt = new Date().toISOString();
+
+    if (sector) {
+      setTeamSectorAssignments((prev) => ({ ...prev, [teamId]: { sector, assignedAt } }));
+    } else {
+      setTeamSectorAssignments((prev) => {
+        const next = { ...prev };
+        delete next[teamId];
+        return next;
+      });
+    }
+
+    wsSend({
+      type: 'team.sector_assigned',
+      eventId,
+      payload: { teamId, sector, assignedAt },
+      timestamp: assignedAt,
+    });
+  };
 
   const filteredIncidents = activeFilter ? filterIncidentsByStatKey(incidents, activeFilter) : incidents;
+  const incidentsWithLocation = incidents.filter((inc): inc is Incident & { location: { lat: number; lng: number } } => !!inc.location);
+  const sectors = mciSectors.length > 0 ? mciSectors : ['Nord', 'Sentrum', 'Sør', 'Vest'];
 
   return (
     <div>
@@ -303,12 +348,21 @@ export function CoordinatorDashboard() {
       )}
 
       {mciActive && (
-        <MCIOverviewPanel
-          mciActivatedBy={mciActivatedBy}
-          incidents={incidents}
-          togglingMci={togglingMci}
-          onToggleMci={handleToggleMci}
-        />
+        <>
+          <MCIOverviewPanel
+            mciActivatedBy={mciActivatedBy}
+            incidents={incidents}
+            togglingMci={togglingMci}
+            onToggleMci={handleToggleMci}
+          />
+          <ResourceAllocationBoard
+            teams={teams}
+            incidents={incidents}
+            sectors={sectors}
+            assignments={teamSectorAssignments}
+            onAssignTeam={handleAssignTeamToSector}
+          />
+        </>
       )}
 
       <StatsGrid
@@ -351,7 +405,7 @@ export function CoordinatorDashboard() {
           border: '1px solid var(--color-border)',
         }}>
           <EventMap
-            incidents={incidents}
+            incidents={incidentsWithLocation}
             teams={teams}
             onIncidentClick={handleScrollToIncident}
           />
