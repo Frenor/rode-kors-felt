@@ -25,8 +25,15 @@ vi.mock('../stores/notifications', () => ({
   useNotificationStore: vi.fn(() => ({ add: vi.fn() })),
 }));
 
+const wsState = {
+  onMessage: vi.fn(() => () => {}),
+  send: vi.fn(),
+};
+
 vi.mock('../stores/ws', () => ({
-  useWsStore: vi.fn(() => ({ onMessage: vi.fn(), send: vi.fn() })),
+  useWsStore: vi.fn((selector?: (state: typeof wsState) => unknown) =>
+    selector ? selector(wsState) : wsState,
+  ),
 }));
 
 const mockUpdatePatient = vi.fn().mockResolvedValue({ patient: {} });

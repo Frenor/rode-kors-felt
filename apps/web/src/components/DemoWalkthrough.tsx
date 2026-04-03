@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const STEPS: Record<string, string[]> = {
+const STEPS = {
   coordinator: [
     'Se hendelsesfeeden til venstre og kartet til høyre — 3 aktive hendelser',
     'Klikk "⚠ Eskalér" på en hendelse for å eskalere til AMK',
@@ -18,21 +18,26 @@ const STEPS: Record<string, string[]> = {
     'Klikk "Meld hendelse" for å rapportere en ny hendelse',
     'Fyll ut skjemaet steg for steg — GPS-posisjon fanges automatisk',
   ],
-};
+} satisfies Record<'coordinator' | 'sickbay' | 'first_aider', string[]>;
 
 interface DemoWalkthroughProps {
   role: string | null;
 }
 
+function isKnownRole(role: string | null): role is keyof typeof STEPS {
+  return role !== null && role in STEPS;
+}
+
 export function DemoWalkthrough({ role }: DemoWalkthroughProps) {
-  const steps = (role && STEPS[role]) ?? STEPS.coordinator;
-  const storageKey = `rkf-demo-step-${role ?? 'unknown'}`;
+  const activeRole: keyof typeof STEPS = isKnownRole(role) ? role : 'coordinator';
+  const steps = STEPS[activeRole];
+  const storageKey = `rkf-demo-step-${activeRole}`;
   const [step, setStep] = useState(() => {
     const saved = localStorage.getItem(storageKey);
     return saved ? parseInt(saved, 10) : 0;
   });
   const [dismissed, setDismissed] = useState(
-    () => localStorage.getItem(`rkf-demo-walkthrough-dismissed-${role}`) === '1',
+    () => localStorage.getItem(`rkf-demo-walkthrough-dismissed-${activeRole}`) === '1',
   );
 
   if (dismissed) return null;
@@ -44,7 +49,7 @@ export function DemoWalkthrough({ role }: DemoWalkthroughProps) {
   };
 
   const dismiss = () => {
-    localStorage.setItem(`rkf-demo-walkthrough-dismissed-${role}`, '1');
+    localStorage.setItem(`rkf-demo-walkthrough-dismissed-${activeRole}`, '1');
     setDismissed(true);
   };
 
