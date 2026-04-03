@@ -299,6 +299,15 @@ const DEMO_TEAMS = [
   { id: 'team-foxtrot', name: 'Foxtrot', transport: 'foot',    currentPosition: null },
 ];
 
+let demoEvent: any = {
+  id: 'demo-event',
+  name: 'Holmenkollen Skimaraton 2026',
+  mciActive: false,
+  mciActivatedBy: null,
+  mciSummaryHtml: null as string | null,
+  createdAt: minsAgo(120),
+};
+
 let actionEvents: any[] = [];
 
 const createAction = (params: {
@@ -582,13 +591,7 @@ export const demoStore = {
   }),
 
   getEvent: (_id: string) => ({
-    event: {
-      id: 'demo-event',
-      name: 'Holmenkollen Skimaraton 2026',
-      mciActive: false,
-      mciActivatedBy: null,
-      createdAt: minsAgo(120),
-    },
+    event: { ...demoEvent },
     teams: DEMO_TEAMS,
   }),
 
@@ -596,7 +599,33 @@ export const demoStore = {
     events: [{ id: 'demo-event', name: 'Holmenkollen Skimaraton 2026', active: true, createdAt: minsAgo(120) }],
   }),
 
-  toggleMci: (eventId: string, mciActive: boolean, mciSectors?: string[]) => ({
-    event: { id: eventId, name: 'Holmenkollen Skimaraton 2026', mciActive, mciSectors, mciActivatedBy: mciActive ? 'Koordinator' : null },
-  }),
+  toggleMci: (eventId: string, mciActive: boolean, mciSectors?: string[]) => {
+    if (!mciActive) {
+      const triage = incidents.reduce(
+        (acc, incident) => {
+          const key = incident.triageTag ?? 'untagged';
+          acc[key] = (acc[key] ?? 0) + 1;
+          return acc;
+        },
+        { immediate: 0, delayed: 0, minor: 0, expectant: 0, untagged: 0 } as Record<string, number>,
+      );
+
+      demoEvent.mciSummaryHtml = `<!doctype html><html lang="nb"><head><meta charset="utf-8"><title>MCI-overlevering</title><style>body{font-family:Arial,sans-serif;margin:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}</style></head><body><h1>MCI-overlevering (demo)</h1><p>Arrangement: ${demoEvent.name}</p><p>Generert: ${new Date().toLocaleString('nb-NO')}</p><table><thead><tr><th>Triage</th><th>Antall</th></tr></thead><tbody><tr><td>Umiddelbar</td><td>${triage.immediate}</td></tr><tr><td>Utsatt</td><td>${triage.delayed}</td></tr><tr><td>Mindre</td><td>${triage.minor}</td></tr><tr><td>Forventet</td><td>${triage.expectant}</td></tr><tr><td>Uklassifisert</td><td>${triage.untagged}</td></tr></tbody></table></body></html>`;
+    }
+
+    demoEvent = {
+      ...demoEvent,
+      id: eventId,
+      mciActive,
+      mciSectors,
+      mciActivatedBy: mciActive ? 'Koordinator' : null,
+    };
+
+    return { event: { ...demoEvent } };
+  },
+
+  downloadMciSummary: (_eventId: string): Blob => {
+    const html = demoEvent.mciSummaryHtml ?? '<html><body><h1>Ingen MCI-overlevering ennå</h1></body></html>';
+    return new Blob([html], { type: 'text/html' });
+  },
 };
