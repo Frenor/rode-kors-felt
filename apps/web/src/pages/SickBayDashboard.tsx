@@ -48,6 +48,21 @@ export function SickBayDashboard() {
   });
 
   const [medications, setMedications] = useState<Record<string, MedicationRecord[]>>({});
+  const UNDO_WINDOW_MS = 10_000;
+
+  const pushUndoToast = (message: string, actionId?: string) => {
+    if (!actionId) return;
+    addToast({
+      message,
+      level: 'warning',
+      autoDismissMs: UNDO_WINDOW_MS,
+      actionLabel: 'Angre',
+      onAction: async () => {
+        await api.undoAction(actionId, 'Angret fra sykestuegrensesnitt');
+        fetchPatients();
+      },
+    });
+  };
 
   const fetchPatients = () => {
     if (!eventId) return;
@@ -128,7 +143,8 @@ export function SickBayDashboard() {
       });
       return;
     }
-    await api.updatePatient(patientId, { status });
+    const res = await api.executePatientAction(patientId, { type: 'status.set', status });
+    pushUndoToast('Pasientstatus oppdatert. Du kan angre i 10 sekunder.', res.action?.id);
     fetchPatients();
   };
 
@@ -148,7 +164,8 @@ export function SickBayDashboard() {
       ...(amkLines.length > 0 ? ['', '--- AMK ---', ...amkLines] : []),
     ].join('\n');
     await api.addPatientNote(sbarPatient.id, sbarNote, 'SBAR-overlevering');
-    await api.updatePatient(sbarPatient.id, { status: 'transferred' });
+    const statusAction = await api.executePatientAction(sbarPatient.id, { type: 'status.set', status: 'transferred' });
+    pushUndoToast('Pasienten er markert som overført. Du kan angre i 10 sekunder.', statusAction.action?.id);
     setSbarPatient(null);
     setSbarForm({ situation: '', background: '', assessment: '', recommendation: '', amkTidspunkt: '', amkReferanse: '', amkEta: '', amkFølger: '' });
     fetchPatients();

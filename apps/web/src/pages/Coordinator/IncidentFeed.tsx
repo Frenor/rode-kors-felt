@@ -16,6 +16,8 @@ interface IncidentFeedProps {
   activeFilter: string | null;
   onClearFilter: () => void;
   onEscalate: (id: string) => void;
+  onResolveEscalation: (id: string) => void;
+  onReopenEscalation: (id: string, escalationId?: string) => void;
   onStatusUpdate: (id: string, status: string) => void;
   onTriageAssess: (inc: Incident) => void;
   onNewOppdrag: () => void;
@@ -33,6 +35,8 @@ export function IncidentFeed({
   activeFilter,
   onClearFilter,
   onEscalate,
+  onResolveEscalation,
+  onReopenEscalation,
   onStatusUpdate,
   onTriageAssess,
   onNewOppdrag,
@@ -100,6 +104,8 @@ export function IncidentFeed({
               triageError={triageErrors[inc.id]}
               isNew={flashIds.has(inc.id)}
               onEscalate={onEscalate}
+              onResolveEscalation={onResolveEscalation}
+              onReopenEscalation={onReopenEscalation}
               onStatusUpdate={onStatusUpdate}
               onTriageAssess={onTriageAssess}
               calcEta={calcEta}

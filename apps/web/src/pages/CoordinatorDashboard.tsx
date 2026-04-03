@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../stores/auth';
 import { useWsStore } from '../stores/ws';
+import { useNotificationStore } from '../stores/notifications';
 import { api } from '../lib/api';
 import { EventMap } from '../components/EventMap';
 import { assessTriage, type TriageAssessment } from '../lib/llm-triage';
@@ -26,6 +27,7 @@ export function CoordinatorDashboard() {
   const { eventId } = useAuthStore();
   const wsSend = useWsStore((s) => s.send);
   const onMessage = useWsStore((s) => s.onMessage);
+  const addToast = useNotificationStore((s) => s.add);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [stats, setStats] = useState<Record<string, number> | null>(null);
@@ -40,11 +42,13 @@ export function CoordinatorDashboard() {
   const [mciSectors, setMciSectors] = useState<string[]>([]);
   const [teamSectorAssignments, setTeamSectorAssignments] = useState<Record<string, { sector: string; assignedAt: string }>>({});
   const [togglingMci, setTogglingMci] = useState(false);
+  const [downloadingMciSummary, setDownloadingMciSummary] = useState(false);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
   const [connectedUsers, setConnectedUsers] = useState<number | undefined>(undefined);
   const [lastStatsUpdatedAt, setLastStatsUpdatedAt] = useState<number | undefined>(undefined);
   const [prevStats, setPrevStats] = useState<Record<string, number> | null>(null);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const UNDO_WINDOW_MS = 10_000;
 
   // Nytt koordinatoroppdrag state
   const [showNewOppdrag, setShowNewOppdrag] = useState(false);
@@ -198,21 +202,53 @@ export function CoordinatorDashboard() {
     return off;
   }, [onMessage]);
 
+  const pushUndoToast = (message: string, actionId?: string) => {
+    if (!actionId) return;
+    addToast({
+      level: 'warning',
+      message,
+      autoDismissMs: UNDO_WINDOW_MS,
+      actionLabel: 'Angre',
+      onAction: async () => {
+        await api.undoAction(actionId, 'Angret fra koordinatorgrensesnitt');
+        fetchAll();
+      },
+    });
+  };
+
   const handleStatusUpdate = async (id: string, status: string) => {
-    await api.updateIncident(id, { status });
-    setIncidents((prev) => prev.map((i) => (i.id === id ? { ...i, status } : i)));
+    const res = await api.executeIncidentAction(id, { type: 'status.set', status });
+    if (res.incident) {
+      setIncidents((prev) => prev.map((i) => (i.id === id ? res.incident : i)));
+    }
+    pushUndoToast('Status oppdatert. Du kan angre i 10 sekunder.', res.action?.id);
   };
 
   const handleEscalate = async () => {
     if (!escalateTarget) return;
     setEscalating(true);
     try {
-      await api.escalateIncident(escalateTarget, { path: escalatePath, reason: escalateReason || undefined });
+      const res = await api.executeIncidentAction(escalateTarget, {
+        type: 'escalation.raise',
+        path: escalatePath,
+        reason: escalateReason || undefined,
+      });
+      pushUndoToast('Eskalering sendt. Du kan angre i 10 sekunder.', res.action?.id);
     } finally {
       setEscalating(false);
       setEscalateTarget(null);
       setEscalateReason('');
     }
+  };
+
+  const handleResolveEscalation = async (incidentId: string) => {
+    const res = await api.executeIncidentAction(incidentId, { type: 'escalation.resolve' });
+    pushUndoToast('Eskalering avsluttet. Du kan angre i 10 sekunder.', res.action?.id);
+  };
+
+  const handleReopenEscalation = async (incidentId: string, escalationId?: string) => {
+    const res = await api.executeIncidentAction(incidentId, { type: 'escalation.reopen', escalationId });
+    pushUndoToast('Eskalering gjenåpnet. Du kan angre i 10 sekunder.', res.action?.id);
   };
 
   const handleDownloadReport = async () => {
@@ -237,8 +273,37 @@ export function CoordinatorDashboard() {
     setTogglingMci(true);
     try {
       await api.toggleMci(eventId, !mciActive);
+      if (mciActive) {
+        const blob = await api.downloadMciSummary(eventId);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `rkf-mci-overlevering-${eventId.slice(0, 8)}.html`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
     } finally {
       setTogglingMci(false);
+    }
+  };
+
+  const handleDownloadMciSummary = async () => {
+    if (!eventId) return;
+    setDownloadingMciSummary(true);
+    try {
+      const blob = await api.downloadMciSummary(eventId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rkf-mci-overlevering-${eventId.slice(0, 8)}.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingMciSummary(false);
     }
   };
 
@@ -353,7 +418,9 @@ export function CoordinatorDashboard() {
             mciActivatedBy={mciActivatedBy}
             incidents={incidents}
             togglingMci={togglingMci}
+            downloadingSummary={downloadingMciSummary}
             onToggleMci={handleToggleMci}
+            onDownloadSummary={handleDownloadMciSummary}
           />
           <ResourceAllocationBoard
             teams={teams}
@@ -390,6 +457,8 @@ export function CoordinatorDashboard() {
           activeFilter={activeFilter}
           onClearFilter={() => setActiveFilter(null)}
           onEscalate={setEscalateTarget}
+          onResolveEscalation={handleResolveEscalation}
+          onReopenEscalation={handleReopenEscalation}
           onStatusUpdate={handleStatusUpdate}
           onTriageAssess={handleTriageAssess}
           onNewOppdrag={() => setShowNewOppdrag(true)}

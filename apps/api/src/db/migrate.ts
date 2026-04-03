@@ -60,6 +60,10 @@ export async function runMigrations(): Promise<void> {
       DO $$ BEGIN
         CREATE TYPE triage_tag AS ENUM ('immediate', 'delayed', 'minor', 'expectant');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$ BEGIN
+        CREATE TYPE action_entity_type AS ENUM ('incident', 'patient', 'event');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     `);
 
     // ── Tables ─────────────────────────────────────────────────────
@@ -74,6 +78,9 @@ export async function runMigrations(): Promise<void> {
         mci_activated_at  TIMESTAMPTZ,
         mci_activated_by  VARCHAR(255),
         mci_sectors       TEXT[] NOT NULL DEFAULT '{}',
+        mci_summary_html  TEXT,
+        mci_summary_generated_at TIMESTAMPTZ,
+        mci_summary_generated_by VARCHAR(255),
         created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -176,6 +183,21 @@ export async function runMigrations(): Promise<void> {
         on_supplemental_oxygen  BOOLEAN,
         acvpu                   acvpu_level
       );
+
+      CREATE TABLE IF NOT EXISTS action_events (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id          UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        entity_type       action_entity_type NOT NULL,
+        entity_id         UUID NOT NULL,
+        action_type       VARCHAR(80) NOT NULL,
+        payload           JSONB NOT NULL DEFAULT '{}',
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_by        VARCHAR(255) NOT NULL,
+        reverted_at       TIMESTAMPTZ,
+        reverted_by       VARCHAR(255),
+        revert_reason     TEXT,
+        undo_of_action_id UUID
+      );
     `);
 
     // ── Idempotent column additions for existing databases ────────
@@ -184,6 +206,9 @@ export async function runMigrations(): Promise<void> {
       ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_activated_at TIMESTAMPTZ;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_activated_by VARCHAR(255);
       ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_sectors      TEXT[] NOT NULL DEFAULT '{}';
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_html TEXT;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_generated_at TIMESTAMPTZ;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_generated_by VARCHAR(255);
 
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS triage_tag triage_tag;
     `);

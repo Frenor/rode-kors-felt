@@ -155,6 +155,18 @@ class ApiClient {
     return res.blob();
   }
 
+  async downloadMciSummary(eventId: string): Promise<Blob> {
+    if (DEMO) {
+      return demoStore.downloadMciSummary(eventId);
+    }
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE}/events/${eventId}/mci-summary`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('Kunne ikke laste ned MCI-overlevering');
+    return res.blob();
+  }
+
   async toggleMci(eventId: string, mciActive: boolean, mciSectors?: string[]) {
     if (DEMO) return demoStore.toggleMci(eventId, mciActive, mciSectors);
     return this.request<{ event: any }>(`/events/${eventId}/mci`, {
@@ -183,6 +195,37 @@ class ApiClient {
     return this.request<{ incident: any }>(`/incidents/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    });
+  }
+
+  async executeIncidentAction(
+    incidentId: string,
+    data:
+      | { type: 'status.set'; status: string }
+      | { type: 'escalation.raise'; path: string; reason?: string }
+      | { type: 'escalation.resolve' }
+      | { type: 'escalation.reopen'; escalationId?: string },
+  ) {
+    if (DEMO) return demoStore.executeIncidentAction(incidentId, data);
+    return this.request<{ incident?: any; escalation?: any; action: any; ok?: boolean }>(`/incidents/${incidentId}/actions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async executePatientAction(patientId: string, data: { type: 'status.set'; status: string }) {
+    if (DEMO) return demoStore.executePatientAction(patientId, data);
+    return this.request<{ patient: any; action: any }>(`/patients/${patientId}/actions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async undoAction(actionId: string, reason?: string) {
+    if (DEMO) return demoStore.undoAction(actionId, reason);
+    return this.request<{ undoneAction: any; undoAction: any; result: any }>(`/actions/${actionId}/undo`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     });
   }
 

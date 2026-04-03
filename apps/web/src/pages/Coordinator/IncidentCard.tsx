@@ -13,6 +13,8 @@ interface IncidentCardProps {
   triageError: string | undefined;
   isNew: boolean;
   onEscalate: (id: string) => void;
+  onResolveEscalation: (id: string) => void;
+  onReopenEscalation: (id: string, escalationId?: string) => void;
   onStatusUpdate: (id: string, status: string) => void;
   onTriageAssess: (inc: Incident) => void;
   calcEta: (team: any, incident: any) => string | null;
@@ -26,6 +28,8 @@ export function IncidentCard({
   triageError,
   isNew,
   onEscalate,
+  onResolveEscalation,
+  onReopenEscalation,
   onStatusUpdate,
   onTriageAssess,
   calcEta,
@@ -115,7 +119,7 @@ export function IncidentCard({
 
           {inc.status !== 'resolved' && (
             <>
-              {!inc.activeEscalation && (
+              {!inc.activeEscalation ? (
                 <button
                   onClick={() => onEscalate(inc.id)}
                   style={{
@@ -127,6 +131,19 @@ export function IncidentCard({
                   }}
                 >
                   ⚠ Eskalér
+                </button>
+              ) : (
+                <button
+                  onClick={() => onResolveEscalation(inc.id)}
+                  style={{
+                    fontSize: 11, padding: '4px 8px', borderRadius: 4,
+                    border: '1px solid var(--color-status-critical)',
+                    background: 'transparent',
+                    color: 'var(--color-status-critical)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ↺ Avslutt eskalering
                 </button>
               )}
               {inc.status === 'dispatched' && (
@@ -152,6 +169,32 @@ export function IncidentCard({
                 ✓ Løst
               </button>
             </>
+          )}
+          {inc.status === 'resolved' && (
+            <button
+              onClick={() => onStatusUpdate(inc.id, 'on_scene')}
+              style={{
+                fontSize: 11, padding: '4px 8px', borderRadius: 4,
+                border: '1px solid var(--color-brand)', background: 'transparent',
+                cursor: 'pointer', color: 'var(--color-brand)',
+              }}
+            >
+              ↺ Gjenåpne
+            </button>
+          )}
+          {!inc.activeEscalation && inc.status !== 'resolved' && inc.actionHistory?.some((a) => a.actionType === 'incident.escalation_resolved') && (
+            <button
+              onClick={() => onReopenEscalation(inc.id)}
+              style={{
+                fontSize: 11, padding: '4px 8px', borderRadius: 4,
+                border: '1px solid var(--color-status-critical)',
+                background: 'transparent',
+                color: 'var(--color-status-critical)',
+                cursor: 'pointer',
+              }}
+            >
+              ↺ Gjenåpne eskalering
+            </button>
           )}
         </div>
       </div>

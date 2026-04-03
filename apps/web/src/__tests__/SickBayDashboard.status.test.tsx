@@ -3,9 +3,9 @@
  *
  * Covers:
  *  - Correct buttons rendered per current status (state machine)
- *  - Final states (discharged, transferred) show no transition buttons
+ *  - "Terminal" states still expose reversible transitions
  *  - handleStatusChange called with the right status argument
- *  - "transferred" triggers the SBAR modal instead of a direct update
+ *  - "transferred" triggers the SBAR modal instead of a direct action call
  *  - Offline: status update is queued when navigator.onLine is false
  */
 
@@ -22,7 +22,10 @@ vi.mock('../stores/auth', () => ({
 }));
 
 vi.mock('../stores/notifications', () => ({
-  useNotificationStore: vi.fn(() => ({ add: vi.fn() })),
+  useNotificationStore: vi.fn((selector?: (state: { add: (...args: unknown[]) => string }) => unknown) => {
+    const state = { add: vi.fn(() => 'toast-id') };
+    return selector ? selector(state) : state;
+  }),
 }));
 
 const wsState = {
@@ -36,18 +39,19 @@ vi.mock('../stores/ws', () => ({
   ),
 }));
 
-const mockUpdatePatient = vi.fn().mockResolvedValue({ patient: {} });
+const mockExecutePatientAction = vi.fn().mockResolvedValue({ patient: {}, action: { id: 'a1' } });
 const mockAddPatientNote = vi.fn().mockResolvedValue({ patient: {} });
 
 vi.mock('../lib/api', () => ({
   api: {
     getPatients: vi.fn(),
-    updatePatient: (...args: unknown[]) => mockUpdatePatient(...args),
+    executePatientAction: (...args: unknown[]) => mockExecutePatientAction(...args),
     addPatientNote: (...args: unknown[]) => mockAddPatientNote(...args),
     createPatient: vi.fn(),
     recordVitals: vi.fn(),
     recordMedication: vi.fn(),
     getMedications: vi.fn().mockResolvedValue({ medications: [] }),
+    undoAction: vi.fn(),
   },
 }));
 
@@ -114,7 +118,7 @@ async function renderWithPatient(status: string, patientOverrides: Record<string
 describe('Status transition buttons — valid next states', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUpdatePatient.mockResolvedValue({ patient: {} });
+    mockExecutePatientAction.mockResolvedValue({ patient: {}, action: { id: 'a1' } });
   });
 
   it('incoming: shows "Under behandling" and "Observasjon" buttons', async () => {
@@ -144,41 +148,29 @@ describe('Status transition buttons — valid next states', () => {
     expect(within(container).getByTestId('status-btn-in_treatment')).toBeInTheDocument();
     expect(within(container).getByTestId('status-btn-discharged')).toBeInTheDocument();
     expect(within(container).getByTestId('status-btn-transferred')).toBeInTheDocument();
-    expect(within(container).queryByTestId('status-btn-incoming')).not.toBeInTheDocument();
+    expect(within(container).getByTestId('status-btn-incoming')).toBeInTheDocument();
   });
 });
 
 // ---------------------------------------------------------------------------
-// 2. Final states — no transition buttons rendered
+// 2. Terminal states remain reversible
 // ---------------------------------------------------------------------------
 
-describe('Status transition buttons — final states (discharged, transferred)', () => {
+describe('Status transition buttons — discharged/transferred remain reversible', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('discharged: the patient-status container is not rendered at all', async () => {
+  it('discharged: shows reversible options', async () => {
     const { patient } = await renderWithPatient('discharged');
-
-    // The container div should be absent because STATUS_TRANSITIONS['discharged'] === []
-    expect(screen.queryByTestId(`patient-status-${patient.id}`)).not.toBeInTheDocument();
+    const container = screen.getByTestId(`patient-status-${patient.id}`);
+    expect(within(container).getByTestId('status-btn-in_treatment')).toBeInTheDocument();
+    expect(within(container).getByTestId('status-btn-observation')).toBeInTheDocument();
   });
 
-  it('transferred: the patient-status container is not rendered at all', async () => {
+  it('transferred: shows reversible options', async () => {
     const { patient } = await renderWithPatient('transferred');
-
-    expect(screen.queryByTestId(`patient-status-${patient.id}`)).not.toBeInTheDocument();
-  });
-
-  it('discharged: no status-btn-* buttons are present anywhere', async () => {
-    await renderWithPatient('discharged');
-
-    // Confirm no transition button of any kind leaks into the DOM
-    expect(document.querySelector('[data-testid^="status-btn-"]')).toBeNull();
-  });
-
-  it('transferred: no status-btn-* buttons are present anywhere', async () => {
-    await renderWithPatient('transferred');
-
-    expect(document.querySelector('[data-testid^="status-btn-"]')).toBeNull();
+    const container = screen.getByTestId(`patient-status-${patient.id}`);
+    expect(within(container).getByTestId('status-btn-in_treatment')).toBeInTheDocument();
+    expect(within(container).getByTestId('status-btn-observation')).toBeInTheDocument();
   });
 });
 
@@ -189,53 +181,52 @@ describe('Status transition buttons — final states (discharged, transferred)',
 describe('handleStatusChange — correct status argument', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('clicking "Under behandling" from incoming calls updatePatient with in_treatment', async () => {
+  it('clicking "Under behandling" from incoming calls executePatientAction with in_treatment', async () => {
     const { patient } = await renderWithPatient('incoming');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
     const btn = within(container).getByTestId('status-btn-in_treatment');
 
     fireEvent.click(btn);
 
-    // api.updatePatient must be called with (patientId, { status: 'in_treatment' })
-    expect(mockUpdatePatient).toHaveBeenCalledWith(patient.id, { status: 'in_treatment' });
+    expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'status.set', status: 'in_treatment' });
   });
 
-  it('clicking "Observasjon" from incoming calls updatePatient with observation', async () => {
+  it('clicking "Observasjon" from incoming calls executePatientAction with observation', async () => {
     const { patient } = await renderWithPatient('incoming');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
 
     fireEvent.click(within(container).getByTestId('status-btn-observation'));
 
-    expect(mockUpdatePatient).toHaveBeenCalledWith(patient.id, { status: 'observation' });
+    expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'status.set', status: 'observation' });
   });
 
-  it('clicking "Utskrevet" from in_treatment calls updatePatient with discharged', async () => {
+  it('clicking "Utskrevet" from in_treatment calls executePatientAction with discharged', async () => {
     const { patient } = await renderWithPatient('in_treatment');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
 
     fireEvent.click(within(container).getByTestId('status-btn-discharged'));
 
-    expect(mockUpdatePatient).toHaveBeenCalledWith(patient.id, { status: 'discharged' });
+    expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'status.set', status: 'discharged' });
   });
 
-  it('clicking "Under behandling" from observation calls updatePatient with in_treatment', async () => {
+  it('clicking "Under behandling" from observation calls executePatientAction with in_treatment', async () => {
     const { patient } = await renderWithPatient('observation');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
 
     fireEvent.click(within(container).getByTestId('status-btn-in_treatment'));
 
-    expect(mockUpdatePatient).toHaveBeenCalledWith(patient.id, { status: 'in_treatment' });
+    expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'status.set', status: 'in_treatment' });
   });
 });
 
 // ---------------------------------------------------------------------------
-// 4. SBAR gate — "Overført" opens the modal; api.updatePatient is NOT called yet
+// 4. SBAR gate — "Overført" opens the modal; executePatientAction is NOT called yet
 // ---------------------------------------------------------------------------
 
 describe('"Overført" button — SBAR modal gate', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('clicking "Overført" opens the SBAR modal dialog without calling updatePatient', async () => {
+  it('clicking "Overført" opens the SBAR modal dialog without calling executePatientAction', async () => {
     const { patient } = await renderWithPatient('in_treatment');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
 
@@ -244,8 +235,7 @@ describe('"Overført" button — SBAR modal gate', () => {
     // SBAR dialog must appear
     expect(screen.getByRole('dialog', { name: 'SBAR-overlevering' })).toBeInTheDocument();
 
-    // api.updatePatient must NOT have been called at this point
-    expect(mockUpdatePatient).not.toHaveBeenCalled();
+    expect(mockExecutePatientAction).not.toHaveBeenCalled();
   });
 
   it('clicking "Overført" from observation also opens SBAR modal', async () => {
@@ -255,7 +245,7 @@ describe('"Overført" button — SBAR modal gate', () => {
     fireEvent.click(within(container).getByTestId('status-btn-transferred'));
 
     expect(screen.getByRole('dialog', { name: 'SBAR-overlevering' })).toBeInTheDocument();
-    expect(mockUpdatePatient).not.toHaveBeenCalled();
+    expect(mockExecutePatientAction).not.toHaveBeenCalled();
   });
 
   it('SBAR modal contains all four required fields (S, B, A, R)', async () => {
@@ -287,9 +277,9 @@ describe('Offline behaviour — status update queuing', () => {
     Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
   });
 
-  it('api.updatePatient still receives the call when offline (offline handling is inside api.ts)', async () => {
+  it('executePatientAction still receives the call when offline', async () => {
     /**
-     * The current api.ts does NOT yet wrap updatePatient in an offline queue
+     * The current api.ts does NOT yet wrap executePatientAction in an offline queue
      * (only createIncident does). This test documents the EXPECTED behaviour
      * once the feature is implemented — it will fail until api.updatePatient
      * gains the same offline-first treatment as createIncident.
@@ -297,21 +287,21 @@ describe('Offline behaviour — status update queuing', () => {
      * Expected flow:
      *   1. navigator.onLine === false
      *   2. User clicks a status transition button
-     *   3. api.updatePatient detects offline state
+     *   3. api.executePatientAction detects offline state
      *   4. enqueue() is called with the status payload
      *   5. A temporary patient object with _queued: true is returned
      *
      * This test is marked as a known-gap: it asserts the call reaches
-     * api.updatePatient, and separately that enqueue() was called.
+     * api.executePatientAction, and separately that enqueue() was called.
      */
 
-    // Make updatePatient simulate offline-queue behaviour
-    mockUpdatePatient.mockImplementation(async (id: string, data: Record<string, unknown>) => {
+    // Make executePatientAction simulate offline-queue behaviour
+    mockExecutePatientAction.mockImplementation(async (id: string, data: Record<string, unknown>) => {
       if (!navigator.onLine) {
-        await enqueue({ type: 'patient.status', patientId: id, ...data });
-        return { patient: { id, _queued: true, ...data } };
+        await enqueue({ type: 'patient.status', patientId: id, ...data, status: data.status });
+        return { patient: { id, _queued: true, ...data }, action: { id: 'queued' } };
       }
-      return { patient: { id, ...data } };
+      return { patient: { id, ...data }, action: { id: 'online' } };
     });
 
     const { patient } = await renderWithPatient('incoming');
@@ -319,8 +309,7 @@ describe('Offline behaviour — status update queuing', () => {
 
     fireEvent.click(within(container).getByTestId('status-btn-in_treatment'));
 
-    // updatePatient was called (even when offline, we try the update path)
-    expect(mockUpdatePatient).toHaveBeenCalledWith(patient.id, { status: 'in_treatment' });
+    expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'status.set', status: 'in_treatment' });
 
     // The offline queue received the payload
     expect(enqueue).toHaveBeenCalledWith(

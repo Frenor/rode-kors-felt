@@ -73,3 +73,66 @@ describe('GET /api/events/:id/stats', () => {
     expect(typeof body.totalPatients).toBe('number');
   });
 });
+
+describe('MCI deactivation summary', () => {
+  it('generates downloadable MCI handover summary when deactivated', async () => {
+    const token = getCoordinatorToken();
+
+    const incidentRes = await app.inject({
+      method: 'POST',
+      url: '/api/incidents',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        type: 'medical',
+        source: 'coordinator',
+        teamId: null,
+        location: { lat: 59.9139, lng: 10.7522 },
+        triageTag: 'immediate',
+      },
+    });
+    expect(incidentRes.statusCode).toBe(201);
+    const incidentId = incidentRes.json().incident.id as string;
+
+    const patientRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        incidentId,
+        ageGroup: 'adult',
+        presentingComplaint: 'Brystsmerter',
+      },
+    });
+    expect(patientRes.statusCode).toBe(201);
+
+    const activateRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${eventId}/mci`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { mciActive: true },
+    });
+    expect(activateRes.statusCode).toBe(200);
+
+    const deactivateRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${eventId}/mci`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { mciActive: false },
+    });
+    expect(deactivateRes.statusCode).toBe(200);
+
+    const summaryRes = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}/mci-summary`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(summaryRes.statusCode).toBe(200);
+    expect(summaryRes.headers['content-type']).toContain('text/html');
+    expect(summaryRes.headers['content-disposition']).toContain('rkf-mci-overlevering-');
+    expect(summaryRes.body).toContain('MCI-overlevering');
+    expect(summaryRes.body).toContain('Umiddelbar (rød)');
+  });
+});

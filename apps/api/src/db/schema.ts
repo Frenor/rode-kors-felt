@@ -35,6 +35,7 @@ export const patientStatusEnum = pgEnum('patient_status', [
 ]);
 export const escalationPathEnum = pgEnum('escalation_path', ['path_a_rk_ambulance', 'path_b_113']);
 export const triageTagEnum = pgEnum('triage_tag', ['immediate', 'delayed', 'minor', 'expectant']);
+export const actionEntityTypeEnum = pgEnum('action_entity_type', ['incident', 'patient', 'event']);
 
 // ─── Tables ──────────────────────────────────────────────────────
 
@@ -48,6 +49,9 @@ export const events = pgTable('events', {
   mciActivatedAt: timestamp('mci_activated_at', { withTimezone: true }),
   mciActivatedBy: varchar('mci_activated_by', { length: 255 }),
   mciSectors: text('mci_sectors').array().notNull().default([]),
+  mciSummaryHtml: text('mci_summary_html'),
+  mciSummaryGeneratedAt: timestamp('mci_summary_generated_at', { withTimezone: true }),
+  mciSummaryGeneratedBy: varchar('mci_summary_generated_by', { length: 255 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -152,4 +156,19 @@ export const vitalReadings = pgTable('vital_readings', {
   temperature: real('temperature'),
   onSupplementalOxygen: boolean('on_supplemental_oxygen'),
   acvpu: acvpuEnum('acvpu'),
+});
+
+export const actionEvents = pgTable('action_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+  entityType: actionEntityTypeEnum('entity_type').notNull(),
+  entityId: uuid('entity_id').notNull(),
+  actionType: varchar('action_type', { length: 80 }).notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: varchar('created_by', { length: 255 }).notNull(),
+  revertedAt: timestamp('reverted_at', { withTimezone: true }),
+  revertedBy: varchar('reverted_by', { length: 255 }),
+  revertReason: text('revert_reason'),
+  undoOfActionId: uuid('undo_of_action_id'),
 });

@@ -5,6 +5,8 @@ import type { AcvpuLevel } from '@rkf/shared-types';
  * Enums are re-exported from @rkf/shared-types where available.
  */
 
+import type { AcvpuLevel } from '@rkf/shared-types';
+
 export type { AcvpuLevel, PatientStatus as PatientStatusKey } from '@rkf/shared-types';
 
 export interface VitalsReading {
@@ -35,6 +37,21 @@ export interface MedicationRecord {
   givenAt: string;
 }
 
+export interface ActionHistoryEntry {
+  id: string;
+  eventId: string;
+  entityType: 'incident' | 'patient' | 'event';
+  entityId: string;
+  actionType: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  createdBy: string;
+  revertedAt?: string;
+  revertedBy?: string;
+  revertReason?: string;
+  undoOfActionId?: string;
+}
+
 export interface SickBayPatient {
   id: string;
   eventId: string;
@@ -45,6 +62,7 @@ export interface SickBayPatient {
   vitalsHistory: VitalsReading[];
   latestVitals: VitalsReading | null;
   notes: PatientNote[];
+  actionHistory?: ActionHistoryEntry[];
   createdAt: string;
   updatedAt: string;
 }
@@ -77,9 +95,10 @@ export interface Incident {
   triageTag?: string;
   teamId?: string;
   source?: string;
-  location?: GeoPoint;
+  location: GeoPoint;
   notes?: string;
   activeEscalation?: IncidentEscalation | null;
+  actionHistory?: ActionHistoryEntry[];
   mist?: IncidentMist;
   createdAt: string;
   updatedAt: string;
