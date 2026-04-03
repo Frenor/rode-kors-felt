@@ -84,6 +84,12 @@ jobs:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
       # ── Build web ────────────────────────────────────────────
+      - name: Build shared types package
+        run: pnpm --filter @rkf/shared-types build
+
+      - name: Build API
+        run: pnpm --filter @rkf/api build
+
       - name: Build web PWA
         run: pnpm --filter @rkf/web build
         env:
@@ -91,7 +97,7 @@ jobs:
 
       # ── Playwright browsers ──────────────────────────────────
       - name: Install Playwright browsers
-        run: pnpm --filter @rkf/web exec playwright install --with-deps chromium
+        run: pnpm --filter @rkf/web exec playwright install --with-deps chromium webkit
 
       # ── Start services ───────────────────────────────────────
       - name: Start API server

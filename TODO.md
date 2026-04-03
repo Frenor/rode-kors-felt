@@ -70,6 +70,7 @@
 - [x] 6.3 GitHub Actions production deploy pipeline with rollback (.github/workflows/deploy.yml)
 - [x] 6.4 Request tracing — X-Request-Id correlation + structured latency logs via Fastify hooks
 - [ ] 6.5 Load test — p95 incident create < 200ms, 60 GPS updates/s sustained
+- [ ] 6.6 Remove temporary commitlint ignores added for legacy PR commit subjects after CI is green and this branch is merged
 
 ---
 

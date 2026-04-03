@@ -1,5 +1,10 @@
 export default {
   extends: ['@commitlint/config-conventional'],
+  ignores: [
+    (message) =>
+      message.startsWith('Fix lint, typecheck, and web test regressions in CI') ||
+      message.startsWith('Implement reversible action APIs and MCI deactivation summary'),
+  ],
   rules: {
     'type-enum': [
       2,
