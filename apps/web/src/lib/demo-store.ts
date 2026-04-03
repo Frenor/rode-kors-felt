@@ -596,7 +596,7 @@ export const demoStore = {
   }),
 
   getEvents: () => ({
-    events: [{ id: 'demo-event', name: 'Holmenkollen Skimaraton 2026', active: true, createdAt: minsAgo(120) }],
+    events: [{ id: demoEvent.id, name: demoEvent.name, active: demoEvent.active, createdAt: demoEvent.createdAt }],
   }),
 
   toggleMci: (eventId: string, mciActive: boolean, mciSectors?: string[]) => {
@@ -612,15 +612,13 @@ export const demoStore = {
 
       demoEvent.mciSummaryHtml = `<!doctype html><html lang="nb"><head><meta charset="utf-8"><title>MCI-overlevering</title><style>body{font-family:Arial,sans-serif;margin:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}</style></head><body><h1>MCI-overlevering (demo)</h1><p>Arrangement: ${demoEvent.name}</p><p>Generert: ${new Date().toLocaleString('nb-NO')}</p><table><thead><tr><th>Triage</th><th>Antall</th></tr></thead><tbody><tr><td>Umiddelbar</td><td>${triage.immediate}</td></tr><tr><td>Utsatt</td><td>${triage.delayed}</td></tr><tr><td>Mindre</td><td>${triage.minor}</td></tr><tr><td>Forventet</td><td>${triage.expectant}</td></tr><tr><td>Uklassifisert</td><td>${triage.untagged}</td></tr></tbody></table></body></html>`;
     }
-
     demoEvent = {
       ...demoEvent,
       id: eventId,
       mciActive,
-      mciSectors,
+      mciSectors: mciSectors ?? demoEvent.mciSectors,
       mciActivatedBy: mciActive ? 'Koordinator' : null,
     };
-
     return { event: { ...demoEvent } };
   },
 

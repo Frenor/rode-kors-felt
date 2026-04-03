@@ -233,6 +233,11 @@ export function CoordinatorDashboard() {
         path: escalatePath,
         reason: escalateReason || undefined,
       });
+      if (res.escalation) {
+        setIncidents((prev) =>
+          prev.map((i) => (i.id === escalateTarget ? { ...i, activeEscalation: res.escalation } : i)),
+        );
+      }
       pushUndoToast('Eskalering sendt. Du kan angre i 10 sekunder.', res.action?.id);
     } finally {
       setEscalating(false);
@@ -272,7 +277,10 @@ export function CoordinatorDashboard() {
     if (!eventId) return;
     setTogglingMci(true);
     try {
-      await api.toggleMci(eventId, !mciActive);
+      const { event } = await api.toggleMci(eventId, !mciActive);
+      setMciActive(!!event?.mciActive);
+      setMciActivatedBy(event?.mciActivatedBy ?? null);
+      setMciSectors(event?.mciSectors ?? []);
       if (mciActive) {
         const blob = await api.downloadMciSummary(eventId);
         const url = URL.createObjectURL(blob);
