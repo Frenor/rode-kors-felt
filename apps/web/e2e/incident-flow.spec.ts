@@ -29,14 +29,14 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Click "Neste: MIST →"
   await page.getByRole('button', { name: /Neste: MIST/i }).click();
 
-  // Step 2: Fill in the mechanism textarea
-  await page.getByLabel(/M — Skademekanisme/i).fill('Test skademekanisme');
+  // Step 2: Select a mechanism chip
+  await page.getByRole('button', { name: 'Fall' }).click();
 
   // Click "Forhåndsvis →"
   await page.getByRole('button', { name: /Forhåndsvis/i }).click();
 
-  // Step 3: Verify "MIST" section shows the entered mechanism text
-  await expect(page.getByText('Test skademekanisme')).toBeVisible();
+  // Step 3: Verify "MIST" section shows selected mechanism
+  await expect(page.getByText('Fall')).toBeVisible();
 
   // Verify "TYPE" shows "Medisinsk"
   await expect(page.getByText('TYPE')).toBeVisible();
