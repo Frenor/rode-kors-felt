@@ -4,6 +4,7 @@ import { authRoutes } from '../routes/auth.js';
 import { eventRoutes } from '../routes/events.js';
 import { incidentRoutes } from '../routes/incidents.js';
 import { patientRoutes } from '../routes/patients.js';
+import { actionRoutes } from '../routes/action-events.js';
 import { createToken } from '../middleware/auth.js';
 
 export async function buildApp() {
@@ -14,6 +15,7 @@ export async function buildApp() {
   await app.register(eventRoutes, { prefix: '/api/events' });
   await app.register(incidentRoutes, { prefix: '/api/incidents' });
   await app.register(patientRoutes, { prefix: '/api/patients' });
+  await app.register(actionRoutes, { prefix: '/api/actions' });
 
   await app.ready();
   return app;

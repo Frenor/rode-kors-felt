@@ -186,6 +186,37 @@ class ApiClient {
     });
   }
 
+  async executeIncidentAction(
+    incidentId: string,
+    data:
+      | { type: 'status.set'; status: string }
+      | { type: 'escalation.raise'; path: string; reason?: string }
+      | { type: 'escalation.resolve' }
+      | { type: 'escalation.reopen'; escalationId?: string },
+  ) {
+    if (DEMO) return demoStore.executeIncidentAction(incidentId, data);
+    return this.request<{ incident?: any; escalation?: any; action: any; ok?: boolean }>(`/incidents/${incidentId}/actions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async executePatientAction(patientId: string, data: { type: 'status.set'; status: string }) {
+    if (DEMO) return demoStore.executePatientAction(patientId, data);
+    return this.request<{ patient: any; action: any }>(`/patients/${patientId}/actions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async undoAction(actionId: string, reason?: string) {
+    if (DEMO) return demoStore.undoAction(actionId, reason);
+    return this.request<{ undoneAction: any; undoAction: any; result: any }>(`/actions/${actionId}/undo`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
   // Patients
   async getPatients(eventId: string) {
     if (DEMO) return demoStore.getPatients(eventId);

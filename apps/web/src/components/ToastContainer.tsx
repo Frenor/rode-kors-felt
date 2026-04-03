@@ -51,6 +51,28 @@ function ToastItem({ toast }: { toast: Toast }) {
       }}
     >
       <span style={{ flex: 1, lineHeight: 'var(--leading-normal)' }}>{toast.message}</span>
+      {toast.actionLabel && toast.onAction && (
+        <button
+          onClick={async () => {
+            await toast.onAction?.();
+            dismiss(toast.id);
+          }}
+          style={{
+            border: `1px solid ${styles.color}`,
+            background: 'transparent',
+            color: styles.color,
+            cursor: 'pointer',
+            fontSize: 'var(--text-xs)',
+            fontFamily: 'var(--font-mono)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '2px 8px',
+            lineHeight: 1.4,
+            flexShrink: 0,
+          }}
+        >
+          {toast.actionLabel}
+        </button>
+      )}
       <button
         aria-label="Lukk varsel"
         onClick={() => dismiss(toast.id)}

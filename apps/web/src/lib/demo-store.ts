@@ -299,11 +299,41 @@ const DEMO_TEAMS = [
   { id: 'team-foxtrot', name: 'Foxtrot', transport: 'foot',    currentPosition: null },
 ];
 
+let actionEvents: any[] = [];
+
+const createAction = (params: {
+  eventId: string;
+  entityType: 'incident' | 'patient' | 'event';
+  entityId: string;
+  actionType: string;
+  payload: Record<string, unknown>;
+  undoOfActionId?: string;
+}) => {
+  const action = {
+    id: `demo-action-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    eventId: params.eventId,
+    entityType: params.entityType,
+    entityId: params.entityId,
+    actionType: params.actionType,
+    payload: params.payload,
+    createdAt: new Date().toISOString(),
+    createdBy: 'demo-user',
+    undoOfActionId: params.undoOfActionId,
+  };
+  actionEvents = [action, ...actionEvents];
+  return action;
+};
+
+const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({
+  ...entity,
+  actionHistory: actionEvents.filter((a) => a.entityType === entityType && a.entityId === entity.id),
+});
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const demoStore = {
   getIncidents: (_eventId: string) => ({
-    incidents: [...incidents],
+    incidents: incidents.map((i) => mapWithHistory('incident', i)),
   }),
 
   createIncident: (data: Record<string, unknown>) => {
@@ -322,17 +352,18 @@ export const demoStore = {
     incidents = incidents.map((i) =>
       i.id === id ? { ...i, ...data, updatedAt: new Date().toISOString() } : i,
     );
-    return { incident: incidents.find((i) => i.id === id) };
+    const incident = incidents.find((i) => i.id === id);
+    return { incident: incident ? mapWithHistory('incident', incident) : undefined };
   },
 
-  escalateIncident: (incidentId: string, data: { path: string; reason?: string }) => ({
-    escalation: { id: `demo-esc-${Date.now()}`, incidentId, ...data, createdAt: new Date().toISOString() },
-  }),
+  escalateIncident: (incidentId: string, data: { path: string; reason?: string }) =>
+    demoStore.executeIncidentAction(incidentId, { type: 'escalation.raise', ...data }),
 
-  resolveEscalation: (_incidentId: string) => ({ ok: true }),
+  resolveEscalation: (incidentId: string) =>
+    demoStore.executeIncidentAction(incidentId, { type: 'escalation.resolve' }),
 
   getPatients: (_eventId: string) => ({
-    patients: [...patients],
+    patients: patients.map((p) => mapWithHistory('patient', p)),
   }),
 
   createPatient: (data: Record<string, unknown>) => {
@@ -354,7 +385,156 @@ export const demoStore = {
     patients = patients.map((p) =>
       p.id === id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p,
     );
-    return { patient: patients.find((p) => p.id === id) };
+    const patient = patients.find((p) => p.id === id);
+    return { patient: patient ? mapWithHistory('patient', patient) : undefined };
+  },
+
+  executeIncidentAction: (
+    incidentId: string,
+    data:
+      | { type: 'status.set'; status: string }
+      | { type: 'escalation.raise'; path: string; reason?: string }
+      | { type: 'escalation.resolve' }
+      | { type: 'escalation.reopen'; escalationId?: string },
+  ) => {
+    const incident = incidents.find((i) => i.id === incidentId);
+    if (!incident) throw new Error('Hendelse ikke funnet');
+
+    if (data.type === 'status.set') {
+      const previousStatus = incident.status;
+      incidents = incidents.map((i) =>
+        i.id === incidentId ? { ...i, status: data.status, updatedAt: new Date().toISOString() } : i,
+      );
+      const updated = incidents.find((i) => i.id === incidentId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'incident',
+        entityId: updated.id,
+        actionType: 'incident.status_set',
+        payload: { previousStatus, nextStatus: data.status },
+      });
+      return { incident: mapWithHistory('incident', updated), action };
+    }
+
+    if (data.type === 'escalation.raise') {
+      const escalation = {
+        id: `demo-esc-${Date.now()}`,
+        incidentId,
+        path: data.path,
+        reason: data.reason,
+        raisedAt: new Date().toISOString(),
+      };
+      incidents = incidents.map((i) =>
+        i.id === incidentId ? { ...i, activeEscalation: escalation, updatedAt: new Date().toISOString() } : i,
+      );
+      const updated = incidents.find((i) => i.id === incidentId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'incident',
+        entityId: updated.id,
+        actionType: 'incident.escalation_raised',
+        payload: { escalationId: escalation.id, path: escalation.path, reason: escalation.reason ?? null },
+      });
+      return { escalation, action };
+    }
+
+    if (data.type === 'escalation.resolve') {
+      const activeEscalation = incident.activeEscalation;
+      if (!activeEscalation) throw new Error('Ingen aktiv eskalering funnet');
+      incidents = incidents.map((i) =>
+        i.id === incidentId ? { ...i, activeEscalation: null, updatedAt: new Date().toISOString() } : i,
+      );
+      const updated = incidents.find((i) => i.id === incidentId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'incident',
+        entityId: updated.id,
+        actionType: 'incident.escalation_resolved',
+        payload: { escalation: activeEscalation, escalationId: activeEscalation.id },
+      });
+      return { ok: true, action };
+    }
+
+    const latestEscalationAction = actionEvents.find((a) =>
+      a.entityType === 'incident'
+      && a.entityId === incidentId
+      && a.actionType === 'incident.escalation_resolved',
+    );
+    const escalation = latestEscalationAction?.payload?.escalation;
+    if (!escalation) throw new Error('Eskalering ikke funnet');
+    incidents = incidents.map((i) =>
+      i.id === incidentId ? { ...i, activeEscalation: escalation, updatedAt: new Date().toISOString() } : i,
+    );
+    const updated = incidents.find((i) => i.id === incidentId)!;
+    const action = createAction({
+      eventId: updated.eventId,
+      entityType: 'incident',
+      entityId: updated.id,
+      actionType: 'incident.escalation_reopened',
+      payload: { escalationId: escalation.id },
+    });
+    return { escalation, action };
+  },
+
+  executePatientAction: (patientId: string, data: { type: 'status.set'; status: string }) => {
+    const patient = patients.find((p) => p.id === patientId);
+    if (!patient) throw new Error('Pasient ikke funnet');
+    const previousStatus = patient.status;
+    patients = patients.map((p) =>
+      p.id === patientId ? { ...p, status: data.status, updatedAt: new Date().toISOString() } : p,
+    );
+    const updated = patients.find((p) => p.id === patientId)!;
+    const action = createAction({
+      eventId: updated.eventId,
+      entityType: 'patient',
+      entityId: updated.id,
+      actionType: 'patient.status_set',
+      payload: { previousStatus, nextStatus: data.status },
+    });
+    return { patient: mapWithHistory('patient', updated), action };
+  },
+
+  undoAction: (actionId: string, reason?: string) => {
+    const target = actionEvents.find((a) => a.id === actionId);
+    if (!target) throw new Error('Handling ikke funnet');
+    if (target.revertedAt) throw new Error('Handling er allerede angret');
+
+    let undoResult: any;
+    if (target.actionType === 'incident.status_set') {
+      undoResult = demoStore.executeIncidentAction(target.entityId, {
+        type: 'status.set',
+        status: target.payload.previousStatus,
+      });
+      undoResult.action.actionType = 'incident.status_undo';
+      undoResult.action.undoOfActionId = target.id;
+    } else if (target.actionType === 'incident.escalation_raised') {
+      undoResult = demoStore.executeIncidentAction(target.entityId, { type: 'escalation.resolve' });
+      undoResult.action.actionType = 'incident.escalation_raise_undo';
+      undoResult.action.undoOfActionId = target.id;
+    } else if (target.actionType === 'incident.escalation_resolved') {
+      undoResult = demoStore.executeIncidentAction(target.entityId, { type: 'escalation.reopen' });
+      undoResult.action.actionType = 'incident.escalation_resolve_undo';
+      undoResult.action.undoOfActionId = target.id;
+    } else if (target.actionType === 'patient.status_set') {
+      undoResult = demoStore.executePatientAction(target.entityId, {
+        type: 'status.set',
+        status: target.payload.previousStatus,
+      });
+      undoResult.action.actionType = 'patient.status_undo';
+      undoResult.action.undoOfActionId = target.id;
+    } else {
+      throw new Error('Kan ikke angre denne handlingen');
+    }
+
+    target.revertedAt = new Date().toISOString();
+    target.revertedBy = 'demo-user';
+    target.revertReason = reason;
+
+    return {
+      undoneAction: target,
+      undoAction: undoResult.action,
+      result: undoResult,
+    };
   },
 
   addPatientNote: (patientId: string, text: string, author: string) => {
