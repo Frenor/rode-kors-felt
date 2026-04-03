@@ -11,8 +11,8 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Start from /firstaid (authenticated as first_aider)
   await expect(page).toHaveURL(/\/firstaid$/);
 
-  // Click "Meld hendelse"
-  await page.getByRole('button', { name: /Meld hendelse/i }).click();
+  // Click "Meld hendelse" (aria-label is currently "Meld ny hendelse")
+  await page.getByRole('button', { name: /Meld ny hendelse/i }).click();
 
   // Verify URL changes to /firstaid/incident
   await page.waitForURL('**/firstaid/incident');
@@ -20,8 +20,8 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Step 0: Click "Medisinsk"
   await page.getByRole('button', { name: 'Medisinsk' }).click();
 
-  // Step 1: Verify AVPU section is visible
-  await expect(page.getByText('D — Bevissthet (AVPU)')).toBeVisible();
+  // Step 1: Verify ACVPU section is visible
+  await expect(page.getByText('D — Bevissthet (ACVPU)')).toBeVisible();
 
   // Click the "A" button (Alert — Våken, short label "A")
   await page.getByRole('radio', { name: /Alert/i }).click();
@@ -29,8 +29,8 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Click "Neste: MIST →"
   await page.getByRole('button', { name: /Neste: MIST/i }).click();
 
-  // Step 2: Fill in the Mechanism textarea
-  await page.getByLabel(/M — Mechanism/i).fill('Test skademekanisme');
+  // Step 2: Fill in the mechanism textarea
+  await page.getByLabel(/M — Skademekanisme/i).fill('Test skademekanisme');
 
   // Click "Forhåndsvis →"
   await page.getByRole('button', { name: /Forhåndsvis/i }).click();
@@ -48,20 +48,20 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Wait for navigation back to /firstaid
   await page.waitForURL('**/firstaid');
 
-  // Verify "Meld hendelse" button is visible again
-  await expect(page.getByRole('button', { name: /Meld hendelse/i })).toBeVisible();
+  // Verify first aider CTA is visible again
+  await expect(page.getByRole('button', { name: /Meld ny hendelse/i })).toBeVisible();
 });
 
 test('back navigation works between steps', async ({ page }) => {
   // Navigate to /firstaid/incident (authenticated)
-  await page.getByRole('button', { name: /Meld hendelse/i }).click();
+  await page.getByRole('button', { name: /Meld ny hendelse/i }).click();
   await page.waitForURL('**/firstaid/incident');
 
   // Click "Medisinsk" (step 0 → step 1)
   await page.getByRole('button', { name: 'Medisinsk' }).click();
 
-  // Verify we are on step 1 (AVPU section visible)
-  await expect(page.getByText('D — Bevissthet (AVPU)')).toBeVisible();
+  // Verify we are on step 1 (ACVPU section visible)
+  await expect(page.getByText('D — Bevissthet (ACVPU)')).toBeVisible();
 
   // Click "← Tilbake" (step 1 → step 0)
   await page.getByRole('button', { name: /← Tilbake/i }).click();

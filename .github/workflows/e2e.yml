@@ -112,7 +112,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-${{ github.run_id }}
-          path: rkf/apps/web/playwright-report/
+          path: apps/web/playwright-report/
           retention-days: 14
 
       - name: Upload test traces (on failure)
@@ -120,5 +120,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces-${{ github.run_id }}
-          path: rkf/apps/web/test-results/
+          path: apps/web/test-results/
           retention-days: 7

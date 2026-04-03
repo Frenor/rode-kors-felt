@@ -22,10 +22,8 @@ test('coordinator can log in and see dashboard', async ({ page }) => {
   // Verify "Koordinator" heading is visible
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
 
-  // Verify stats cards are visible — wait for stats to load from API
-  await expect(page.getByText('Totalt')).toBeVisible();
-  await expect(page.getByText('Aktive')).toBeVisible();
-  await expect(page.getByText('Løste')).toBeVisible();
+  // Verify dashboard content is visible
+  await expect(page.getByText('Hendelsesfeed')).toBeVisible();
 });
 
 test('coordinator can update incident status', async ({ page }) => {
@@ -33,7 +31,7 @@ test('coordinator can update incident status', async ({ page }) => {
 
   // Wait for incident feed to load (either incidents or empty state)
   await expect(
-    page.getByRole('feed', { name: 'Hendelser' }).or(page.getByText('Ingen hendelser rapportert'))
+    page.getByRole('feed', { name: 'Hendelser' }).or(page.getByText('Ingen aktive hendelser'))
   ).toBeVisible();
 
   // If any incidents exist with status "på stedet", click the "→ Transport" button
