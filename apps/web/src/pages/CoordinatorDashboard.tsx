@@ -40,6 +40,7 @@ export function CoordinatorDashboard() {
   const [mciSectors, setMciSectors] = useState<string[]>([]);
   const [teamSectorAssignments, setTeamSectorAssignments] = useState<Record<string, { sector: string; assignedAt: string }>>({});
   const [togglingMci, setTogglingMci] = useState(false);
+  const [downloadingMciSummary, setDownloadingMciSummary] = useState(false);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
   const [connectedUsers, setConnectedUsers] = useState<number | undefined>(undefined);
   const [lastStatsUpdatedAt, setLastStatsUpdatedAt] = useState<number | undefined>(undefined);
@@ -237,8 +238,37 @@ export function CoordinatorDashboard() {
     setTogglingMci(true);
     try {
       await api.toggleMci(eventId, !mciActive);
+      if (mciActive) {
+        const blob = await api.downloadMciSummary(eventId);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `rkf-mci-overlevering-${eventId.slice(0, 8)}.html`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
     } finally {
       setTogglingMci(false);
+    }
+  };
+
+  const handleDownloadMciSummary = async () => {
+    if (!eventId) return;
+    setDownloadingMciSummary(true);
+    try {
+      const blob = await api.downloadMciSummary(eventId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rkf-mci-overlevering-${eventId.slice(0, 8)}.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingMciSummary(false);
     }
   };
 
@@ -353,7 +383,9 @@ export function CoordinatorDashboard() {
             mciActivatedBy={mciActivatedBy}
             incidents={incidents}
             togglingMci={togglingMci}
+            downloadingSummary={downloadingMciSummary}
             onToggleMci={handleToggleMci}
+            onDownloadSummary={handleDownloadMciSummary}
           />
           <ResourceAllocationBoard
             teams={teams}

@@ -69,6 +69,15 @@ export async function eventRoutes(app: FastifyInstance) {
     }
 
     const now = new Date();
+    const deactivatingMci = existing.mciActive && !body.mciActive;
+    const summaryAttachment = deactivatingMci
+      ? await buildMciSummaryAttachment({
+          eventId: id,
+          eventName: existing.name,
+          generatedBy: user.email ?? 'koordinator',
+        })
+      : null;
+
     const [updated] = await db
       .update(events)
       .set({
@@ -76,6 +85,9 @@ export async function eventRoutes(app: FastifyInstance) {
         mciActivatedAt: body.mciActive ? (existing.mciActivatedAt ?? now) : null,
         mciActivatedBy: body.mciActive ? (existing.mciActivatedBy ?? user.email ?? 'koordinator') : null,
         mciSectors: body.mciSectors ?? existing.mciSectors,
+        mciSummaryHtml: summaryAttachment?.html ?? existing.mciSummaryHtml,
+        mciSummaryGeneratedAt: summaryAttachment?.generatedAt ?? existing.mciSummaryGeneratedAt,
+        mciSummaryGeneratedBy: summaryAttachment?.generatedBy ?? existing.mciSummaryGeneratedBy,
         updatedAt: now,
       })
       .where(eq(events.id, id))
@@ -85,11 +97,41 @@ export async function eventRoutes(app: FastifyInstance) {
     broadcast({
       type: wsType,
       eventId: id,
-      payload: { mciActive: body.mciActive, activatedBy: user.email ?? 'koordinator' },
+      payload: {
+        mciActive: body.mciActive,
+        activatedBy: user.email ?? 'koordinator',
+        summaryGenerated: Boolean(summaryAttachment),
+      },
       timestamp: now.toISOString(),
     });
 
     return { event: mapEvent(updated!) };
+  });
+
+  // Download latest MCI handover summary
+  app.get('/:id/mci-summary', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user;
+    if (user.role !== 'coordinator' && user.role !== 'admin') {
+      return reply.code(403).send({ error: 'Kun koordinator kan laste ned MCI-overlevering' });
+    }
+
+    const { id } = request.params as { id: string };
+
+    const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
+    if (!event) {
+      return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    }
+
+    if (!event.mciSummaryHtml) {
+      return reply.code(404).send({ error: 'Ingen MCI-overlevering er generert ennå' });
+    }
+
+    reply.header('Content-Type', 'text/html; charset=utf-8');
+    reply.header(
+      'Content-Disposition',
+      `attachment; filename="rkf-mci-overlevering-${id.slice(0, 8)}.html"`,
+    );
+    return reply.send(event.mciSummaryHtml);
   });
 
   // Post-event debrief report
@@ -211,13 +253,182 @@ export async function eventRoutes(app: FastifyInstance) {
   });
 }
 
-function mapEvent(row: typeof events.$inferSelect) {
+async function buildMciSummaryAttachment(input: {
+  eventId: string;
+  eventName: string;
+  generatedBy: string;
+}) {
+  const [eventIncidents, eventPatients, eventTeams] = await Promise.all([
+    db.select().from(incidents).where(eq(incidents.eventId, input.eventId)),
+    db.select().from(patients).where(eq(patients.eventId, input.eventId)),
+    db.select().from(teams).where(eq(teams.eventId, input.eventId)),
+  ]);
+
+  const triageCounts = {
+    immediate: 0,
+    delayed: 0,
+    minor: 0,
+    expectant: 0,
+    untagged: 0,
+  };
+  for (const incident of eventIncidents) {
+    if (incident.triageTag) {
+      triageCounts[incident.triageTag] += 1;
+    } else {
+      triageCounts.untagged += 1;
+    }
+  }
+
+  const patientArrivalsByIncident = new Map<string, number>();
+  for (const patient of eventPatients) {
+    if (!patient.incidentId) continue;
+    const arrivalMs = patient.arrivalTime.getTime();
+    const current = patientArrivalsByIncident.get(patient.incidentId);
+    if (current === undefined || arrivalMs < current) {
+      patientArrivalsByIncident.set(patient.incidentId, arrivalMs);
+    }
+  }
+
+  const firstResponseMinutes = eventIncidents
+    .map((incident) => {
+      const firstArrivalMs = patientArrivalsByIncident.get(incident.id);
+      if (firstArrivalMs === undefined) return null;
+      return Math.max(
+        0,
+        Math.round((firstArrivalMs - incident.createdAt.getTime()) / 60000),
+      );
+    })
+    .filter((value): value is number => value !== null);
+
+  const averageFirstResponseMinutes = firstResponseMinutes.length > 0
+    ? Math.round(firstResponseMinutes.reduce((sum, value) => sum + value, 0) / firstResponseMinutes.length)
+    : null;
+
+  const teamNames = new Map(eventTeams.map((team) => [team.id, team.name]));
+  const deploymentMap = new Map<string, number>();
+  for (const incident of eventIncidents) {
+    if (!incident.teamId) continue;
+    deploymentMap.set(incident.teamId, (deploymentMap.get(incident.teamId) ?? 0) + 1);
+  }
+
+  const deployments = [...deploymentMap.entries()]
+    .map(([teamId, count]) => ({
+      teamId,
+      teamName: teamNames.get(teamId) ?? 'Ukjent lag',
+      count,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const generatedAt = new Date();
+
+  const html = `<!doctype html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MCI-overlevering — ${escapeHtml(input.eventName)}</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: "IBM Plex Sans", Arial, sans-serif; margin: 24px; color: #111827; line-height: 1.5; }
+    h1, h2 { margin: 0 0 10px; }
+    h1 { font-size: 28px; }
+    h2 { margin-top: 24px; font-size: 20px; }
+    .muted { color: #4b5563; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { text-align: left; padding: 10px 12px; border: 1px solid #d1d5db; }
+    th { background: #f3f4f6; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .card { border: 1px solid #d1d5db; border-radius: 8px; padding: 12px; background: #ffffff; }
+    @media print {
+      body { margin: 12mm; font-size: 12pt; }
+      .card { break-inside: avoid; }
+      a { color: #111827; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <h1>MCI-overlevering</h1>
+  <p class="muted"><strong>Arrangement:</strong> ${escapeHtml(input.eventName)}</p>
+  <p class="muted"><strong>Generert:</strong> ${generatedAt.toLocaleString('nb-NO')}</p>
+  <p class="muted"><strong>Generert av:</strong> ${escapeHtml(input.generatedBy)}</p>
+
+  <h2>START-triage</h2>
+  <div class="grid">
+    <div class="card"><strong>Umiddelbar (rød):</strong> ${triageCounts.immediate}</div>
+    <div class="card"><strong>Utsatt (gul):</strong> ${triageCounts.delayed}</div>
+    <div class="card"><strong>Mindre (grønn):</strong> ${triageCounts.minor}</div>
+    <div class="card"><strong>Forventet (sort):</strong> ${triageCounts.expectant}</div>
+    <div class="card"><strong>Uklassifisert:</strong> ${triageCounts.untagged}</div>
+    <div class="card"><strong>Totalt:</strong> ${eventIncidents.length}</div>
+  </div>
+
+  <h2>Tid til første respons</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Målepunkt</th>
+        <th>Verdi</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Gjennomsnitt (minutter)</td>
+        <td>${averageFirstResponseMinutes ?? 'Ingen data'}</td>
+      </tr>
+      <tr>
+        <td>Hendelser med målt respons</td>
+        <td>${firstResponseMinutes.length} / ${eventIncidents.length}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Lagdisponering</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Lag</th>
+        <th>Antall tildelte hendelser</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${
+        deployments.length > 0
+          ? deployments
+              .map((row) => `<tr><td>${escapeHtml(row.teamName)}</td><td>${row.count}</td></tr>`)
+              .join('')
+          : '<tr><td colspan="2">Ingen registrerte lagdisponeringer</td></tr>'
+      }
+    </tbody>
+  </table>
+</body>
+</html>`;
+
   return {
-    ...row,
-    startDate: row.startDate.toISOString(),
-    endDate: row.endDate.toISOString(),
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    html,
+    generatedAt,
+    generatedBy: input.generatedBy,
+  };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function mapEvent(row: typeof events.$inferSelect) {
+  const { mciSummaryHtml: _mciSummaryHtml, ...rest } = row;
+  return {
+    ...rest,
+    hasMciSummary: Boolean(_mciSummaryHtml),
+    startDate: rest.startDate.toISOString(),
+    endDate: rest.endDate.toISOString(),
+    mciSummaryGeneratedAt: rest.mciSummaryGeneratedAt?.toISOString(),
+    createdAt: rest.createdAt.toISOString(),
+    updatedAt: rest.updatedAt.toISOString(),
   };
 }
 

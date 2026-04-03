@@ -155,6 +155,18 @@ class ApiClient {
     return res.blob();
   }
 
+  async downloadMciSummary(eventId: string): Promise<Blob> {
+    if (DEMO) {
+      return demoStore.downloadMciSummary(eventId);
+    }
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE}/events/${eventId}/mci-summary`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('Kunne ikke laste ned MCI-overlevering');
+    return res.blob();
+  }
+
   async toggleMci(eventId: string, mciActive: boolean, mciSectors?: string[]) {
     if (DEMO) return demoStore.toggleMci(eventId, mciActive, mciSectors);
     return this.request<{ event: any }>(`/events/${eventId}/mci`, {
