@@ -45,10 +45,10 @@ export const ageLabels: Record<string, string> = {
 
 export const STATUS_TRANSITIONS: Record<string, string[]> = {
   incoming: ['in_treatment', 'observation'],
-  in_treatment: ['observation', 'discharged', 'transferred'],
-  observation: ['in_treatment', 'discharged', 'transferred'],
-  discharged: [],
-  transferred: [],
+  in_treatment: ['incoming', 'observation', 'discharged', 'transferred'],
+  observation: ['incoming', 'in_treatment', 'discharged', 'transferred'],
+  discharged: ['observation', 'in_treatment'],
+  transferred: ['observation', 'in_treatment'],
 };
 
 export const routeLabels: Record<string, string> = {

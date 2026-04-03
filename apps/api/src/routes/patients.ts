@@ -3,6 +3,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { incidents, medicationRecords, patients, vitalReadings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
+import { applyPatientAction, getActionHistoryByEntityIds } from './action-events.js';
 import { broadcast } from './ws.js';
 
 export async function patientRoutes(app: FastifyInstance) {
@@ -22,6 +23,12 @@ export async function patientRoutes(app: FastifyInstance) {
       .where(eq(patients.eventId, targetEventId))
       .orderBy(desc(patients.arrivalTime));
 
+    const actionHistoryByPatientId = await getActionHistoryByEntityIds({
+      eventId: targetEventId,
+      entityType: 'patient',
+      entityIds: patientRows.map((p) => p.id),
+    });
+
     const patientsWithVitals = await Promise.all(
       patientRows.map(async (p) => {
         const vitalsHistory = await db
@@ -31,7 +38,7 @@ export async function patientRoutes(app: FastifyInstance) {
           .orderBy(desc(vitalReadings.timestamp));
 
         return {
-          ...mapPatient(p),
+          ...mapPatient(p, { actionHistory: actionHistoryByPatientId.get(p.id) ?? [] }),
           latestVitals: vitalsHistory.length > 0 ? mapVitals(vitalsHistory[0]!) : null,
           vitalsHistory: vitalsHistory.map(mapVitals),
         };
@@ -61,9 +68,15 @@ export async function patientRoutes(app: FastifyInstance) {
       .where(eq(vitalReadings.patientId, id))
       .orderBy(desc(vitalReadings.timestamp));
 
+    const actionHistoryByPatientId = await getActionHistoryByEntityIds({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityIds: [id],
+    });
+
     return {
       patient: {
-        ...mapPatient(patient),
+        ...mapPatient(patient, { actionHistory: actionHistoryByPatientId.get(id) ?? [] }),
         latestVitals: vitalsHistory.length > 0 ? mapVitals(vitalsHistory[0]!) : null,
         vitalsHistory: vitalsHistory.map(mapVitals),
       },
@@ -131,10 +144,21 @@ export async function patientRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
     }
 
+    if (body.status) {
+      const result = await applyPatientAction({
+        patientId: id,
+        user: (request as any).user,
+        body: { type: 'status.set', status: body.status },
+      });
+      if (result.error) {
+        return reply.code(result.error.code).send({ error: result.error.message });
+      }
+      return result;
+    }
+
     const [updated] = await db
       .update(patients)
       .set({
-        ...(body.status && { status: body.status as typeof patients.$inferInsert['status'] }),
         ...(body.assignedClinician !== undefined && { assignedClinician: body.assignedClinician }),
         ...(body.diagnosisFlags && { diagnosisFlags: body.diagnosisFlags }),
         updatedAt: new Date(),
@@ -143,6 +167,18 @@ export async function patientRoutes(app: FastifyInstance) {
       .returning();
 
     return { patient: mapPatient(updated!) };
+  });
+
+  app.post('/:id/actions', { preHandler: requireAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { type: 'status.set'; status: string };
+    const result = await applyPatientAction({
+      patientId: id,
+      user: (request as any).user,
+      body,
+    });
+    if (result.error) return reply.code(result.error.code).send({ error: result.error.message });
+    return result;
   });
 
   // Add clinical note (append-only)
@@ -286,12 +322,13 @@ export async function patientRoutes(app: FastifyInstance) {
   });
 }
 
-function mapPatient(row: typeof patients.$inferSelect) {
+function mapPatient(row: typeof patients.$inferSelect, extras?: { actionHistory?: unknown[] }) {
   return {
     ...row,
     arrivalTime: row.arrivalTime.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    actionHistory: extras?.actionHistory ?? [],
   };
 }
 

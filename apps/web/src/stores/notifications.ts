@@ -7,6 +7,8 @@ export interface Toast {
   message: string;
   level: ToastLevel;
   patientId?: string;
+  actionLabel?: string;
+  onAction?: () => void | Promise<void>;
   /** Auto-dismiss after this many ms. 0 = persist until dismissed. */
   autoDismissMs: number;
 }

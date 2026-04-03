@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const STEPS: Record<string, string[]> = {
+const STEPS = {
   coordinator: [
     'Se hendelsesfeeden til venstre og kartet til høyre — 3 aktive hendelser',
     'Klikk "⚠ Eskalér" på en hendelse for å eskalere til AMK',
@@ -18,14 +18,15 @@ const STEPS: Record<string, string[]> = {
     'Klikk "Meld hendelse" for å rapportere en ny hendelse',
     'Fyll ut skjemaet steg for steg — GPS-posisjon fanges automatisk',
   ],
-};
+} as const;
 
 interface DemoWalkthroughProps {
   role: string | null;
 }
 
 export function DemoWalkthrough({ role }: DemoWalkthroughProps) {
-  const steps = (role && STEPS[role]) ?? STEPS.coordinator;
+  const roleKey: keyof typeof STEPS = role && role in STEPS ? (role as keyof typeof STEPS) : 'coordinator';
+  const steps = [...(STEPS[roleKey] ?? STEPS.coordinator)];
   const storageKey = `rkf-demo-step-${role ?? 'unknown'}`;
   const [step, setStep] = useState(() => {
     const saved = localStorage.getItem(storageKey);
@@ -82,7 +83,7 @@ export function DemoWalkthrough({ role }: DemoWalkthroughProps) {
       </p>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 4 }}>
-          {steps.map((_, i) => (
+          {steps.map((_, i: number) => (
             <span
               key={i}
               style={{
