@@ -46,7 +46,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql://rkf_dev:rkf_dev_password@localhost:5432/rkf
+      DATABASE_URL: postgresql://rkf_dev:rkf_dev_password@127.0.0.1:5432/rkf
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -57,7 +57,12 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test -- --coverage
+      - name: Wait for Postgres to be ready
+        run: |
+          timeout 30 bash -c \
+            'until pg_isready -h 127.0.0.1 -p 5432 -U rkf_dev -d rkf; do sleep 1; done'
+      - run: pnpm --filter @rkf/api test
+      - run: pnpm --filter @rkf/web test -- --coverage
 
   build:
     name: Build
