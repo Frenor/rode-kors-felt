@@ -42,6 +42,12 @@ function nextDelay(): number {
 }
 
 function getWsUrl(token: string) {
+  const explicitWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
+  if (explicitWsUrl) {
+    const hasQuery = explicitWsUrl.includes('?');
+    const sep = hasQuery ? '&' : '?';
+    return `${explicitWsUrl}${sep}token=${encodeURIComponent(token)}`;
+  }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
 }

@@ -90,6 +90,7 @@ jobs:
         run: pnpm --filter @rkf/web test:e2e
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:3000
+          VITE_WS_URL: ws://localhost:4000/ws
           # Credentials from CLAUDE.md dev seed
           E2E_FIRST_AIDER_CODE: "123456"
           E2E_SICK_BAY_CODE: "654321"
