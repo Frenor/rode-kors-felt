@@ -57,31 +57,35 @@ variable "db_password" {
 # ─── VPC ────────────────────────────────────
 
 module "vpc" {
-  source = "../modules/vpc"
+  source = "../../modules/vpc"
 
-  environment = var.environment
-  cidr_block  = "10.0.0.0/16"
+  environment        = var.environment
+  cidr_block         = "10.0.0.0/16"
+  single_nat_gateway = true
 }
 
 # ─── RDS PostgreSQL ─────────────────────────
 
 module "rds" {
-  source = "../modules/rds"
+  source = "../../modules/rds"
 
   environment        = var.environment
   vpc_id             = module.vpc.vpc_id
+  vpc_cidr_block     = module.vpc.vpc_cidr_block
   private_subnet_ids = module.vpc.private_subnet_ids
   db_password        = var.db_password
   instance_class     = "db.t4g.micro"
+  multi_az           = false
 }
 
 # ─── ElastiCache Redis ─────────────────────
 
 module "redis" {
-  source = "../modules/redis"
+  source = "../../modules/redis"
 
   environment        = var.environment
   vpc_id             = module.vpc.vpc_id
+  vpc_cidr_block     = module.vpc.vpc_cidr_block
   private_subnet_ids = module.vpc.private_subnet_ids
   node_type          = "cache.t4g.micro"
 }
@@ -89,11 +93,12 @@ module "redis" {
 # ─── ECS Cluster ───────────────────────────
 
 module "ecs" {
-  source = "../modules/ecs"
+  source = "../../modules/ecs"
 
-  environment = var.environment
-  vpc_id      = module.vpc.vpc_id
-  subnet_ids  = module.vpc.private_subnet_ids
+  environment    = var.environment
+  vpc_id         = module.vpc.vpc_id
+  subnet_ids     = module.vpc.private_subnet_ids
+  create_service = false
 }
 
 # ─── Outputs ───────────────────────────────
