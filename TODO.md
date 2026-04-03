@@ -47,7 +47,7 @@
 - [x] 4.2 START triage tag selector on incidents (Umiddelbar/Utsatt/Mindre/Forventet)
 - [x] 4.3 MCI overview panel — live triage counts + color-coded map overlay
 - [ ] 4.4 Resource allocation board — teams × sectors grid
-- [ ] 4.5 MCI deactivation + downloadable handover summary
+- [x] 4.5 MCI deactivation + downloadable handover summary
 
 ---
 

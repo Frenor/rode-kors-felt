@@ -75,7 +75,7 @@ export interface Incident {
   triageTag?: string;
   teamId?: string;
   source?: string;
-  location?: GeoPoint;
+  location: GeoPoint;
   notes?: string;
   activeEscalation?: IncidentEscalation | null;
   mist?: IncidentMist;

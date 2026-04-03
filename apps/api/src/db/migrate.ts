@@ -74,6 +74,9 @@ export async function runMigrations(): Promise<void> {
         mci_activated_at  TIMESTAMPTZ,
         mci_activated_by  VARCHAR(255),
         mci_sectors       TEXT[] NOT NULL DEFAULT '{}',
+        mci_summary_html  TEXT,
+        mci_summary_generated_at TIMESTAMPTZ,
+        mci_summary_generated_by VARCHAR(255),
         created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -184,6 +187,9 @@ export async function runMigrations(): Promise<void> {
       ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_activated_at TIMESTAMPTZ;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_activated_by VARCHAR(255);
       ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_sectors      TEXT[] NOT NULL DEFAULT '{}';
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_html TEXT;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_generated_at TIMESTAMPTZ;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_generated_by VARCHAR(255);
 
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS triage_tag triage_tag;
     `);
