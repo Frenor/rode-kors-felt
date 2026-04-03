@@ -72,21 +72,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ── Database ─────────────────────────────────────────────
-      - name: Run database migrations
-        run: pnpm --filter @rkf/api db:migrate
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-
-      - name: Seed test data
-        run: pnpm --filter @rkf/api db:seed:test
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-
       # ── Build web ────────────────────────────────────────────
-      - name: Build shared types package
-        run: pnpm --filter @rkf/shared-types build
-
       - name: Build API
         run: pnpm --filter @rkf/api build
 
@@ -101,7 +87,7 @@ jobs:
 
       # ── Start services ───────────────────────────────────────
       - name: Start API server
-        run: pnpm --filter @rkf/api start &
+        run: pnpm --filter @rkf/api dev &
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           REDIS_URL: ${{ env.REDIS_URL }}
