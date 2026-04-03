@@ -85,28 +85,6 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --filter @rkf/web exec playwright install --with-deps chromium webkit
 
-      # ── Start services ───────────────────────────────────────
-      - name: Start API server
-        run: pnpm --filter @rkf/api dev &
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-          REDIS_URL: ${{ env.REDIS_URL }}
-          JWT_SECRET: ${{ env.JWT_SECRET }}
-          PORT: 4000
-
-      - name: Wait for API to be ready
-        run: |
-          timeout 30 bash -c \
-            'until curl -sf http://localhost:4000/health; do sleep 1; done'
-
-      - name: Start Web preview server
-        run: pnpm --filter @rkf/web preview --port 3000 &
-
-      - name: Wait for Web to be ready
-        run: |
-          timeout 20 bash -c \
-            'until curl -sf http://localhost:3000; do sleep 1; done'
-
       # ── Run E2E tests ────────────────────────────────────────
       - name: Run Playwright tests
         run: pnpm --filter @rkf/web test:e2e

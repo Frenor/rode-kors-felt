@@ -17,12 +17,10 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
     { name: 'tablet', use: { ...devices['iPad (gen 7)'] } },
   ],
-  webServer: isCI
-    ? undefined
-    : {
-        command: 'pnpm --filter @rkf/api dev & pnpm --filter @rkf/web dev',
-        url: 'http://localhost:3000',
-        reuseExistingServer: true,
-        timeout: 30_000,
-      },
+  webServer: {
+    command: 'pnpm --filter @rkf/api dev & pnpm --filter @rkf/web dev',
+    url: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
+    reuseExistingServer: !isCI,
+    timeout: 60_000,
+  },
 });
