@@ -87,7 +87,7 @@ jobs:
 
       # ── Run E2E tests ────────────────────────────────────────
       - name: Run Playwright tests
-        run: pnpm --filter @rkf/web test:e2e
+        run: pnpm --filter @rkf/web test:e2e --project local-full
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:3000
           VITE_WS_URL: ws://localhost:4000/ws

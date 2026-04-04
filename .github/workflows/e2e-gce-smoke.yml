@@ -1,0 +1,55 @@
+name: GCE Production Smoke E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 5 * * 1-5'
+
+concurrency:
+  group: gce-prod-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: GCE Read-Only Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @rkf/web exec playwright install --with-deps chromium
+
+      - name: Run GCE smoke tests
+        run: pnpm --filter @rkf/web test:e2e --project gce-prod-smoke
+        env:
+          PLAYWRIGHT_GCE_BASE_URL: ${{ vars.PLAYWRIGHT_GCE_BASE_URL }}
+          PLAYWRIGHT_GCE_AUTH_STATE: ${{ secrets.PLAYWRIGHT_GCE_AUTH_STATE }}
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gce-prod-smoke-playwright-report-${{ github.run_id }}
+          path: apps/web/playwright-report/
+          retention-days: 14
+
+      - name: Upload test traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gce-prod-smoke-playwright-traces-${{ github.run_id }}
+          path: apps/web/test-results/
+          retention-days: 7

@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { isProject, resetBrowserState } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+test.beforeEach(async ({ page }, testInfo) => {
+  test.skip(!isProject(testInfo, 'local-full'), 'local-full only');
+  await resetBrowserState(page);
 });
 
 test('renders numpad and accepts 6-digit code', async ({ page }) => {
@@ -44,8 +45,8 @@ test('valid first aider code navigates to /firstaid', async ({ page }) => {
   // Wait for navigation to /firstaid
   await page.waitForURL('**/firstaid');
 
-  // Verify first aider CTA is visible (aria-label is "Meld ny hendelse")
-  await expect(page.getByRole('button', { name: /Meld ny hendelse/i })).toBeVisible();
+  // Verify "Meld hendelse" button is visible
+  await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
 });
 
 test('valid sickbay code navigates to /sickbay', async ({ page }) => {

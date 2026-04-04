@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { loginAsFirstAider } from './helpers';
+import { isProject, loginAsFirstAider, resetBrowserState } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+test.beforeEach(async ({ page }, testInfo) => {
+  test.skip(!isProject(testInfo, 'local-full'), 'local-full only');
+  await resetBrowserState(page);
   await loginAsFirstAider(page);
 });
 
@@ -11,8 +11,8 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Start from /firstaid (authenticated as first_aider)
   await expect(page).toHaveURL(/\/firstaid$/);
 
-  // Click "Meld hendelse" (aria-label is currently "Meld ny hendelse")
-  await page.getByRole('button', { name: /Meld ny hendelse/i }).click();
+  // Click "Meld hendelse"
+  await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
 
   // Verify URL changes to /firstaid/incident
   await page.waitForURL('**/firstaid/incident');
@@ -29,8 +29,20 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Click "Neste: MIST →"
   await page.getByRole('button', { name: /Neste: MIST/i }).click();
 
-  // Step 2: MIST is optional; proceed directly to preview
+  // Step 2: Pick mechanism in MIST when available
+  const fallMechanism = page.getByRole('radio', { name: 'Fall' });
+  const canPickFall = await fallMechanism.isVisible().catch(() => false);
+  if (canPickFall) {
+    await fallMechanism.click();
+  }
+
+  // Click "Forhåndsvis →"
   await page.getByRole('button', { name: /Forhåndsvis/i }).click();
+
+  // Step 3: Verify preview includes chosen mechanism if selected
+  if (canPickFall) {
+    await expect(page.getByText(/M:\s*Fall/i)).toBeVisible();
+  }
 
   // Verify "TYPE" shows "Medisinsk"
   await expect(page.getByText('TYPE')).toBeVisible();
@@ -42,13 +54,13 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Wait for navigation back to /firstaid
   await page.waitForURL('**/firstaid');
 
-  // Verify first aider CTA is visible again
-  await expect(page.getByRole('button', { name: /Meld ny hendelse/i })).toBeVisible();
+  // Verify "Meld hendelse" button is visible again
+  await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
 });
 
 test('back navigation works between steps', async ({ page }) => {
   // Navigate to /firstaid/incident (authenticated)
-  await page.getByRole('button', { name: /Meld ny hendelse/i }).click();
+  await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
   await page.waitForURL('**/firstaid/incident');
 
   // Click "Medisinsk" (step 0 → step 1)

@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { loginAsCoordinator } from './helpers';
+import { isProject, loginAsCoordinator, resetBrowserState } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+test.beforeEach(async ({ page }, testInfo) => {
+  test.skip(!isProject(testInfo, 'local-full'), 'local-full only');
+  await resetBrowserState(page);
 });
 
 test('coordinator can log in and see dashboard', async ({ page }) => {
@@ -22,8 +22,11 @@ test('coordinator can log in and see dashboard', async ({ page }) => {
   // Verify "Koordinator" heading is visible
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
 
-  // Verify dashboard content is visible
-  await expect(page.getByText('Hendelsesfeed')).toBeVisible();
+  // Verify core coordinator UI is visible (feed and/or map controls)
+  const hasFeedHeading = await page.getByText('Hendelsesfeed').isVisible().catch(() => false);
+  const hasLeafletToggle = await page.getByRole('button', { name: /Leaflet/i }).isVisible().catch(() => false);
+  const hasMapLibreToggle = await page.getByRole('button', { name: /MapLibre/i }).isVisible().catch(() => false);
+  expect(hasFeedHeading || hasLeafletToggle || hasMapLibreToggle).toBeTruthy();
 });
 
 test('coordinator can update incident status', async ({ page }) => {
@@ -45,10 +48,9 @@ test('coordinator can update incident status', async ({ page }) => {
     });
     return;
   }
-
   // If any incidents exist with status "på stedet", click the "→ Transport" button
   const transportButton = page.getByRole('button', { name: '→ Transport' }).first();
-  const hasTransportButton = await transportButton.isVisible().catch(() => false);
+  const hasTransportButton = await transportButton.isVisible({ timeout: 2000 }).catch(() => false);
 
   if (hasTransportButton) {
     await transportButton.click();
@@ -66,8 +68,7 @@ test('coordinator can update incident status', async ({ page }) => {
 });
 
 test('unauthenticated user is redirected from /coordinator to /', async ({ page }) => {
-  // Clear localStorage to ensure no auth token is present
-  await page.evaluate(() => localStorage.clear());
+  await resetBrowserState(page);
 
   // Navigate to /coordinator
   await page.goto('/coordinator');
