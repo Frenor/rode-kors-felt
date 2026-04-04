@@ -85,11 +85,18 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --filter @rkf/web exec playwright install --with-deps chromium webkit
 
+      - name: Prepare Playwright artifact directories
+        run: |
+          rm -rf apps/web/playwright-report/local-full apps/web/test-results/local-full
+          mkdir -p apps/web/playwright-report apps/web/test-results
+
       # ── Run E2E tests ────────────────────────────────────────
       - name: Run Playwright tests
         run: pnpm --filter @rkf/web test:e2e --project local-full
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:3000
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/local-full
+          PLAYWRIGHT_TEST_RESULTS_DIR: test-results/local-full
           VITE_WS_URL: ws://localhost:4000/ws
           # Credentials from CLAUDE.md dev seed
           E2E_FIRST_AIDER_CODE: "123456"
@@ -102,8 +109,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ github.run_id }}
-          path: apps/web/playwright-report/
+          name: local-full-playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/web/playwright-report/local-full/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -111,7 +118,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-${{ github.run_id }}
-          path: apps/web/test-results/
+          name: local-full-playwright-traces-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/web/test-results/local-full/
           if-no-files-found: ignore
           retention-days: 7

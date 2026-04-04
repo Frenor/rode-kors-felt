@@ -85,6 +85,11 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --filter @rkf/web exec playwright install --with-deps chromium
 
+      - name: Prepare Playwright artifact directories
+        run: |
+          rm -rf apps/web/playwright-report/pages-demo apps/web/test-results/pages-demo
+          mkdir -p apps/web/playwright-report apps/web/test-results
+
       - name: Verify deployed Pages preview is reachable
         env:
           PREVIEW_URL: ${{ needs.deploy.outputs.page_url }}
@@ -105,19 +110,23 @@ jobs:
         run: pnpm --filter @rkf/web test:e2e --project pages-demo
         env:
           PLAYWRIGHT_DEMO_BASE_URL: ${{ needs.deploy.outputs.page_url }}
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/pages-demo
+          PLAYWRIGHT_TEST_RESULTS_DIR: test-results/pages-demo
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pages-demo-playwright-report-${{ github.run_id }}
-          path: apps/web/playwright-report/
+          name: pages-demo-playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/web/playwright-report/pages-demo/
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload test traces
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: pages-demo-playwright-traces-${{ github.run_id }}
-          path: apps/web/test-results/
+          name: pages-demo-playwright-traces-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/web/test-results/pages-demo/
+          if-no-files-found: ignore
           retention-days: 7

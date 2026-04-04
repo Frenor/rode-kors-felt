@@ -32,24 +32,33 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --filter @rkf/web exec playwright install --with-deps chromium
 
+      - name: Prepare Playwright artifact directories
+        run: |
+          rm -rf apps/web/playwright-report/gce-prod-smoke apps/web/test-results/gce-prod-smoke
+          mkdir -p apps/web/playwright-report apps/web/test-results
+
       - name: Run GCE smoke tests
         run: pnpm --filter @rkf/web test:e2e --project gce-prod-smoke
         env:
           PLAYWRIGHT_GCE_BASE_URL: ${{ vars.PLAYWRIGHT_GCE_BASE_URL }}
           PLAYWRIGHT_GCE_AUTH_STATE: ${{ secrets.PLAYWRIGHT_GCE_AUTH_STATE }}
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/gce-prod-smoke
+          PLAYWRIGHT_TEST_RESULTS_DIR: test-results/gce-prod-smoke
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gce-prod-smoke-playwright-report-${{ github.run_id }}
-          path: apps/web/playwright-report/
+          name: gce-prod-smoke-playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/web/playwright-report/gce-prod-smoke/
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload test traces
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: gce-prod-smoke-playwright-traces-${{ github.run_id }}
-          path: apps/web/test-results/
+          name: gce-prod-smoke-playwright-traces-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/web/test-results/gce-prod-smoke/
+          if-no-files-found: ignore
           retention-days: 7
