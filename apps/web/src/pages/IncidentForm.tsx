@@ -1,8 +1,10 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { api } from '../lib/api';
+import type { EventIndoorLayout, Incident as SharedIncident } from '../lib/types';
+import { IndoorLocationPicker } from '../components/IndoorLocationPicker';
 
 // Lazy-load GPS mini-map to avoid bloating first-aider bundle
 const GpsMiniMap = lazy(() => import('./GpsMiniMap'));
@@ -10,6 +12,8 @@ const GpsMiniMap = lazy(() => import('./GpsMiniMap'));
 type AcvpuLevel = 'alert' | 'confused' | 'voice' | 'pain' | 'unresponsive';
 type IncidentType = 'medical' | 'trauma' | 'psychiatric' | 'other';
 type TriageTag = 'immediate' | 'delayed' | 'minor' | 'expectant';
+type IndoorLocationMode = 'gps' | 'indoor_zone';
+type IncidentLocationContext = NonNullable<SharedIncident['locationContext']>;
 
 const TRIAGE_OPTIONS: { value: TriageTag; label: string; color: string; bg: string; border: string }[] = [
   { value: 'immediate', label: 'UMIDDELBAR', color: '#fff', bg: '#cc0000', border: '#aa0000' },
@@ -130,6 +134,11 @@ export function IncidentForm() {
   const [triageTag, setTriageTag] = useState<TriageTag | null>(null);
   const [acvpu, setAcvpu] = useState<AcvpuLevel | null>(null);
   const [vitals, setVitals] = useState({ pulse: '', spo2: '', rr: '', pain: '' });
+  const [indoorLayout, setIndoorLayout] = useState<EventIndoorLayout | null>(null);
+  const [locationMode, setLocationMode] = useState<IndoorLocationMode>('gps');
+  const [indoorFloorId, setIndoorFloorId] = useState('');
+  const [indoorZoneId, setIndoorZoneId] = useState('');
+  const [indoorLoading, setIndoorLoading] = useState(false);
 
   // MIST — chip selections + optional free-text overrides
   const [mistMechanism, setMistMechanism] = useState<string[]>([]);
@@ -145,6 +154,67 @@ export function IncidentForm() {
   const [error, setError] = useState('');
   const [isListening, setIsListening] = useState(false);
   const hasSpeechApi = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadEvent = async () => {
+      if (!eventId) return;
+      setIndoorLoading(true);
+      try {
+        const result = await api.getEventIndoorLayout(eventId);
+        if (!active) return;
+
+        const layout = result?.layout ?? null;
+        setIndoorLayout(layout);
+
+        if (layout?.floors?.length) {
+          const firstFloor = layout.floors[0];
+          if (!firstFloor) return;
+          const firstZone = firstFloor.zones[0];
+          setLocationMode('indoor_zone');
+          setIndoorFloorId((prev) => prev || firstFloor.id);
+          setIndoorZoneId((prev) => prev || firstZone?.id || '');
+        }
+      } catch {
+        if (active) setIndoorLayout(null);
+      } finally {
+        if (active) setIndoorLoading(false);
+      }
+    };
+
+    loadEvent();
+
+    return () => {
+      active = false;
+    };
+  }, [eventId]);
+
+  useEffect(() => {
+    if (!indoorLayout?.floors.length) return;
+    if (!indoorFloorId) {
+      const firstFloor = indoorLayout.floors[0];
+      if (!firstFloor) return;
+      const firstZone = firstFloor.zones[0];
+      setIndoorFloorId(firstFloor.id);
+      setIndoorZoneId(firstZone?.id ?? '');
+      return;
+    }
+
+    const selectedFloor = indoorLayout.floors.find((floor) => floor.id === indoorFloorId);
+    if (!selectedFloor) {
+      const firstFloor = indoorLayout.floors[0];
+      if (!firstFloor) return;
+      const firstZone = firstFloor.zones[0];
+      setIndoorFloorId(firstFloor.id);
+      setIndoorZoneId(firstZone?.id ?? '');
+      return;
+    }
+
+    if (!selectedFloor.zones.some((zone) => zone.id === indoorZoneId)) {
+      setIndoorZoneId(selectedFloor.zones[0]?.id ?? '');
+    }
+  }, [indoorLayout, indoorFloorId, indoorZoneId]);
 
   const handleSubmit = async () => {
     if (!type || !eventId) return;
@@ -163,6 +233,22 @@ export function IncidentForm() {
         triageTag: triageTag ?? undefined,
         clientId: crypto.randomUUID(),
       };
+
+      if (indoorLayout) {
+        const selectedFloor = indoorLayout.floors.find((floor) => floor.id === indoorFloorId) ?? indoorLayout.floors[0];
+        const selectedZone = selectedFloor?.zones.find((zone) => zone.id === indoorZoneId) ?? selectedFloor?.zones[0];
+        const locationContext: IncidentLocationContext = locationMode === 'indoor_zone'
+          ? {
+              mode: 'indoor_zone',
+              venueId: indoorLayout.venueId,
+              floorId: selectedFloor?.id,
+              zoneId: selectedZone?.id,
+              zoneLabel: selectedZone?.label,
+            }
+          : { mode: 'gps' };
+
+        payload.locationContext = locationContext;
+      }
 
       if (vitals.pulse || vitals.spo2 || vitals.rr || vitals.pain) {
         payload.vitals = {
@@ -214,6 +300,8 @@ export function IncidentForm() {
   };
 
   const stepTitles = ['Hendelsestype', 'ABCDE-vurdering', 'MIST-rapport', 'Bekreft og send'];
+  const selectedIndoorFloor = indoorLayout?.floors.find((floor) => floor.id === indoorFloorId) ?? indoorLayout?.floors[0];
+  const selectedIndoorZone = selectedIndoorFloor?.zones.find((zone) => zone.id === indoorZoneId) ?? selectedIndoorFloor?.zones[0];
 
   // Success screen — shown 1.5s before redirect
   if (submitted) {
@@ -281,6 +369,37 @@ export function IncidentForm() {
       {/* Step 0: Incident Type + optional START triage tag */}
       {step === 0 && (
         <div key="step-0" className="animate-slide-up" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {indoorLayout && (
+            <IndoorLocationPicker
+              layout={indoorLayout}
+              mode={locationMode}
+              floorId={indoorFloorId}
+              zoneId={indoorZoneId}
+              onModeChange={setLocationMode}
+              onFloorChange={(floorId) => {
+                setIndoorFloorId(floorId);
+                const floor = indoorLayout.floors.find((item) => item.id === floorId);
+                setIndoorZoneId(floor?.zones[0]?.id ?? '');
+              }}
+              onZoneChange={setIndoorZoneId}
+            />
+          )}
+
+          {indoorLoading && !indoorLayout && (
+            <div
+              style={{
+                padding: 'var(--space-3)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-surface-sunken)',
+                color: 'var(--color-text-subtle)',
+                fontSize: 'var(--text-sm)',
+              }}
+            >
+              Laster innendørs kartdata…
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             {INCIDENT_TYPES.map((t) => (
               <button
@@ -332,11 +451,31 @@ export function IncidentForm() {
                     opacity: triageTag !== null && triageTag !== opt.value ? 0.5 : 1,
                   }}
                 >
-                  {opt.label}
+                {opt.label}
                 </button>
               ))}
             </div>
           </fieldset>
+
+          {indoorLayout && (
+            <div
+              style={{
+                padding: 'var(--space-3)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-surface-sunken)',
+              }}
+            >
+              <div style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+                LOKASJON
+              </div>
+              <div style={{ fontWeight: 600 }}>
+                {locationMode === 'indoor_zone'
+                  ? `${selectedIndoorFloor?.label ?? 'Ukjent etasje'} / ${selectedIndoorZone?.label ?? 'Ukjent sone'}`
+                  : 'GPS-fallback'}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -619,6 +758,16 @@ export function IncidentForm() {
                 <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>TYPE</span>
                 <div style={{ fontWeight: 600 }}>{INCIDENT_TYPES.find(t => t.value === type)?.label}</div>
               </div>
+              {indoorLayout && (
+                <div>
+                  <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>LOKASJON</span>
+                  <div style={{ fontWeight: 600 }}>
+                    {locationMode === 'indoor_zone'
+                      ? `${selectedIndoorFloor?.label ?? 'Ukjent etasje'} / ${selectedIndoorZone?.label ?? 'Ukjent sone'}`
+                      : 'GPS-fallback'}
+                  </div>
+                </div>
+              )}
               {acvpu && (
                 <div>
                   <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>ACVPU</span>
@@ -657,10 +806,27 @@ export function IncidentForm() {
                   </div>
                 </div>
               )}
-              {/* GPS minimap + status on confirm */}
+              {/* GPS / innendørs lokasjon på bekreftelse */}
               <div>
                 <span style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>POSISJON</span>
-                {gpsStatus === 'ok' && gpsPosition ? (
+                {indoorLayout && locationMode === 'indoor_zone' ? (
+                  <div
+                    style={{
+                      marginTop: 'var(--space-2)',
+                      padding: 'var(--space-3)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px dashed var(--color-border)',
+                      background: 'var(--color-surface-sunken)',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600 }}>
+                      {selectedIndoorFloor?.label ?? 'Ukjent etasje'} / {selectedIndoorZone?.label ?? 'Ukjent sone'}
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginTop: 4 }}>
+                      {indoorLayout.venueName ?? indoorLayout.venueId}
+                    </div>
+                  </div>
+                ) : gpsStatus === 'ok' && gpsPosition ? (
                   <>
                     <Suspense fallback={<div style={{ height: 150, background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)' }} />}>
                       <GpsMiniMap lat={gpsPosition.lat} lng={gpsPosition.lng} />

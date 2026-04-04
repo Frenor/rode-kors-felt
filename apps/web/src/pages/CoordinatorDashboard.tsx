@@ -16,6 +16,7 @@ import { MCIOverviewPanel } from './Coordinator/MCIOverviewPanel';
 import { ResourceAllocationBoard } from './Coordinator/ResourceAllocationBoard';
 import { StatsGrid } from './Coordinator/StatsGrid';
 import { IncidentFeed } from './Coordinator/IncidentFeed';
+import type { EventIndoorLayout, MapRuntimeConfig } from '../lib/types';
 
 const filterIncidentsByStatKey = (incs: Incident[], key: string): Incident[] => {
   if (key === 'activeIncidents') return incs.filter((i) => !['resolved'].includes(i.status));
@@ -30,6 +31,10 @@ export function CoordinatorDashboard() {
   const addToast = useNotificationStore((s) => s.add);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
+  const [eventIndoorLayout, setEventIndoorLayout] = useState<EventIndoorLayout | null>(null);
+  const [mapRuntimeConfig, setMapRuntimeConfig] = useState<MapRuntimeConfig | null>(null);
+  const [mapProvider, setMapProvider] = useState<'leaflet' | 'maplibre'>('leaflet');
+  const [presentation3d, setPresentation3d] = useState(false);
   const [stats, setStats] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
   const [escalateTarget, setEscalateTarget] = useState<string | null>(null);
@@ -106,19 +111,33 @@ export function CoordinatorDashboard() {
       api.getIncidents(eventId),
       api.getEventStats(eventId),
       api.getEvent(eventId),
-    ]).then(([incRes, statsRes, evtRes]) => {
-      setIncidents(incRes.incidents);
-      setStats((prev) => {
-        setPrevStats(prev);
-        return statsRes;
-      });
-      setLastStatsUpdatedAt(Date.now());
-      setTeams(evtRes.teams ?? []);
-      if (evtRes.event?.mciActive !== undefined) {
-        setMciActive(evtRes.event.mciActive);
-        setMciActivatedBy(evtRes.event.mciActivatedBy ?? null);
-        setMciSectors(evtRes.event.mciSectors ?? []);
-      }
+      api.getEventIndoorLayout(eventId),
+      api.getEventMapConfig(eventId),
+      ]).then(([incRes, statsRes, evtRes, indoorRes, mapConfigRes]) => {
+        setIncidents(incRes.incidents);
+        setStats((prev) => {
+          setPrevStats(prev);
+          return statsRes;
+        });
+        setLastStatsUpdatedAt(Date.now());
+        setTeams(evtRes.teams ?? []);
+        setEventIndoorLayout(indoorRes.layout ?? evtRes.event?.indoorLayout ?? null);
+        setMapRuntimeConfig(mapConfigRes.config ?? evtRes.event?.mapRuntimeConfig ?? null);
+        if (mapConfigRes.config?.provider) {
+          setMapProvider(mapConfigRes.config.provider);
+        } else if (evtRes.event?.mapRuntimeConfig?.provider) {
+          setMapProvider(evtRes.event.mapRuntimeConfig.provider);
+        }
+        if (mapConfigRes.config?.enable3d !== undefined) {
+          setPresentation3d(Boolean(mapConfigRes.config.enable3d));
+        } else if (evtRes.event?.mapRuntimeConfig?.enable3d !== undefined) {
+          setPresentation3d(Boolean(evtRes.event.mapRuntimeConfig.enable3d));
+        }
+        if (evtRes.event?.mciActive !== undefined) {
+          setMciActive(evtRes.event.mciActive);
+          setMciActivatedBy(evtRes.event.mciActivatedBy ?? null);
+          setMciSectors(evtRes.event.mciSectors ?? []);
+        }
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [eventId]);
@@ -478,12 +497,89 @@ export function CoordinatorDashboard() {
           top: 72,
           height: 'calc(100dvh - 80px)',
           borderRadius: 'var(--radius-md)',
-          overflow: 'hidden',
           border: '1px solid var(--color-border)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--color-surface)',
         }}>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              gap: 'var(--space-2)',
+              padding: 'var(--space-3)',
+              borderBottom: '1px solid var(--color-border)',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                Kartmotor
+              </span>
+              <button
+                type="button"
+                onClick={() => setMapProvider('leaflet')}
+                aria-pressed={mapProvider === 'leaflet'}
+                style={{
+                  minHeight: 40,
+                  padding: '0 var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  border: `1px solid ${mapProvider === 'leaflet' ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                  background: mapProvider === 'leaflet' ? 'var(--color-brand-dim)' : 'var(--color-surface)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                Leaflet
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapProvider('maplibre')}
+                aria-pressed={mapProvider === 'maplibre'}
+                style={{
+                  minHeight: 40,
+                  padding: '0 var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  border: `1px solid ${mapProvider === 'maplibre' ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                  background: mapProvider === 'maplibre' ? 'var(--color-brand-dim)' : 'var(--color-surface)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                MapLibre
+              </button>
+              {eventIndoorLayout && (
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                  Innendørs: {eventIndoorLayout.venueName ?? eventIndoorLayout.venueId}
+                </span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPresentation3d((value) => !value)}
+              aria-pressed={presentation3d}
+              style={{
+                minHeight: 40,
+                padding: '0 var(--space-3)',
+                borderRadius: 'var(--radius-md)',
+                border: `1px solid ${presentation3d ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                background: presentation3d ? 'var(--color-brand-dim)' : 'var(--color-surface)',
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              3D-presentasjon {presentation3d ? 'på' : 'av'}
+            </button>
+          </div>
+
           <EventMap
             incidents={incidentsWithLocation}
             teams={teams}
+            provider={mapProvider}
+            presentation3d={presentation3d}
+            mapRuntimeConfig={mapRuntimeConfig}
             onIncidentClick={handleScrollToIncident}
           />
         </div>
