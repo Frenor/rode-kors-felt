@@ -15,13 +15,13 @@ export function isProject(testInfo: TestInfo, allowed: string | string[]) {
 }
 
 export async function resetBrowserState(page: Page) {
-  await page.goto('/');
+  await page.goto('./');
   await page.evaluate(() => localStorage.clear());
   await page.context().clearCookies();
 }
 
 export async function loginAsFirstAider(page: Page) {
-  await page.goto('/');
+  await page.goto('./');
   for (const digit of ['1', '2', '3', '4', '5', '6']) {
     await page.getByRole('button', { name: digit }).click();
   }
@@ -30,7 +30,7 @@ export async function loginAsFirstAider(page: Page) {
 }
 
 export async function loginAsCoordinator(page: Page) {
-  await page.goto('/login');
+  await page.goto('./login');
   await page.getByLabel(/e-post/i).fill('admin@rkf.no');
   await page.getByLabel(/passord/i).fill('admin123');
   await page.getByRole('button', { name: /Logg inn/i }).click();

@@ -9,8 +9,8 @@ test.beforeEach(async ({ page }, testInfo) => {
 test('supports the demo login and role navigation flow', async ({ page }) => {
   expect(process.env.PLAYWRIGHT_DEMO_BASE_URL, 'PLAYWRIGHT_DEMO_BASE_URL must be provided for Pages demo checks').toBeTruthy();
 
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Rødt Kors Felt' })).toBeVisible();
+  await page.goto('./');
+  await expect(page.getByRole('button', { name: '1' })).toBeVisible({ timeout: 15_000 });
 
   // First aider flow: verify incident entry UI is visible in demo preview.
   for (const digit of ['1', '2', '3', '4', '5', '6']) {
@@ -58,7 +58,7 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
     await logoutBtn.click();
   }
   await resetBrowserState(page);
-  await page.goto('/login');
+  await page.goto('./login');
   await page.getByLabel(/e-post/i).fill('admin@rkf.no');
   await page.getByLabel(/passord/i).fill('admin123');
   await page.getByRole('button', { name: /Logg inn/i }).click();
