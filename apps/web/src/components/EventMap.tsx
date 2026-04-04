@@ -1,5 +1,5 @@
 import 'leaflet/dist/leaflet.css';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { MapRuntimeConfig } from '../lib/types';
@@ -48,6 +48,10 @@ type MapLibreInstance = {
   remove: () => void;
   addControl: (control: unknown, position?: string) => void;
   fitBounds: (bounds: [[number, number], [number, number]], options?: Record<string, unknown>) => void;
+  getSource: (sourceId: string) => unknown;
+  addSource: (sourceId: string, source: Record<string, unknown>) => void;
+  getLayer: (layerId: string) => unknown;
+  addLayer: (layer: Record<string, unknown>) => void;
   setPitch: (pitch: number) => void;
   setBearing: (bearing: number) => void;
 };
@@ -125,10 +129,53 @@ function BoundsFitter({ incidents, teams }: { incidents: Incident[]; teams: Team
 }
 
 const NORWAY_CENTER: GeoPoint = { lat: 64.5, lng: 17.5 };
+const MAPLIBRE_RUNTIME_URL = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
+
+let mapLibreRuntimePromise: Promise<MapLibreModule | null> | null = null;
 
 function getMapLibreRuntime(): MapLibreModule | null {
   if (typeof window === 'undefined') return null;
   return ((window as Window & { maplibregl?: MapLibreModule }).maplibregl ?? null);
+}
+
+function loadMapLibreRuntime(runtimeUrl = MAPLIBRE_RUNTIME_URL): Promise<MapLibreModule | null> {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  const existing = getMapLibreRuntime();
+  if (existing) return Promise.resolve(existing);
+  if (mapLibreRuntimePromise) return mapLibreRuntimePromise;
+
+  mapLibreRuntimePromise = new Promise<MapLibreModule | null>((resolve) => {
+    const complete = () => resolve(getMapLibreRuntime());
+    const scriptId = 'rkf-maplibre-runtime';
+    const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
+
+    if (existingScript) {
+      existingScript.addEventListener('load', complete, { once: true });
+      existingScript.addEventListener('error', () => resolve(null), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = runtimeUrl;
+    script.async = true;
+    script.onload = complete;
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  }).finally(() => {
+    if (!getMapLibreRuntime()) {
+      mapLibreRuntimePromise = null;
+    }
+  });
+
+  return mapLibreRuntimePromise ?? Promise.resolve(getMapLibreRuntime());
+}
+
+function layerToTileUrl(layerUrl: string, token?: string): string {
+  if (!token) return layerUrl;
+  if (layerUrl.includes('{token}')) return layerUrl.replaceAll('{token}', encodeURIComponent(token));
+  const separator = layerUrl.includes('?') ? '&' : '?';
+  return `${layerUrl}${separator}token=${encodeURIComponent(token)}`;
 }
 
 function toPopupHtml(incident: Incident): string {
@@ -149,6 +196,7 @@ function MapLibreCanvas({
   teams,
   center,
   onIncidentClick,
+  runtime,
   mapRuntimeConfig,
   presentation3d,
 }: {
@@ -156,15 +204,16 @@ function MapLibreCanvas({
   teams: Team[];
   center: GeoPoint;
   onIncidentClick: (incidentId: string) => void;
+  runtime: MapLibreModule;
   mapRuntimeConfig?: MapRuntimeConfig | null;
   presentation3d: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreInstance | null>(null);
   const markersRef = useRef<MapLibreMarker[]>([]);
-  const runtime = getMapLibreRuntime();
 
   const styleUrl = mapRuntimeConfig?.styleUrl ?? 'https://demotiles.maplibre.org/style.json';
+  const configuredLayers = mapRuntimeConfig?.layers ?? [];
 
   const points = useMemo(() => {
     const incidentPoints = incidents.map((i) => [i.location.lng, i.location.lat] as [number, number]);
@@ -175,7 +224,7 @@ function MapLibreCanvas({
   }, [incidents, teams]);
 
   useEffect(() => {
-    if (!runtime || !containerRef.current || mapRef.current) return;
+    if (!containerRef.current || mapRef.current) return;
 
     const map = new runtime.Map({
       container: containerRef.current,
@@ -204,7 +253,7 @@ function MapLibreCanvas({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !runtime) return;
+    if (!map) return;
 
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current = [];
@@ -257,6 +306,44 @@ function MapLibreCanvas({
 
   useEffect(() => {
     const map = mapRef.current;
+    if (!map || configuredLayers.length === 0) return;
+
+    const onLoad = () => {
+      configuredLayers.forEach((layer) => {
+        const sourceId = `rkf-overlay-source-${layer.id}`;
+        const layerId = `rkf-overlay-layer-${layer.id}`;
+        const tileUrl = layerToTileUrl(layer.url, layer.token);
+
+        if (!map.getSource(sourceId)) {
+          map.addSource(sourceId, {
+            type: 'raster',
+            tiles: [tileUrl],
+            tileSize: 256,
+          });
+        }
+
+        if (!map.getLayer(layerId)) {
+          map.addLayer({
+            id: layerId,
+            type: 'raster',
+            source: sourceId,
+            minzoom: layer.minZoom ?? 0,
+            maxzoom: layer.maxZoom ?? 22,
+          });
+        }
+      });
+    };
+
+    map.on('load', onLoad);
+    onLoad();
+
+    return () => {
+      map.off('load', onLoad);
+    };
+  }, [configuredLayers]);
+
+  useEffect(() => {
+    const map = mapRef.current;
     if (!map || points.length === 0) return;
 
     const lngs = points.map(([lng]) => lng);
@@ -280,12 +367,37 @@ export function EventMap({
   presentation3d = false,
   mapRuntimeConfig,
 }: EventMapProps) {
+  const [mapLibreRuntime, setMapLibreRuntime] = useState<MapLibreModule | null>(null);
+  const [mapLibreLoadAttempted, setMapLibreLoadAttempted] = useState(false);
+
   const mapCenter = center ?? NORWAY_CENTER;
   const activeIncidents = incidents.filter((i) => i.status !== 'resolved');
   const requestedProvider = mapRuntimeConfig?.provider ?? provider;
-  const hasMapLibreRuntime = Boolean(getMapLibreRuntime());
+  const configuredLayers = mapRuntimeConfig?.layers ?? [];
+  const hasMapLibreRuntime = Boolean(mapLibreRuntime);
   const usingMapLibreFallback = requestedProvider === 'maplibre' && !hasMapLibreRuntime;
-  const layerCount = mapRuntimeConfig?.layers?.length ?? 0;
+  const layerCount = configuredLayers.length;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (requestedProvider !== 'maplibre') {
+      setMapLibreRuntime(null);
+      setMapLibreLoadAttempted(false);
+      return;
+    }
+
+    setMapLibreRuntime(getMapLibreRuntime());
+    loadMapLibreRuntime().then((runtime) => {
+      if (cancelled) return;
+      setMapLibreRuntime(runtime);
+      setMapLibreLoadAttempted(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requestedProvider]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -309,7 +421,7 @@ export function EventMap({
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           {presentation3d && <span style={{ color: 'var(--color-brand)' }}>3D-presentasjon aktiv</span>}
-          {usingMapLibreFallback && <span style={{ color: 'var(--color-status-warning)' }}>MapLibre-runtime ikke tilgjengelig, bruker Leaflet-fallback</span>}
+          {usingMapLibreFallback && mapLibreLoadAttempted && <span style={{ color: 'var(--color-status-warning)' }}>MapLibre-runtime ikke tilgjengelig, bruker Leaflet-fallback</span>}
         </div>
       </div>
 
@@ -320,6 +432,7 @@ export function EventMap({
             teams={teams}
             center={mapCenter}
             onIncidentClick={onIncidentClick}
+            runtime={mapLibreRuntime!}
             mapRuntimeConfig={mapRuntimeConfig}
             presentation3d={presentation3d}
           />
@@ -334,6 +447,16 @@ export function EventMap({
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
+            {configuredLayers.map((layer) => (
+              <TileLayer
+                key={layer.id}
+                attribution={layer.attribution}
+                url={layerToTileUrl(layer.url, layer.token)}
+                minZoom={layer.minZoom}
+                maxZoom={layer.maxZoom}
+                opacity={0.85}
+              />
+            ))}
 
             <BoundsFitter incidents={activeIncidents} teams={teams} />
 
