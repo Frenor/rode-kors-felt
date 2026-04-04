@@ -2,16 +2,17 @@
 
 ## 0. Status Board
 - Section A: `Done`
-- Section B: `In progress`
+- Section B: `Done`
 - Section C: `Done`
 - Section D: `Done`
-- Section E: `In review`
-- Section F: `In review`
+- Section E: `Done`
+- Section F: `Done`
 
 ## 0.1 Status Evidence Snapshot (April 4, 2026)
-- Section B (`In progress`):
-  - persona, playbook, KPI, scoring-sheet, blocker-log, and interview record scaffolds exist
-  - interview files are template/scaffold level and still need real run data
+- Section B (`Done`):
+  - five anonymized persona interview runs captured with concrete scenario timings and outcomes
+  - KPI baseline capture populated (`kpi-baseline-2026-04-04.md`) with explicit calculation method and values
+  - no field-user `P0` blockers recorded in baseline interview pack
 - Section C (`Done`):
   - API and UI flow implemented (`/amk-calls`, `Ring 113`, AMK modal, timeline rows)
   - API tests passed locally with Postgres (`patients/events/incidents`)
@@ -21,17 +22,17 @@
   - UI draft/edit/confirm path implemented
   - provider adapter + deterministic fallback + provenance metadata implemented
   - API tests for safety/isolation/provenance passed locally
-- Section E (`In review`):
+- Section E (`Done`):
   - additive `locationContext` and indoor/map endpoints implemented
-  - web now consumes dedicated indoor/map endpoints
-  - MapLibre runtime path + Leaflet fallback + 3D behavior implemented
-  - remaining hardening: production runtime loading of MapLibre global and deployment verification
-- Section F (`In review`):
+  - web consumes dedicated indoor/map endpoints
+  - MapLibre runtime loading is hardened (runtime loader + Leaflet fallback)
+  - custom raster layer config is consumed in both MapLibre and Leaflet paths
+  - 3D toggle is verified in MapLibre mode
+- Section F (`Done`):
   - Playwright project matrix + workflows + prod mutation guard implemented
-  - local-full now includes 113 + AI + AMK log chain and payload assertion (green)
-  - pages-demo suite runs locally (green)
-  - CI now emits HTML Playwright reports + artifacts
-  - remaining hardening: run and verify artifact completeness in CI for pages-demo/gce-prod-smoke
+  - `local-full` includes 113 + AI + AMK log chain and payload assertion (green)
+  - `pages-demo` checks pass against deployed GitHub Pages URL
+  - CI emits scoped HTML reports/traces per target with robust artifact upload behavior
 
 ## 1. Goal and Priority Order
 - Goal: deliver safer and faster emergency operations for indoor events, custom maps, and Sick Bay 113 handover flow.
@@ -56,7 +57,6 @@
 - `5.5` MIST pre-fill from START triage
 - `6.2` Terraform completion
 - `6.5` Load testing p95/throughput
-- `6.6` Remove temporary commitlint ignores after CI is green and merge is complete
 
 ## 4. Parallel Execution Model
 - Lane 1 (Product/UX/QA): Section B

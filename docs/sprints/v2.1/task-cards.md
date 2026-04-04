@@ -30,7 +30,7 @@
   - manual doc review
 
 ### B2 — Baseline Interview Evidence Pack
-- Status: `In progress`
+- Status: `Done`
 - Owner role: `field-user` + `product-lead`
 - Depends on: B1
 - Scope:
@@ -49,6 +49,7 @@
   - baseline KPI section populated
 - Validation:
   - checklist review against `section-b-interview-playbook.md`
+  - reviewed 2026-04-04 evidence pack with KPI baseline and blocker ownership/due-date present
 
 ## Lane C (Web/API) — Section C
 
@@ -122,7 +123,7 @@
 ## Lane E (Web/API/Infra) — Section E
 
 ### E1 — Wire Web to Event Indoor/Map Endpoints
-- Status: `In review`
+- Status: `Done`
 - Owner role: `frontend-engineer`
 - Depends on: none
 - Scope:
@@ -138,9 +139,10 @@
   - UI reads server-side indoor/map config instead of local assumptions
 - Validation:
   - web unit tests or mocked integration tests
+  - validated in `local-full` E2E coordinator and incident flows
 
 ### E2 — Real MapLibre Rendering Path + Safe Fallback
-- Status: `In review`
+- Status: `Done`
 - Owner role: `frontend-engineer` + `ux-designer`
 - Depends on: E1
 - Scope:
@@ -156,6 +158,7 @@
   - 3D toggle changes map behavior in MapLibre mode
 - Validation:
   - `pnpm --filter @rkf/web typecheck`
+  - `pnpm --filter @rkf/web test -- src/__tests__/EventMap.maplibre.test.tsx src/__tests__/EventMap.runtime.test.tsx`
   - E2E assertions in `local-full`
 
 ### E3 — Indoor Payload Assertion E2E
@@ -189,7 +192,7 @@
   - `pnpm --filter @rkf/web test:e2e -- --project local-full`
 
 ### F2 — Deterministic HTML Report Artifacts in CI
-- Status: `In review`
+- Status: `Done`
 - Owner role: `devops-engineer` + `qa-engineer`
 - Depends on: none
 - Scope:
@@ -204,6 +207,7 @@
   - CI artifact always includes HTML report, screenshots, traces on failures
 - Validation:
   - dry-run workflow check + one CI run evidence
+  - pages workflow evidence includes `Publish to Pages` + `Demo E2E` green on latest push
 
 ## Suggested Parallel Assignment Set (Fastest)
 1. Stream Alpha: B1 + C1 + E1
@@ -212,8 +216,8 @@
 4. Stream Delta: B2 (starts once B1 is merged)
 
 ## Current Progress Snapshot
-- B: `In progress`
+- B: `Done`
 - C: `Done`
 - D: `Done`
-- E: `In review`
-- F: `In review`
+- E: `Done`
+- F: `Done`
