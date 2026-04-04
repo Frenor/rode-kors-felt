@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
 import websocket from '@fastify/websocket';
+import { createRequire } from 'node:module';
 import { pool } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
@@ -15,15 +16,23 @@ import { wsHandler } from './routes/ws.js';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
+const require = createRequire(import.meta.url);
+
+function getDevLoggerTransport() {
+  if (process.env.NODE_ENV === 'production') return undefined;
+  try {
+    require.resolve('pino-pretty');
+    return { target: 'pino-pretty', options: { colorize: true } };
+  } catch {
+    return undefined;
+  }
+}
 
 async function buildServer() {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || 'info',
-      transport:
-        process.env.NODE_ENV === 'development'
-          ? { target: 'pino-pretty', options: { colorize: true } }
-          : undefined,
+      transport: getDevLoggerTransport(),
     },
   });
 
