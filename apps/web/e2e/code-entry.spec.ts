@@ -44,8 +44,8 @@ test('valid first aider code navigates to /firstaid', async ({ page }) => {
   // Wait for navigation to /firstaid
   await page.waitForURL('**/firstaid');
 
-  // Verify "Meld hendelse" button is visible
-  await expect(page.getByRole('button', { name: /Meld hendelse/i })).toBeVisible();
+  // Verify first aider CTA is visible (aria-label is "Meld ny hendelse")
+  await expect(page.getByRole('button', { name: /Meld ny hendelse/i })).toBeVisible();
 });
 
 test('valid sickbay code navigates to /sickbay', async ({ page }) => {

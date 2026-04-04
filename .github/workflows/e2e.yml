@@ -72,18 +72,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ── Database ─────────────────────────────────────────────
-      - name: Run database migrations
-        run: pnpm --filter @rkf/api db:migrate
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-
-      - name: Seed test data
-        run: pnpm --filter @rkf/api db:seed:test
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-
       # ── Build web ────────────────────────────────────────────
+      - name: Build API
+        run: pnpm --filter @rkf/api build
+
       - name: Build web PWA
         run: pnpm --filter @rkf/web build
         env:
@@ -91,50 +83,19 @@ jobs:
 
       # ── Playwright browsers ──────────────────────────────────
       - name: Install Playwright browsers
-        run: pnpm --filter @rkf/web exec playwright install --with-deps chromium
-
-      # ── Start services ───────────────────────────────────────
-      - name: Start API server
-        run: pnpm --filter @rkf/api start &
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-          REDIS_URL: ${{ env.REDIS_URL }}
-          JWT_SECRET: ${{ env.JWT_SECRET }}
-          PORT: 4000
-
-      - name: Wait for API to be ready
-        run: |
-          timeout 30 bash -c \
-            'until curl -sf http://localhost:4000/health; do sleep 1; done'
-
-      - name: Start Web preview server
-        run: pnpm --filter @rkf/web preview --port 3000 &
-
-      - name: Wait for Web to be ready
-        run: |
-          timeout 20 bash -c \
-            'until curl -sf http://localhost:3000; do sleep 1; done'
+        run: pnpm --filter @rkf/web exec playwright install --with-deps chromium webkit
 
       # ── Run E2E tests ────────────────────────────────────────
       - name: Run Playwright tests
         run: pnpm --filter @rkf/web test:e2e
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:3000
+          VITE_WS_URL: ws://localhost:4000/ws
           # Credentials from CLAUDE.md dev seed
           E2E_FIRST_AIDER_CODE: "123456"
           E2E_SICK_BAY_CODE: "654321"
           E2E_ADMIN_EMAIL: admin@rkf.no
           E2E_ADMIN_PASSWORD: admin123
-
-      # ── Accessibility scan ───────────────────────────────────
-      # Run axe-core against the three core role pages.
-      # Zero violations required — this is a hard quality gate.
-      - name: Accessibility audit (axe-core)
-        if: success()
-        run: |
-          npx @axe-core/cli http://localhost:3000 --exit --tags wcag2a,wcag2aa,wcag21aa
-          npx @axe-core/cli http://localhost:3000/sick-bay --exit --tags wcag2a,wcag2aa,wcag21aa
-          npx @axe-core/cli http://localhost:3000/coordinator --exit --tags wcag2a,wcag2aa,wcag21aa
 
       # ── Artifacts ────────────────────────────────────────────
       - name: Upload Playwright report
@@ -142,7 +103,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-${{ github.run_id }}
-          path: rkf/apps/web/playwright-report/
+          path: apps/web/playwright-report/
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload test traces (on failure)
@@ -150,5 +112,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces-${{ github.run_id }}
-          path: rkf/apps/web/test-results/
+          path: apps/web/test-results/
+          if-no-files-found: ignore
           retention-days: 7

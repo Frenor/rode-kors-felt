@@ -28,14 +28,15 @@ vi.mock('../stores/notifications', () => ({
   }),
 }));
 
+const wsState = {
+  onMessage: vi.fn(() => () => {}),
+  send: vi.fn(),
+};
+
 vi.mock('../stores/ws', () => ({
-  useWsStore: vi.fn((selector?: (state: { onMessage: (handler: unknown) => () => void; send: (...args: unknown[]) => void }) => unknown) => {
-    const state = {
-      onMessage: vi.fn(() => () => {}),
-      send: vi.fn(),
-    };
-    return selector ? selector(state) : state;
-  }),
+  useWsStore: vi.fn((selector?: (state: typeof wsState) => unknown) =>
+    selector ? selector(wsState) : wsState,
+  ),
 }));
 
 const mockExecutePatientAction = vi.fn().mockResolvedValue({ patient: {}, action: { id: 'a1' } });

@@ -1,9 +1,9 @@
+import type { AcvpuLevel as SharedAcvpuLevel } from '@rkf/shared-types';
+
 /**
  * Shared frontend types — replaces `any` in both dashboards.
  * Enums are re-exported from @rkf/shared-types where available.
  */
-
-import type { AcvpuLevel } from '@rkf/shared-types';
 
 export type { AcvpuLevel, PatientStatus as PatientStatusKey } from '@rkf/shared-types';
 
@@ -15,7 +15,7 @@ export interface VitalsReading {
   painScore?: number;
   systolicBP?: number;
   temperature?: number;
-  acvpu?: AcvpuLevel;
+  acvpu?: SharedAcvpuLevel;
   timestamp: string;
 }
 

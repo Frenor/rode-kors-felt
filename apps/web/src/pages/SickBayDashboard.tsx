@@ -74,7 +74,6 @@ export function SickBayDashboard() {
 
   useEffect(() => {
     fetchPatients();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   // Live vitals updates via WebSocket — update specific patient in state
