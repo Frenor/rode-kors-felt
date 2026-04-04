@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { SickBayDashboard } from '../pages/SickBayDashboard';
 
 // ---------------------------------------------------------------------------
@@ -41,6 +41,19 @@ vi.mock('../stores/ws', () => ({
 
 const mockExecutePatientAction = vi.fn().mockResolvedValue({ patient: {}, action: { id: 'a1' } });
 const mockAddPatientNote = vi.fn().mockResolvedValue({ patient: {} });
+const mockGetAmkCallLogs = vi.fn().mockResolvedValue({ callLogs: [] });
+const mockGenerateAmkAssistDraft = vi.fn();
+const mockConfirmAmkAssist = vi.fn();
+const mockCreateAmkCallLog = vi.fn().mockResolvedValue({
+  callLog: {
+    id: 'amk-log-1',
+    calledAt: new Date().toISOString(),
+    summaryGiven: 'Oppsummert',
+    amkGuidance: 'Råd',
+    followUpOwner: 'Lege',
+  },
+  action: { id: 'amk-action-1' },
+});
 
 vi.mock('../lib/api', () => ({
   api: {
@@ -51,6 +64,10 @@ vi.mock('../lib/api', () => ({
     recordVitals: vi.fn(),
     recordMedication: vi.fn(),
     getMedications: vi.fn().mockResolvedValue({ medications: [] }),
+    getAmkCallLogs: (...args: unknown[]) => mockGetAmkCallLogs(...args),
+    generateAmkAssistDraft: (...args: unknown[]) => mockGenerateAmkAssistDraft(...args),
+    confirmAmkAssist: (...args: unknown[]) => mockConfirmAmkAssist(...args),
+    createAmkCallLog: (...args: unknown[]) => mockCreateAmkCallLog(...args),
     undoAction: vi.fn(),
   },
 }));
@@ -85,6 +102,7 @@ function makePatient(overrides: Record<string, unknown> = {}) {
     presentingComplaint: 'Ankel-skade',
     assignedClinician: null,
     notes: [],
+    actionHistory: [],
     diagnosisFlags: [],
     latestVitals: null,
     vitalsHistory: [],
@@ -258,6 +276,136 @@ describe('"Overført" button — SBAR modal gate', () => {
     expect(within(dialog).getByLabelText(/B — Bakgrunn/i)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/A — Vurdering/i)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/R — Anbefaling/i)).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. AMK brief — Ring 113, AI draft and structured call log
+// ---------------------------------------------------------------------------
+
+describe('AMK brief modal — structured 113 flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAmkCallLogs.mockResolvedValue({ callLogs: [] });
+    mockGenerateAmkAssistDraft.mockResolvedValue({
+      criticality: 'høy',
+      rationale: 'NEWS2 og kliniske funn tilsier høy prioritet.',
+      sayFirst: ['Si først 1', 'Si først 2'],
+      spokenScript: 'Foreslått script',
+      sbarDraft: {
+        situation: 'Pasient med brystsmerter.',
+        background: 'Ingen kjente tillegg.',
+        assessment: 'NEWS2 5.',
+        recommendation: 'Kontakt AMK.',
+      },
+    });
+    mockConfirmAmkAssist.mockResolvedValue({
+      ok: true,
+      action: { id: 'ai-confirm-1' },
+      confirmed: {
+        criticality: 'høy',
+        spokenScript: 'Foreslått script',
+        rationale: 'NEWS2 og kliniske funn tilsier høy prioritet.',
+        sayFirst: ['Si først 1', 'Si først 2'],
+        sbarDraft: {
+          situation: 'Pasient med brystsmerter.',
+          background: 'Ingen kjente tillegg.',
+          assessment: 'NEWS2 5.',
+          recommendation: 'Kontakt AMK.',
+        },
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: 'demo-user',
+      },
+    });
+  });
+
+  it('opens the AMK brief modal and shows the clinician warning plus tel:113 fallback', async () => {
+    await renderWithPatient('in_treatment');
+    fireEvent.click(screen.getByTestId('patient-ring-113'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'AMK-brief' });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('AI-beslutningsstøtte — kliniker avgjør')).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'Ring 113' })).toHaveAttribute('href', 'tel:113');
+    expect(within(dialog).getByText(/Hvis telefonlenken ikke åpner/i)).toBeInTheDocument();
+  });
+
+  it('generates an AI draft, allows script edits, and confirms the script', async () => {
+    const { patient } = await renderWithPatient('in_treatment');
+    fireEvent.click(screen.getByTestId('patient-ring-113'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'AMK-brief' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Generer AI-forslag' }));
+
+    const scriptBox = await screen.findByLabelText('Foreslått tale');
+    expect(scriptBox).toHaveValue('Foreslått script');
+
+    fireEvent.change(scriptBox, { target: { value: 'Redigert script' } });
+    await waitFor(() => {
+      expect(scriptBox).toHaveValue('Redigert script');
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Bekreft script' }));
+
+    await waitFor(() => {
+      expect(mockConfirmAmkAssist).toHaveBeenCalledWith(
+        patient.id,
+        expect.objectContaining({
+          criticality: 'høy',
+        }),
+        'Redigert script',
+      );
+    });
+  });
+
+  it('logs structured AMK call data', async () => {
+    const { patient } = await renderWithPatient('in_treatment');
+    fireEvent.click(screen.getByTestId('patient-ring-113'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'AMK-brief' });
+    fireEvent.change(within(dialog).getByLabelText('Oppsummering gitt'), { target: { value: 'Pasient med brystsmerter' } });
+    fireEvent.change(within(dialog).getByLabelText('AMK-veiledning'), { target: { value: 'Kontakt AMK' } });
+    fireEvent.change(within(dialog).getByLabelText('Videre ansvar'), { target: { value: 'Lege Andersen' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre AMK-logg' }));
+
+    await waitFor(() => {
+      expect(mockCreateAmkCallLog).toHaveBeenCalledWith(patient.id, expect.objectContaining({
+        summaryGiven: 'Pasient med brystsmerter',
+        amkGuidance: 'Kontakt AMK',
+        followUpOwner: 'Lege Andersen',
+      }));
+    });
+  });
+
+  it('renders dedicated AMK and AI timeline rows from action history artifacts', async () => {
+    const now = new Date().toISOString();
+    const actionHistory = [
+      {
+        id: 'a-amk-call',
+        eventId: 'evt-test',
+        entityType: 'patient',
+        entityId: 'pat-1',
+        actionType: 'patient.amk_call_logged',
+        payload: { callLog: { summaryGiven: 'Pasient med brystsmerter', amkGuidance: 'Kontakt AMK', followUpOwner: 'Lege Andersen' } },
+        createdAt: now,
+        createdBy: 'demo-user',
+      },
+      {
+        id: 'a-ai-confirm',
+        eventId: 'evt-test',
+        entityType: 'patient',
+        entityId: 'pat-1',
+        actionType: 'patient.amk_ai_script_confirmed',
+        payload: { confirmed: { criticality: 'høy', spokenScript: 'Redigert script' } },
+        createdAt: now,
+        createdBy: 'demo-user',
+      },
+    ];
+    await renderWithPatient('in_treatment', { actionHistory });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Logg' }));
+    expect(screen.getByText('AI-bekreftelse')).toBeInTheDocument();
+    expect(screen.getByText('AMK')).toBeInTheDocument();
   });
 });
 

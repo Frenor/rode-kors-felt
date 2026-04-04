@@ -11,6 +11,7 @@ interface PatientActionButtonsProps {
   onToggleMedication: () => void;
   onToggleNote: () => void;
   onToggleHistory: () => void;
+  onOpenAmk: () => void;
   onStatusChange: (status: string) => void;
 }
 
@@ -24,6 +25,7 @@ export function PatientActionButtons({
   onToggleMedication,
   onToggleNote,
   onToggleHistory,
+  onOpenAmk,
   onStatusChange,
 }: PatientActionButtonsProps) {
   const currentStatus = patient.status as keyof typeof STATUS_TRANSITIONS;
@@ -31,6 +33,19 @@ export function PatientActionButtons({
 
   return (
     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+      <button
+        onClick={onOpenAmk}
+        data-testid="patient-ring-113"
+        className="touch-target"
+        style={{
+          minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--color-status-critical)', background: 'var(--color-status-critical)',
+          fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'white', cursor: 'pointer',
+        }}
+      >
+        Ring 113
+      </button>
+
       <button
         onClick={onToggleVitals}
         className="touch-target"

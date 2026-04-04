@@ -35,6 +35,7 @@ interface PatientCardProps {
   onSubmitNote: (text: string, author: string) => void;
   onSubmitMedication: (form: MedFormShape) => void;
   onLoadMedications: () => void;
+  onOpenAmk: () => void;
 }
 
 export function PatientCard({
@@ -45,6 +46,7 @@ export function PatientCard({
   onSubmitNote,
   onSubmitMedication,
   onLoadMedications,
+  onOpenAmk,
 }: PatientCardProps) {
   const [showVitals, setShowVitals] = useState(false);
   const [showMeds, setShowMeds] = useState(false);
@@ -207,6 +209,7 @@ export function PatientCard({
         onToggleMedication={handleToggleMedication}
         onToggleNote={handleToggleNote}
         onToggleHistory={handleToggleHistory}
+        onOpenAmk={onOpenAmk}
         onStatusChange={onStatusChange}
       />
 

@@ -13,6 +13,7 @@ import type { SickBayPatient, MedicationRecord } from '../lib/types';
 import { SickBayHeader } from './SickBay/SickBayHeader';
 import { PatientIntakeModal, type IntakeFormShape } from './SickBay/PatientIntakeModal';
 import { SBARHandoverModal, type SbarFormShape } from './SickBay/SBARHandoverModal';
+import { AmkBriefModal } from './SickBay/AmkBriefModal';
 import { PatientCard } from './SickBay/PatientCard';
 import type { VitalsFormShape } from './SickBay/VitalsEntryForm';
 import type { MedFormShape } from './SickBay/MedicationPanel';
@@ -36,6 +37,7 @@ export function SickBayDashboard() {
   });
 
   const [sbarPatient, setSbarPatient] = useState<SickBayPatient | null>(null);
+  const [amkPatient, setAmkPatient] = useState<SickBayPatient | null>(null);
   const [sbarForm, setSbarForm] = useState<SbarFormShape>({
     situation: '',
     background: '',
@@ -128,6 +130,7 @@ export function SickBayDashboard() {
 
   const handleStatusChange = async (patientId: string, status: string, patient?: SickBayPatient) => {
     if (status === 'transferred' && patient) {
+      setAmkPatient(null);
       setSbarPatient(patient);
       setSbarForm({
         situation: patient.presentingComplaint || '',
@@ -146,6 +149,12 @@ export function SickBayDashboard() {
     const res = await api.executePatientAction(patientId, { type: 'status.set', status });
     pushUndoToast('Pasientstatus oppdatert. Du kan angre i 10 sekunder.', res.action?.id);
     fetchPatients();
+  };
+
+  const handleOpenAmk = async (patient: SickBayPatient) => {
+    setSbarPatient(null);
+    setAmkPatient(patient);
+    await handleLoadMedications(patient.id);
   };
 
   const handleSbarSubmit = async () => {
@@ -266,6 +275,15 @@ export function SickBayDashboard() {
         />
       )}
 
+      {amkPatient && (
+        <AmkBriefModal
+          patient={patients.find((p) => p.id === amkPatient.id) ?? amkPatient}
+          medications={medications[amkPatient.id] ?? []}
+          onClose={() => setAmkPatient(null)}
+          onSaved={fetchPatients}
+        />
+      )}
+
       {loading ? (
         <p style={{ color: 'var(--color-text-subtle)' }}>Laster pasienter...</p>
       ) : patients.length === 0 ? (
@@ -287,6 +305,7 @@ export function SickBayDashboard() {
               onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
               onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
               onLoadMedications={() => handleLoadMedications(patient.id)}
+              onOpenAmk={() => handleOpenAmk(patient)}
             />
           ))}
         </div>

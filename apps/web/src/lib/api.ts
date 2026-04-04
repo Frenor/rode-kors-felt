@@ -1,6 +1,7 @@
 import { useAuthStore } from '../stores/auth';
 import { enqueue } from './offline-queue';
 import { demoStore } from './demo-store';
+import type { AmkAssistDraft, AmkCallLog, EventIndoorLayout, MapRuntimeConfig } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
@@ -117,6 +118,22 @@ class ApiClient {
   async getEvent(id: string) {
     if (DEMO) return demoStore.getEvent(id);
     return this.request<{ event: any; teams: any[] }>(`/events/${id}`);
+  }
+
+  async getEventIndoorLayout(id: string) {
+    if (DEMO) {
+      const result = await demoStore.getEvent(id);
+      return { layout: (result.event?.indoorLayout as EventIndoorLayout | null) ?? null };
+    }
+    return this.request<{ layout: EventIndoorLayout | null }>(`/events/${id}/indoor-layout`);
+  }
+
+  async getEventMapConfig(id: string) {
+    if (DEMO) {
+      const result = await demoStore.getEvent(id);
+      return { config: (result.event?.mapRuntimeConfig as MapRuntimeConfig | null) ?? null };
+    }
+    return this.request<{ config: MapRuntimeConfig | null }>(`/events/${id}/map-config`);
   }
 
   async getEventStats(eventId: string) {
@@ -257,6 +274,58 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ text, author }),
     });
+  }
+
+  async getAmkCallLogs(patientId: string) {
+    if (DEMO) return demoStore.getAmkCallLogs(patientId);
+    return this.request<{ callLogs: AmkCallLog[] }>(`/patients/${patientId}/amk-calls`);
+  }
+
+  async createAmkCallLog(
+    patientId: string,
+    data: {
+      summaryGiven: string;
+      amkGuidance: string;
+      followUpOwner: string;
+      referenceId?: string;
+      eta?: string;
+      calledAt?: string;
+    },
+  ) {
+    if (DEMO) return demoStore.createAmkCallLog(patientId, data);
+    return this.request<{ callLog: AmkCallLog; action: any }>(`/patients/${patientId}/amk-calls`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async generateAmkAssistDraft(patientId: string) {
+    if (DEMO) return demoStore.generateAmkAssistDraft(patientId);
+    return this.request<AmkAssistDraft>(`/patients/${patientId}/amk-assist/draft`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async confirmAmkAssist(
+    patientId: string,
+    draft: AmkAssistDraft,
+    spokenScript: string,
+  ) {
+    if (DEMO) return demoStore.confirmAmkAssist(patientId, draft, spokenScript);
+    return this.request<{ ok: boolean; action: any; confirmed: AmkAssistDraft & { confirmedAt: string; confirmedBy: string } }>(
+      `/patients/${patientId}/amk-assist/confirm`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          criticality: draft.criticality,
+          spokenScript,
+          rationale: draft.rationale,
+          sayFirst: draft.sayFirst,
+          sbarDraft: draft.sbarDraft,
+        }),
+      },
+    );
   }
 
   async recordVitals(patientId: string, vitals: Record<string, number | undefined>) {

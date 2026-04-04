@@ -1,3 +1,6 @@
+import { calculateNEWS2 } from '@rkf/shared-types';
+import type { AmkAssistDraft, AmkCallLog, AmkCriticality } from './types';
+
 /**
  * Demo mode — in-memory store
  *
@@ -338,6 +341,49 @@ const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({
   actionHistory: actionEvents.filter((a) => a.entityType === entityType && a.entityId === entity.id),
 });
 
+const mapCriticality = (score: number): AmkCriticality => {
+  if (score >= 7) return 'kritisk';
+  if (score >= 5) return 'høy';
+  if (score >= 3) return 'middels';
+  return 'lav';
+};
+
+const getLatestVitalsSummary = (patient: any) => {
+  const latestVitals = patient.latestVitals ?? patient.vitalsHistory?.[0] ?? null;
+  if (!latestVitals) {
+    return {
+      news2Text: 'NEWS2 ikke tilgjengelig',
+      vitalsSummary: 'Ingen vitale tegn registrert ennå',
+      criticality: 'lav' as AmkCriticality,
+    };
+  }
+
+  const news = calculateNEWS2({
+    respiratoryRate: latestVitals.respiratoryRate ?? undefined,
+    spo2: latestVitals.spo2 ?? undefined,
+    systolicBP: latestVitals.systolicBP ?? undefined,
+    pulse: latestVitals.pulse ?? undefined,
+    acvpu: latestVitals.acvpu ?? undefined,
+    temperature: latestVitals.temperature ?? undefined,
+    onSupplementalOxygen: latestVitals.onSupplementalOxygen ?? undefined,
+  });
+
+  const vitalsSummary = [
+    latestVitals.pulse != null ? `Puls ${latestVitals.pulse}` : null,
+    latestVitals.spo2 != null ? `SpO₂ ${latestVitals.spo2}%` : null,
+    latestVitals.respiratoryRate != null ? `RF ${latestVitals.respiratoryRate}` : null,
+    latestVitals.systolicBP != null ? `BT ${latestVitals.systolicBP}` : null,
+    latestVitals.temperature != null ? `Temp ${latestVitals.temperature}` : null,
+    latestVitals.acvpu ? `ACVPU ${latestVitals.acvpu}` : null,
+  ].filter(Boolean).join(', ');
+
+  return {
+    news2Text: `NEWS2 ${news.total}`,
+    vitalsSummary,
+    criticality: mapCriticality(news.total),
+  };
+};
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const demoStore = {
@@ -580,6 +626,114 @@ export const demoStore = {
   getMedications: (patientId: string) => ({
     medications: medications[patientId] ?? [],
   }),
+
+  getAmkCallLogs: (patientId: string) => ({
+    callLogs: actionEvents
+      .filter((action) =>
+        action.entityType === 'patient'
+        && action.entityId === patientId
+        && action.actionType === 'patient.amk_call_logged',
+      )
+      .map((action) => (action.payload as { callLog?: AmkCallLog }).callLog)
+      .filter((callLog): callLog is AmkCallLog => Boolean(callLog))
+      .sort((a, b) => new Date(b.calledAt).getTime() - new Date(a.calledAt).getTime()),
+  }),
+
+  createAmkCallLog: (
+    patientId: string,
+    data: {
+      summaryGiven: string;
+      amkGuidance: string;
+      followUpOwner: string;
+      referenceId?: string;
+      eta?: string;
+      calledAt?: string;
+    },
+  ) => {
+    const patient = patients.find((p) => p.id === patientId);
+    if (!patient) throw new Error('Pasient ikke funnet');
+    const callLog: AmkCallLog = {
+      id: `demo-amk-${Date.now()}`,
+      eventId: patient.eventId,
+      patientId,
+      calledAt: (data.calledAt ? new Date(data.calledAt) : new Date()).toISOString(),
+      summaryGiven: data.summaryGiven.trim(),
+      amkGuidance: data.amkGuidance.trim(),
+      followUpOwner: data.followUpOwner.trim(),
+      referenceId: data.referenceId?.trim() || undefined,
+      eta: data.eta?.trim() || undefined,
+      recordedBy: 'demo-user',
+    };
+    const action = createAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patientId,
+      actionType: 'patient.amk_call_logged',
+      payload: { callLog },
+    });
+    return { callLog, action };
+  },
+
+  generateAmkAssistDraft: (patientId: string) => {
+    const patient = patients.find((p) => p.id === patientId);
+    if (!patient) throw new Error('Pasient ikke funnet');
+    const { news2Text, vitalsSummary, criticality } = getLatestVitalsSummary(patient);
+    const condition = patient.presentingComplaint ?? 'Uavklart problemstilling';
+    const draft: AmkAssistDraft = {
+      criticality,
+      rationale: `${news2Text}. Kliniske funn tilsier ${criticality} prioritet.`,
+      sayFirst: [
+        `Dette er sykestue på arrangement, pasient med ${condition}.`,
+        `Kritikalitet vurderes som ${criticality.toUpperCase()} basert på ${news2Text}.`,
+        `Siste vitale tegn: ${vitalsSummary}.`,
+      ],
+      spokenScript: [
+        `Hei, dette er Røde Kors sykestue.`,
+        `Vi ringer om en pasient med ${condition}.`,
+        `Vi vurderer kritikalitet som ${criticality} (${news2Text}).`,
+        `Siste observasjoner: ${vitalsSummary}.`,
+        `Vi trenger AMK-råd for videre håndtering og transport.`,
+      ].join(' '),
+      sbarDraft: {
+        situation: `Pasient med ${condition}.`,
+        background: patient.notes?.length
+          ? `Tidligere notater: ${patient.notes.slice(-1)[0]?.text ?? 'Ingen'}`
+          : 'Ingen kjente tilleggsopplysninger.',
+        assessment: `${news2Text}. ${vitalsSummary}.`,
+        recommendation: 'Ønsker AMK-vurdering av hastegrad og transportnivå.',
+      },
+    };
+    createAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patientId,
+      actionType: 'patient.amk_ai_draft_generated',
+      payload: { draft },
+    });
+    return draft;
+  },
+
+  confirmAmkAssist: (patientId: string, draft: AmkAssistDraft, spokenScript: string) => {
+    const patient = patients.find((p) => p.id === patientId);
+    if (!patient) throw new Error('Pasient ikke funnet');
+    const confirmed = {
+      criticality: draft.criticality,
+      spokenScript: spokenScript.trim(),
+      rationale: draft.rationale,
+      sayFirst: draft.sayFirst,
+      sbarDraft: draft.sbarDraft,
+      confirmedAt: new Date().toISOString(),
+      confirmedBy: 'demo-user',
+    };
+    const action = createAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patientId,
+      actionType: 'patient.amk_ai_script_confirmed',
+      payload: { confirmed },
+    });
+    return { ok: true, action, confirmed };
+  },
 
   getEventStats: (_eventId: string) => ({
     totalIncidents: incidents.length,

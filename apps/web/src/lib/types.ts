@@ -50,6 +50,69 @@ export interface ActionHistoryEntry {
   undoOfActionId?: string;
 }
 
+export type AmkCriticality = 'lav' | 'middels' | 'høy' | 'kritisk';
+
+export interface AmkCallLog {
+  id: string;
+  eventId?: string;
+  patientId?: string;
+  calledAt: string;
+  summaryGiven: string;
+  amkGuidance: string;
+  followUpOwner: string;
+  referenceId?: string;
+  eta?: string;
+  recordedBy?: string;
+}
+
+export interface AmkAssistDraft {
+  criticality: AmkCriticality;
+  rationale: string;
+  sayFirst: string[];
+  spokenScript: string;
+  sbarDraft: {
+    situation: string;
+    background: string;
+    assessment: string;
+    recommendation: string;
+  };
+}
+
+export interface IndoorZone {
+  id: string;
+  label: string;
+  center: GeoPoint;
+}
+
+export interface IndoorFloor {
+  id: string;
+  label: string;
+  zones: IndoorZone[];
+}
+
+export interface EventIndoorLayout {
+  venueId: string;
+  venueName?: string;
+  floors: IndoorFloor[];
+}
+
+export interface MapLayerConfig {
+  id: string;
+  type: 'xyz' | 'wmts';
+  url: string;
+  attribution?: string;
+  token?: string;
+  minZoom?: number;
+  maxZoom?: number;
+}
+
+export interface MapRuntimeConfig {
+  provider?: 'leaflet' | 'maplibre';
+  styleUrl?: string;
+  layers?: MapLayerConfig[];
+  enable3d?: boolean;
+}
+
 export interface SickBayPatient {
   id: string;
   eventId: string;
@@ -94,6 +157,13 @@ export interface Incident {
   teamId?: string;
   source?: string;
   location: GeoPoint;
+  locationContext?: {
+    mode: 'gps' | 'indoor_zone';
+    venueId?: string;
+    floorId?: string;
+    zoneId?: string;
+    zoneLabel?: string;
+  };
   notes?: string;
   activeEscalation?: IncidentEscalation | null;
   actionHistory?: ActionHistoryEntry[];

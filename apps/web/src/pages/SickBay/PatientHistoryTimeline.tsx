@@ -1,6 +1,6 @@
 import { calculateNEWS2 } from '@rkf/shared-types';
 import { news2Colors, routeLabels } from '../../lib/constants';
-import type { SickBayPatient, MedicationRecord } from '../../lib/types';
+import type { ActionHistoryEntry, SickBayPatient, MedicationRecord } from '../../lib/types';
 
 interface PatientHistoryTimelineProps {
   patient: SickBayPatient;
@@ -17,8 +17,19 @@ export function PatientHistoryTimeline({ patient, medications }: PatientHistoryT
   const medEntries = medications.map((m) => ({
     type: 'medication' as const, time: m.givenAt, data: m,
   }));
+  const artifactEntries = (patient.actionHistory ?? [])
+    .filter((action) =>
+      action.actionType === 'patient.amk_call_logged'
+      || action.actionType === 'patient.amk_ai_draft_generated'
+      || action.actionType === 'patient.amk_ai_script_confirmed',
+    )
+    .map((action) => ({
+      type: 'artifact' as const,
+      time: action.createdAt,
+      data: action,
+    }));
 
-  const timeline = [...vitalsEntries, ...noteEntries, ...medEntries]
+  const timeline = [...vitalsEntries, ...noteEntries, ...medEntries, ...artifactEntries]
     .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
   return (
@@ -98,6 +109,53 @@ export function PatientHistoryTimeline({ patient, medications }: PatientHistoryT
                 {entry.data.drug}{entry.data.dose && ` ${entry.data.dose}`}
                 {entry.data.route && ` (${routeLabels[entry.data.route] ?? entry.data.route})`}
                 {entry.data.givenBy && ` — ${entry.data.givenBy}`}
+              </span>
+            </div>
+          );
+        }
+
+        if (entry.type === 'artifact') {
+          const action = entry.data as ActionHistoryEntry;
+          const callLog = (action.payload as { callLog?: Record<string, unknown> }).callLog;
+          const draft = (action.payload as { draft?: Record<string, unknown> }).draft;
+          const confirmed = (action.payload as { confirmed?: Record<string, unknown> }).confirmed;
+
+          const label =
+            action.actionType === 'patient.amk_call_logged'
+              ? 'AMK'
+              : action.actionType === 'patient.amk_ai_draft_generated'
+                ? 'AI-forslag'
+                : 'AI-bekreftelse';
+
+          const detail = action.actionType === 'patient.amk_call_logged'
+            ? [
+                callLog?.summaryGiven,
+                callLog?.amkGuidance,
+                callLog?.referenceId ? `Ref ${callLog.referenceId}` : null,
+                callLog?.eta ? `ETA ${callLog.eta}` : null,
+                callLog?.followUpOwner ? `Ansvar: ${callLog.followUpOwner}` : null,
+              ].filter(Boolean).join(' · ')
+            : action.actionType === 'patient.amk_ai_draft_generated'
+              ? [
+                  draft?.criticality ? `Kritikalitet ${String(draft.criticality)}` : null,
+                  draft?.rationale ? String(draft.rationale) : null,
+                ].filter(Boolean).join(' · ')
+              : [
+                  confirmed?.criticality ? `Kritikalitet ${String(confirmed.criticality)}` : null,
+                  confirmed?.spokenScript ? String(confirmed.spokenScript) : null,
+                ].filter(Boolean).join(' · ');
+
+          return (
+            <div key={i} style={{
+              display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start',
+              padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-border)',
+            }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap', minWidth: 38 }}>{timeStr}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--radius-full)', background: 'var(--color-brand-dim)', color: 'var(--color-brand)', whiteSpace: 'nowrap' }}>
+                {label}
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text)', whiteSpace: 'pre-wrap' }}>
+                {detail || 'Ingen detaljer registrert.'}
               </span>
             </div>
           );
