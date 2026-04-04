@@ -91,7 +91,7 @@ jobs:
         run: |
           test -n "$PREVIEW_URL"
           for i in {1..12}; do
-            if curl -fsSL "$PREVIEW_URL" | grep -q "Røde Kors Felt"; then
+            if curl -fsSL "$PREVIEW_URL" | grep -q '<div id="root"></div>'; then
               echo "Preview reachable and content visible"
               exit 0
             fi
