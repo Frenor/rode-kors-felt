@@ -7,6 +7,8 @@ test.beforeEach(async ({ page }, testInfo) => {
 });
 
 test('supports the demo login and role navigation flow', async ({ page }) => {
+  expect(process.env.PLAYWRIGHT_DEMO_BASE_URL, 'PLAYWRIGHT_DEMO_BASE_URL must be provided for Pages demo checks').toBeTruthy();
+
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Rødt Kors Felt' })).toBeVisible();
 

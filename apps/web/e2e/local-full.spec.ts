@@ -83,7 +83,7 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await amkDialog.getByRole('button', { name: 'Lagre AMK-logg' }).click();
   await expect(amkDialog.getByText(/AMK-samtale er logget/i)).toBeVisible();
   await expect(amkDialog.getByText(/Tidligere AMK-logger/i)).toBeVisible();
-  await expect(amkDialog.getByText('Pasient med brystsmerter', { exact: true })).toBeVisible();
+  await expect(amkDialog.getByText('Pasient med brystsmerter', { exact: true }).first()).toBeVisible();
   await amkDialog.getByRole('button', { name: 'Lukk' }).click();
   await expect(amkDialog).not.toBeVisible();
 

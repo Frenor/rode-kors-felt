@@ -85,6 +85,22 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --filter @rkf/web exec playwright install --with-deps chromium
 
+      - name: Verify deployed Pages preview is reachable
+        env:
+          PREVIEW_URL: ${{ needs.deploy.outputs.page_url }}
+        run: |
+          test -n "$PREVIEW_URL"
+          for i in {1..12}; do
+            if curl -fsSL "$PREVIEW_URL" | grep -q "Røde Kors Felt"; then
+              echo "Preview reachable and content visible"
+              exit 0
+            fi
+            echo "Preview not ready yet (attempt $i), retrying..."
+            sleep 10
+          done
+          echo "Preview URL did not become ready in time: $PREVIEW_URL"
+          exit 1
+
       - name: Run demo Playwright checks
         run: pnpm --filter @rkf/web test:e2e --project pages-demo
         env:
