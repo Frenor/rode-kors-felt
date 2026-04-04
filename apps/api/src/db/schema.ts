@@ -52,6 +52,33 @@ export const events = pgTable('events', {
   mciSummaryHtml: text('mci_summary_html'),
   mciSummaryGeneratedAt: timestamp('mci_summary_generated_at', { withTimezone: true }),
   mciSummaryGeneratedBy: varchar('mci_summary_generated_by', { length: 255 }),
+  indoorLayout: jsonb('indoor_layout').$type<{
+    venueId: string;
+    venueName?: string;
+    floors: Array<{
+      id: string;
+      label: string;
+      zones: Array<{
+        id: string;
+        label: string;
+        center: { lat: number; lng: number };
+      }>;
+    }>;
+  }>(),
+  mapRuntimeConfig: jsonb('map_runtime_config').$type<{
+    provider?: 'leaflet' | 'maplibre';
+    styleUrl?: string;
+    layers?: Array<{
+      id: string;
+      type: 'xyz' | 'wmts';
+      url: string;
+      attribution?: string;
+      token?: string;
+      minZoom?: number;
+      maxZoom?: number;
+    }>;
+    enable3d?: boolean;
+  }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -96,6 +123,13 @@ export const incidents = pgTable('incidents', {
   vitals: jsonb('vitals').$type<Record<string, unknown>>(),
   mist: jsonb('mist').$type<Record<string, unknown>>(),
   sbar: jsonb('sbar').$type<Record<string, unknown>>(),
+  locationContext: jsonb('location_context').$type<{
+    mode: 'gps' | 'indoor_zone';
+    venueId?: string;
+    floorId?: string;
+    zoneId?: string;
+    zoneLabel?: string;
+  }>(),
   triageTag: triageTagEnum('triage_tag'),
   notes: text('notes'),
   clientId: varchar('client_id', { length: 255 }).unique(),

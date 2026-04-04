@@ -7,9 +7,11 @@
 
 import { beforeAll } from 'vitest';
 import { pool } from '../db/index.js';
+import { runMigrations } from '../db/migrate.js';
 import { seedDatabase } from '../db/seed.js';
 
 beforeAll(async () => {
+  await runMigrations();
   // Truncate in FK-safe order (children first, then roots)
   await pool.query(`
     TRUNCATE vital_readings, escalations, incidents, patients,

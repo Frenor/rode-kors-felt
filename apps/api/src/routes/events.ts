@@ -5,6 +5,83 @@ import { escalations, events, incidents, patients, teams } from '../db/schema.js
 import { requireAuth } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 
+type AuthUser = { role?: string; eventId?: string };
+
+function canAccessEvent(user: AuthUser, eventId: string): boolean {
+  if (user.role === 'admin') return true;
+  if (!user.eventId) return true;
+  return user.eventId === eventId;
+}
+
+type IndoorLayout = {
+  venueId: string;
+  venueName?: string;
+  floors: Array<{
+    id: string;
+    label: string;
+    zones: Array<{ id: string; label: string; center: { lat: number; lng: number } }>;
+  }>;
+};
+
+type MapRuntimeConfig = {
+  provider?: 'leaflet' | 'maplibre';
+  styleUrl?: string;
+  enable3d?: boolean;
+  layers?: Array<{
+    id: string;
+    type: 'xyz' | 'wmts';
+    url: string;
+    attribution?: string;
+    token?: string;
+    minZoom?: number;
+    maxZoom?: number;
+  }>;
+};
+
+type EnvMapConfig = {
+  default?: MapRuntimeConfig;
+  events?: Record<string, MapRuntimeConfig & { indoorLayout?: IndoorLayout }>;
+  indoorLayouts?: Record<string, IndoorLayout>;
+};
+
+function parseEnvMapConfig(): EnvMapConfig {
+  const raw = process.env.MAP_CONFIG_JSON;
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as EnvMapConfig;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function sanitizeRuntimeConfig(input?: MapRuntimeConfig | null): MapRuntimeConfig | null {
+  if (!input) return null;
+  return {
+    provider: input.provider,
+    styleUrl: input.styleUrl,
+    enable3d: input.enable3d,
+    layers: (input.layers ?? []).map((layer) => ({
+      id: layer.id,
+      type: layer.type,
+      url: layer.url,
+      attribution: layer.attribution,
+      token: layer.token,
+      minZoom: layer.minZoom,
+      maxZoom: layer.maxZoom,
+    })),
+  };
+}
+
+function mergeRuntimeConfig(base?: MapRuntimeConfig, override?: MapRuntimeConfig): MapRuntimeConfig | null {
+  const merged: MapRuntimeConfig = {
+    ...(base ?? {}),
+    ...(override ?? {}),
+    layers: override?.layers ?? base?.layers ?? [],
+  };
+  return sanitizeRuntimeConfig(merged);
+}
+
 export async function eventRoutes(app: FastifyInstance) {
   // List events
   app.get('/', { preHandler: requireAuth }, async (request) => {
@@ -19,16 +96,54 @@ export async function eventRoutes(app: FastifyInstance) {
 
   // Get single event with teams
   app.get('/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
 
     const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
     if (!event) {
       return reply.code(404).send({ error: 'Arrangement ikke funnet' });
     }
+    if (!canAccessEvent(user, id)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
 
     const teamList = await db.select().from(teams).where(eq(teams.eventId, id));
 
     return { event: mapEvent(event), teams: teamList.map(mapTeam) };
+  });
+
+  app.get('/:id/indoor-layout', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id } = request.params as { id: string };
+    const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    if (!canAccessEvent(user, id)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
+
+    const envConfig = parseEnvMapConfig();
+    const envLayout = envConfig.indoorLayouts?.[id] ?? envConfig.events?.[id]?.indoorLayout;
+    const layout = (event.indoorLayout ?? envLayout ?? null) as IndoorLayout | null;
+    return { layout };
+  });
+
+  app.get('/:id/map-config', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id } = request.params as { id: string };
+    const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    if (!canAccessEvent(user, id)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
+
+    const envConfig = parseEnvMapConfig();
+    const envDefault = envConfig.default;
+    const envEvent = envConfig.events?.[id];
+    const resolved = mergeRuntimeConfig(
+      envDefault,
+      (event.mapRuntimeConfig as MapRuntimeConfig | null) ?? envEvent,
+    );
+    return { config: resolved };
   });
 
   // Create event (coordinator/admin only)
@@ -66,6 +181,9 @@ export async function eventRoutes(app: FastifyInstance) {
     const [existing] = await db.select().from(events).where(eq(events.id, id)).limit(1);
     if (!existing) {
       return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    }
+    if (!canAccessEvent(user, id)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
     const now = new Date();
@@ -121,6 +239,9 @@ export async function eventRoutes(app: FastifyInstance) {
     if (!event) {
       return reply.code(404).send({ error: 'Arrangement ikke funnet' });
     }
+    if (!canAccessEvent(user, id)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
 
     if (!event.mciSummaryHtml) {
       return reply.code(404).send({ error: 'Ingen MCI-overlevering er generert ennå' });
@@ -146,6 +267,9 @@ export async function eventRoutes(app: FastifyInstance) {
     const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
     if (!event) {
       return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    }
+    if (!canAccessEvent(user, id)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
     const [eventIncidents, eventPatients, eventTeams, eventEscalations] = await Promise.all([
@@ -228,11 +352,15 @@ export async function eventRoutes(app: FastifyInstance) {
 
   // Event statistics
   app.get('/:id/stats', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
 
     const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
     if (!event) {
       return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    }
+    if (!canAccessEvent(user, id)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
     const [eventIncidents, eventPatients] = await Promise.all([
@@ -420,10 +548,29 @@ function escapeHtml(value: string) {
 }
 
 function mapEvent(row: typeof events.$inferSelect) {
-  const { mciSummaryHtml: _mciSummaryHtml, ...rest } = row;
+  const {
+    mciSummaryHtml: _mciSummaryHtml,
+    mapRuntimeConfig: _mapRuntimeConfig,
+    indoorLayout: _indoorLayout,
+    ...rest
+  } = row;
+  const envConfig = parseEnvMapConfig();
+  const envEvent = envConfig.events?.[row.id];
+  const resolvedMapConfig = mergeRuntimeConfig(
+    envConfig.default,
+    (_mapRuntimeConfig as MapRuntimeConfig | null) ?? envEvent,
+  );
+  const resolvedIndoorLayout =
+    (_indoorLayout as IndoorLayout | null)
+    ?? envConfig.indoorLayouts?.[row.id]
+    ?? envEvent?.indoorLayout
+    ?? null;
+
   return {
     ...rest,
     hasMciSummary: Boolean(_mciSummaryHtml),
+    mapRuntimeConfig: resolvedMapConfig,
+    indoorLayout: resolvedIndoorLayout,
     startDate: rest.startDate.toISOString(),
     endDate: rest.endDate.toISOString(),
     mciSummaryGeneratedAt: rest.mciSummaryGeneratedAt?.toISOString(),

@@ -81,6 +81,8 @@ export async function runMigrations(): Promise<void> {
         mci_summary_html  TEXT,
         mci_summary_generated_at TIMESTAMPTZ,
         mci_summary_generated_by VARCHAR(255),
+        indoor_layout     JSONB,
+        map_runtime_config JSONB,
         created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -125,6 +127,7 @@ export async function runMigrations(): Promise<void> {
         vitals      JSONB,
         mist        JSONB,
         sbar        JSONB,
+        location_context JSONB,
         triage_tag  triage_tag,
         notes       TEXT,
         client_id   VARCHAR(255) UNIQUE,
@@ -209,8 +212,11 @@ export async function runMigrations(): Promise<void> {
       ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_html TEXT;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_generated_at TIMESTAMPTZ;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_generated_by VARCHAR(255);
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS indoor_layout JSONB;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS map_runtime_config JSONB;
 
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS triage_tag triage_tag;
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS location_context JSONB;
     `);
 
     await client.query('COMMIT');

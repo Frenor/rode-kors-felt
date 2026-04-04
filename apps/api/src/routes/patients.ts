@@ -1,19 +1,72 @@
 import type { FastifyInstance } from 'fastify';
 import { desc, eq, sql } from 'drizzle-orm';
+import {
+  AmkAssistDraft,
+  AmkCallLog,
+  ConfirmAmkAssistRequest,
+  CreateAmkCallLogRequest,
+} from '@rkf/shared-types';
 import { db } from '../db/index.js';
-import { incidents, medicationRecords, patients, vitalReadings } from '../db/schema.js';
+import { actionEvents, incidents, medicationRecords, patients, vitalReadings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { applyPatientAction, getActionHistoryByEntityIds } from './action-events.js';
 import { broadcast } from './ws.js';
+import { generateAmkAssistDraft } from '../lib/ai-assist.js';
+
+type AuthUser = {
+  role?: string;
+  eventId?: string;
+  sub?: string;
+  email?: string;
+};
+
+function canAccessEvent(user: AuthUser, eventId: string): boolean {
+  if (user.role === 'admin') return true;
+  if (!user.eventId) return true;
+  return user.eventId === eventId;
+}
+
+function getActor(user: AuthUser): string {
+  return user.sub ?? user.email ?? 'ukjent';
+}
+
+async function logPatientArtifactAction(params: {
+  patientId: string;
+  eventId: string;
+  actionType: string;
+  payload: Record<string, unknown>;
+  createdBy: string;
+}) {
+  const [action] = await db
+    .insert(actionEvents)
+    .values({
+      eventId: params.eventId,
+      entityType: 'patient',
+      entityId: params.patientId,
+      actionType: params.actionType,
+      payload: params.payload,
+      createdBy: params.createdBy,
+    })
+    .returning();
+
+  return {
+    ...action!,
+    createdAt: action!.createdAt.toISOString(),
+    revertedAt: action!.revertedAt?.toISOString(),
+  };
+}
 
 export async function patientRoutes(app: FastifyInstance) {
   // List patients for an event (with latest vitals attached)
   app.get('/', { preHandler: requireAuth }, async (request) => {
-    const user = (request as any).user;
+    const user = (request as any).user as AuthUser;
     const { eventId } = request.query as { eventId?: string };
     const targetEventId = eventId ?? user.eventId;
 
     if (!targetEventId) {
+      return { patients: [] };
+    }
+    if (!canAccessEvent(user, targetEventId)) {
       return { patients: [] };
     }
 
@@ -50,6 +103,7 @@ export async function patientRoutes(app: FastifyInstance) {
 
   // Get single patient with full vitals history
   app.get('/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
 
     const [patient] = await db
@@ -60,6 +114,9 @@ export async function patientRoutes(app: FastifyInstance) {
 
     if (!patient) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    }
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
     const vitalsHistory = await db
@@ -85,7 +142,7 @@ export async function patientRoutes(app: FastifyInstance) {
 
   // Create patient
   app.post('/', { preHandler: requireAuth }, async (request, reply) => {
-    const user = (request as any).user;
+    const user = (request as any).user as AuthUser;
     const body = request.body as {
       eventId?: string;
       incidentId?: string;
@@ -98,6 +155,9 @@ export async function patientRoutes(app: FastifyInstance) {
     const eventId = body.eventId ?? user.eventId;
     if (!eventId) {
       return reply.code(400).send({ error: 'Mangler eventId' });
+    }
+    if (!canAccessEvent(user, eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
     const [patient] = await db
@@ -127,6 +187,7 @@ export async function patientRoutes(app: FastifyInstance) {
 
   // Update patient
   app.patch('/:id', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
     const body = request.body as Partial<{
       status: string;
@@ -143,11 +204,14 @@ export async function patientRoutes(app: FastifyInstance) {
     if (!existing) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
     }
+    if (!canAccessEvent(user, existing.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
 
     if (body.status) {
       const result = await applyPatientAction({
         patientId: id,
-        user: (request as any).user,
+        user,
         body: { type: 'status.set', status: body.status },
       });
       if (result.error) {
@@ -170,11 +234,17 @@ export async function patientRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/actions', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
     const body = request.body as { type: 'status.set'; status: string };
+    const [patient] = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
+    if (!patient) return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
     const result = await applyPatientAction({
       patientId: id,
-      user: (request as any).user,
+      user,
       body,
     });
     if (result.error) return reply.code(result.error.code).send({ error: result.error.message });
@@ -183,6 +253,7 @@ export async function patientRoutes(app: FastifyInstance) {
 
   // Add clinical note (append-only)
   app.post('/:id/notes', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
     const { text, author } = request.body as { text: string; author: string };
 
@@ -194,6 +265,9 @@ export async function patientRoutes(app: FastifyInstance) {
 
     if (!existing) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    }
+    if (!canAccessEvent(user, existing.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
     const newNote = { text, timestamp: new Date().toISOString(), author };
@@ -210,8 +284,175 @@ export async function patientRoutes(app: FastifyInstance) {
     return { patient: mapPatient(updated!) };
   });
 
+  // Structured AMK (113) call log (append-only)
+  app.post('/:id/amk-calls', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id } = request.params as { id: string };
+    const parsed = CreateAmkCallLogRequest.safeParse(request.body);
+
+    const [patient] = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
+    if (!patient) return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: 'summaryGiven, amkGuidance og followUpOwner er påkrevd',
+        details: parsed.error.flatten(),
+      });
+    }
+
+    const body = parsed.data;
+    if (!body.summaryGiven.trim() || !body.amkGuidance.trim() || !body.followUpOwner.trim()) {
+      return reply.code(400).send({ error: 'summaryGiven, amkGuidance og followUpOwner er påkrevd' });
+    }
+    const calledAt = body.calledAt ? new Date(body.calledAt) : new Date();
+    if (Number.isNaN(calledAt.getTime())) {
+      return reply.code(400).send({ error: 'calledAt må være gyldig ISO-tid' });
+    }
+
+    const callLog = {
+      id: crypto.randomUUID(),
+      eventId: patient.eventId,
+      patientId: id,
+      calledAt: calledAt.toISOString(),
+      summaryGiven: body.summaryGiven.trim(),
+      amkGuidance: body.amkGuidance.trim(),
+      followUpOwner: body.followUpOwner.trim(),
+      referenceId: body.referenceId?.trim() || undefined,
+      eta: body.eta?.trim() || undefined,
+      recordedBy: getActor(user),
+    };
+
+    const action = await logPatientArtifactAction({
+      patientId: id,
+      eventId: patient.eventId,
+      actionType: 'patient.amk_call_logged',
+      payload: { callLog },
+      createdBy: getActor(user),
+    });
+
+    return reply.code(201).send({ callLog, action });
+  });
+
+  app.get('/:id/amk-calls', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id } = request.params as { id: string };
+
+    const [patient] = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
+    if (!patient) return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
+
+    const rows = await db
+      .select()
+      .from(actionEvents)
+      .where(eq(actionEvents.entityId, id))
+      .orderBy(desc(actionEvents.createdAt));
+
+    const callLogs = rows
+      .filter((row) =>
+        row.entityType === 'patient'
+        && row.eventId === patient.eventId
+        && row.actionType === 'patient.amk_call_logged',
+      )
+      .map((row) => (row.payload as { callLog?: unknown }).callLog)
+      .filter((log): log is unknown => Boolean(log))
+      .map((log) => AmkCallLog.parse(log));
+
+    return { callLogs };
+  });
+
+  app.post('/:id/amk-assist/draft', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id } = request.params as { id: string };
+
+    const [patient] = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
+    if (!patient) return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
+
+    const [latestVitals] = await db
+      .select()
+      .from(vitalReadings)
+      .where(eq(vitalReadings.patientId, id))
+      .orderBy(desc(vitalReadings.timestamp))
+      .limit(1);
+
+    const latestNote = patient.notes?.length
+      ? `Tidligere notater: ${patient.notes.slice(-1)[0]?.text ?? 'Ingen'}`
+      : 'Ingen kjente tilleggsopplysninger.';
+    const { draft, provenance } = await generateAmkAssistDraft({
+      presentingComplaint: patient.presentingComplaint,
+      latestVitals: latestVitals
+        ? {
+            pulse: latestVitals.pulse,
+            spo2: latestVitals.spo2,
+            respiratoryRate: latestVitals.respiratoryRate,
+            systolicBp: latestVitals.systolicBp,
+            temperature: latestVitals.temperature,
+            acvpu: latestVitals.acvpu,
+            onSupplementalOxygen: latestVitals.onSupplementalOxygen,
+          }
+        : null,
+      sbar: { latestNote },
+    });
+    const parsedDraft = AmkAssistDraft.parse(draft);
+
+    await logPatientArtifactAction({
+      patientId: id,
+      eventId: patient.eventId,
+      actionType: 'patient.amk_ai_draft_generated',
+      payload: { draft: parsedDraft, provenance },
+      createdBy: getActor(user),
+    });
+
+    return parsedDraft;
+  });
+
+  app.post('/:id/amk-assist/confirm', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id } = request.params as { id: string };
+    const parsed = ConfirmAmkAssistRequest.safeParse(request.body);
+
+    const [patient] = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
+    if (!patient) return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
+
+    if (!parsed.success || !parsed.data.spokenScript.trim()) {
+      return reply.code(400).send({ error: 'spokenScript og criticality er påkrevd' });
+    }
+    const body = parsed.data;
+
+    const confirmed = {
+      criticality: body.criticality,
+      spokenScript: body.spokenScript.trim(),
+      rationale: body.rationale?.trim() || undefined,
+      sayFirst: body.sayFirst?.filter((line) => line.trim().length > 0) ?? [],
+      sbarDraft: body.sbarDraft ?? undefined,
+      confirmedAt: new Date().toISOString(),
+      confirmedBy: getActor(user),
+    };
+
+    const action = await logPatientArtifactAction({
+      patientId: id,
+      eventId: patient.eventId,
+      actionType: 'patient.amk_ai_script_confirmed',
+      payload: { confirmed },
+      createdBy: getActor(user),
+    });
+
+    return { ok: true, action, confirmed };
+  });
+
   // Record medication administration (append-only)
   app.post('/:id/medications', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
     const body = request.body as {
       drug: string;
@@ -228,6 +469,9 @@ export async function patientRoutes(app: FastifyInstance) {
 
     if (!patient) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    }
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
     const [record] = await db
@@ -252,11 +496,15 @@ export async function patientRoutes(app: FastifyInstance) {
 
   // List medication records for a patient
   app.get('/:id/medications', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
 
     const [patient] = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
     if (!patient) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    }
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
     const records = await db
@@ -272,6 +520,7 @@ export async function patientRoutes(app: FastifyInstance) {
 
   // Record vitals (append-only — never overwrite)
   app.post('/:id/vitals', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
     const body = request.body as {
       pulse?: number;
@@ -292,6 +541,9 @@ export async function patientRoutes(app: FastifyInstance) {
 
     if (!patient) {
       return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    }
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
     const [reading] = await db

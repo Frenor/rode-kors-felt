@@ -66,6 +66,55 @@ export const GeoPoint = z.object({
 });
 export type GeoPoint = z.infer<typeof GeoPoint>;
 
+export const IndoorLocationContext = z.object({
+  mode: z.enum(['gps', 'indoor_zone']),
+  venueId: z.string().optional(),
+  floorId: z.string().optional(),
+  zoneId: z.string().optional(),
+  zoneLabel: z.string().optional(),
+});
+export type IndoorLocationContext = z.infer<typeof IndoorLocationContext>;
+
+export const IndoorZone = z.object({
+  id: z.string(),
+  label: z.string(),
+  center: GeoPoint,
+});
+export type IndoorZone = z.infer<typeof IndoorZone>;
+
+export const IndoorFloor = z.object({
+  id: z.string(),
+  label: z.string(),
+  zones: z.array(IndoorZone),
+});
+export type IndoorFloor = z.infer<typeof IndoorFloor>;
+
+export const IndoorLayout = z.object({
+  venueId: z.string(),
+  venueName: z.string().optional(),
+  floors: z.array(IndoorFloor),
+});
+export type IndoorLayout = z.infer<typeof IndoorLayout>;
+
+export const MapLayerConfig = z.object({
+  id: z.string(),
+  type: z.enum(['xyz', 'wmts']),
+  url: z.string(),
+  attribution: z.string().optional(),
+  token: z.string().optional(),
+  minZoom: z.number().optional(),
+  maxZoom: z.number().optional(),
+});
+export type MapLayerConfig = z.infer<typeof MapLayerConfig>;
+
+export const MapRuntimeConfig = z.object({
+  provider: z.enum(['leaflet', 'maplibre']).optional(),
+  styleUrl: z.string().optional(),
+  layers: z.array(MapLayerConfig).optional(),
+  enable3d: z.boolean().optional(),
+});
+export type MapRuntimeConfig = z.infer<typeof MapRuntimeConfig>;
+
 export const VitalReading = z.object({
   id: z.string().uuid(),
   patientId: z.string().uuid(),
@@ -106,6 +155,7 @@ export const Incident = z.object({
   status: IncidentStatus,
   source: IncidentSource.default('field'),
   location: GeoPoint,
+  locationContext: IndoorLocationContext.optional(),
   acvpu: AcvpuLevel.optional(),
   vitals: VitalReading.optional(),
   mist: MistForm.optional(),
@@ -156,6 +206,8 @@ export const Event = z.object({
   location: GeoPoint.optional(),
   mapImageUrl: z.string().url().optional(),
   mapAnchors: z.array(GeoPoint).optional(),
+  indoorLayout: IndoorLayout.optional(),
+  mapRuntimeConfig: MapRuntimeConfig.optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -197,6 +249,7 @@ export const AuthResponse = z.object({
 export const CreateIncidentRequest = Incident.pick({
   type: true,
   location: true,
+  locationContext: true,
   acvpu: true,
   notes: true,
   source: true,
@@ -300,6 +353,52 @@ export const CreateMedicationRequest = MedicationRecord.pick({
   givenBy: true,
 });
 export type CreateMedicationRequest = z.infer<typeof CreateMedicationRequest>;
+
+export const AmkCriticality = z.enum(['lav', 'middels', 'høy', 'kritisk']);
+export type AmkCriticality = z.infer<typeof AmkCriticality>;
+
+export const AmkCallLog = z.object({
+  id: z.string(),
+  eventId: z.string().uuid(),
+  patientId: z.string().uuid(),
+  calledAt: z.string().datetime(),
+  summaryGiven: z.string().min(1).max(2000),
+  amkGuidance: z.string().min(1).max(2000),
+  followUpOwner: z.string().min(1).max(200),
+  referenceId: z.string().max(100).optional(),
+  eta: z.string().max(100).optional(),
+  recordedBy: z.string().min(1).max(255),
+});
+export type AmkCallLog = z.infer<typeof AmkCallLog>;
+
+export const CreateAmkCallLogRequest = AmkCallLog.pick({
+  summaryGiven: true,
+  amkGuidance: true,
+  followUpOwner: true,
+  referenceId: true,
+  eta: true,
+}).extend({
+  calledAt: z.string().datetime().optional(),
+});
+export type CreateAmkCallLogRequest = z.infer<typeof CreateAmkCallLogRequest>;
+
+export const AmkAssistDraft = z.object({
+  criticality: AmkCriticality,
+  rationale: z.string().min(1),
+  sayFirst: z.array(z.string().min(1)).min(1),
+  spokenScript: z.string().min(1),
+  sbarDraft: SbarForm,
+});
+export type AmkAssistDraft = z.infer<typeof AmkAssistDraft>;
+
+export const ConfirmAmkAssistRequest = z.object({
+  criticality: AmkCriticality,
+  spokenScript: z.string().min(1),
+  rationale: z.string().optional(),
+  sayFirst: z.array(z.string().min(1)).optional(),
+  sbarDraft: SbarForm.optional(),
+});
+export type ConfirmAmkAssistRequest = z.infer<typeof ConfirmAmkAssistRequest>;
 
 // ═══════════════════════════════════════════════
 // NEWS2 SCORING

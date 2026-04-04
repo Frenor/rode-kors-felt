@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, getCoordinatorToken, getEventId } from './helpers.js';
+import { buildApp, getCoordinatorToken, getEventId, getFirstAiderToken } from './helpers.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { events as eventsTable } from '../db/schema.js';
 
 let app: FastifyInstance;
 let eventId: string;
@@ -134,5 +137,104 @@ describe('MCI deactivation summary', () => {
     expect(summaryRes.headers['content-disposition']).toContain('rkf-mci-overlevering-');
     expect(summaryRes.body).toContain('MCI-overlevering');
     expect(summaryRes.body).toContain('Umiddelbar (rød)');
+  });
+});
+
+describe('Indoor layout and map config', () => {
+  it('returns an indoor layout stored on the event', async () => {
+    const token = getCoordinatorToken();
+    const indoorLayout = {
+      venueId: 'venue-1',
+      venueName: 'Hovedarena',
+      floors: [
+        {
+          id: 'floor-1',
+          label: '1. etasje',
+          zones: [
+            { id: 'zone-a', label: 'Sone A', center: { lat: 59.9139, lng: 10.7522 } },
+          ],
+        },
+      ],
+    };
+
+    await db
+      .update(eventsTable)
+      .set({ indoorLayout })
+      .where(eq(eventsTable.id, eventId));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}/indoor-layout`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().layout).toEqual(indoorLayout);
+  });
+
+  it('falls back to MAP_CONFIG_JSON for map config', async () => {
+    const token = getCoordinatorToken();
+    const previous = process.env.MAP_CONFIG_JSON;
+    process.env.MAP_CONFIG_JSON = JSON.stringify({
+      default: {
+        provider: 'maplibre',
+        styleUrl: 'https://maps.example/style.json',
+        enable3d: true,
+        layers: [
+          {
+            id: 'base-xyz',
+            type: 'xyz',
+            url: 'https://tiles.example/{z}/{x}/{y}.png',
+            attribution: 'Example Maps',
+          },
+        ],
+      },
+    });
+
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/events/${eventId}/map-config`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().config).toMatchObject({
+        provider: 'maplibre',
+        styleUrl: 'https://maps.example/style.json',
+        enable3d: true,
+      });
+      expect(res.json().config.layers).toHaveLength(1);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MAP_CONFIG_JSON;
+      } else {
+        process.env.MAP_CONFIG_JSON = previous;
+      }
+    }
+  });
+
+  it('blocks access to another event', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const firstAiderToken = getFirstAiderToken(eventId);
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/events',
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: {
+        name: `Fremmed arrangement ${Date.now()}`,
+        startDate: '2026-04-04T08:00:00.000Z',
+        endDate: '2026-04-04T18:00:00.000Z',
+      },
+    });
+    const foreignEventId = createRes.json().event.id as string;
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/events/${foreignEventId}/indoor-layout`,
+      headers: { authorization: `Bearer ${firstAiderToken}` },
+    });
+
+    expect(res.statusCode).toBe(403);
   });
 });

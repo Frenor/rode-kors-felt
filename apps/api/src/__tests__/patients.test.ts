@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, getSickbayToken, getEventId } from './helpers.js';
+import { buildApp, getCoordinatorToken, getSickbayToken, getEventId } from './helpers.js';
+import { and, eq } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { actionEvents } from '../db/schema.js';
 
 let app: FastifyInstance;
 let eventId: string;
@@ -134,6 +137,449 @@ describe('POST /api/patients/:id/notes', () => {
     );
     expect(note).toBeDefined();
     expect(note.author).toBe('nurse1');
+  });
+});
+
+describe('AMK call workflows', () => {
+  it('creates append-only AMK call logs and persists an action event', async () => {
+    const token = getSickbayToken(eventId);
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        ageGroup: 'adult',
+        presentingComplaint: 'Pustevansker',
+      },
+    });
+    const patientId = createRes.json().patient.id as string;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patientId}/amk-calls`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        summaryGiven: 'Pasient med brystsmerter og tung pust.',
+        amkGuidance: 'Sendes til sykehus med ambulanse.',
+        followUpOwner: 'Sykestue',
+        referenceId: 'AMK-123',
+        eta: '12 minutter',
+        calledAt: '2026-04-04T10:00:00.000Z',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.callLog).toMatchObject({
+      eventId,
+      patientId,
+      summaryGiven: 'Pasient med brystsmerter og tung pust.',
+      amkGuidance: 'Sendes til sykehus med ambulanse.',
+      followUpOwner: 'Sykestue',
+      referenceId: 'AMK-123',
+      eta: '12 minutter',
+      recordedBy: expect.any(String),
+    });
+    expect(body.action.actionType).toBe('patient.amk_call_logged');
+
+    const rows = await db
+      .select()
+      .from(actionEvents)
+      .where(and(eq(actionEvents.entityType, 'patient'), eq(actionEvents.entityId, patientId), eq(actionEvents.actionType, 'patient.amk_call_logged')));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.payload).toHaveProperty('callLog');
+  });
+
+  it('lists AMK call logs newest-first', async () => {
+    const token = getSickbayToken(eventId);
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        ageGroup: 'adult',
+        presentingComplaint: 'Smerter i brystet',
+      },
+    });
+    const patientId = createRes.json().patient.id as string;
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patientId}/amk-calls`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        summaryGiven: 'Første samtale',
+        amkGuidance: 'Observasjon',
+        followUpOwner: 'Sykestue',
+        calledAt: '2026-04-04T09:00:00.000Z',
+      },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patientId}/amk-calls`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        summaryGiven: 'Andre samtale',
+        amkGuidance: 'Transport',
+        followUpOwner: 'Sykestue',
+        calledAt: '2026-04-04T10:00:00.000Z',
+      },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/patients/${patientId}/amk-calls`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(Array.isArray(body.callLogs)).toBe(true);
+    expect(body.callLogs).toHaveLength(2);
+    expect(body.callLogs[0].summaryGiven).toBe('Andre samtale');
+    expect(body.callLogs[1].summaryGiven).toBe('Første samtale');
+  });
+
+  it('returns 400 for malformed AMK call payloads', async () => {
+    const token = getSickbayToken(eventId);
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        ageGroup: 'adult',
+        presentingComplaint: 'Uklart forlop',
+      },
+    });
+    const patientId = createRes.json().patient.id as string;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patientId}/amk-calls`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        summaryGiven: '',
+        amkGuidance: ' ',
+        followUpOwner: '',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toHaveProperty('error');
+  });
+
+  it('enforces event scoping on AMK call and assist endpoints', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const tokenFromOtherEvent = getSickbayToken(eventId);
+
+    const createEventRes = await app.inject({
+      method: 'POST',
+      url: '/api/events',
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: {
+        name: `AMK scope test ${Date.now()}`,
+        startDate: '2026-04-04T08:00:00.000Z',
+        endDate: '2026-04-04T18:00:00.000Z',
+      },
+    });
+    const foreignEventId = createEventRes.json().event.id as string;
+
+    const foreignPatientRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: {
+        eventId: foreignEventId,
+        ageGroup: 'adult',
+        presentingComplaint: 'Skopetest',
+      },
+    });
+    const foreignPatientId = foreignPatientRes.json().patient.id as string;
+
+    const postCallRes = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${foreignPatientId}/amk-calls`,
+      headers: { authorization: `Bearer ${tokenFromOtherEvent}` },
+      payload: {
+        summaryGiven: 'Test',
+        amkGuidance: 'Test',
+        followUpOwner: 'Test',
+      },
+    });
+    expect(postCallRes.statusCode).toBe(403);
+
+    const getCallRes = await app.inject({
+      method: 'GET',
+      url: `/api/patients/${foreignPatientId}/amk-calls`,
+      headers: { authorization: `Bearer ${tokenFromOtherEvent}` },
+    });
+    expect(getCallRes.statusCode).toBe(403);
+
+    const draftRes = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${foreignPatientId}/amk-assist/draft`,
+      headers: { authorization: `Bearer ${tokenFromOtherEvent}` },
+      payload: {},
+    });
+    expect(draftRes.statusCode).toBe(403);
+
+    const confirmRes = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${foreignPatientId}/amk-assist/confirm`,
+      headers: { authorization: `Bearer ${tokenFromOtherEvent}` },
+      payload: {
+        criticality: 'middels',
+        spokenScript: 'Test',
+      },
+    });
+    expect(confirmRes.statusCode).toBe(403);
+  });
+
+  it('returns a deterministic AMK draft and stores the draft action', async () => {
+    const token = getSickbayToken(eventId);
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        ageGroup: 'adult',
+        presentingComplaint: 'Magesmerter',
+      },
+    });
+    const patientId = createRes.json().patient.id as string;
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patientId}/vitals`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        pulse: 124,
+        spo2: 91,
+        respiratoryRate: 24,
+        painScore: 7,
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patientId}/amk-assist/draft`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(Object.keys(body).sort()).toEqual([
+      'criticality',
+      'rationale',
+      'sayFirst',
+      'sbarDraft',
+      'spokenScript',
+    ]);
+    expect(body.criticality).toMatch(/^(lav|middels|høy|kritisk)$/);
+    expect(Array.isArray(body.sayFirst)).toBe(true);
+    expect(body.sbarDraft).toHaveProperty('situation');
+
+    const rows = await db
+      .select()
+      .from(actionEvents)
+      .where(and(eq(actionEvents.entityType, 'patient'), eq(actionEvents.entityId, patientId), eq(actionEvents.actionType, 'patient.amk_ai_draft_generated')));
+
+    expect(rows).toHaveLength(1);
+    expect((rows[0]?.payload as any).provenance).toMatchObject({
+      source: 'fallback_template',
+      fallbackUsed: true,
+    });
+  });
+
+  it('uses provider adapter path when AI env config is present', async () => {
+    const prevProvider = process.env.AI_PROVIDER;
+    const prevModel = process.env.AI_MODEL;
+    const prevApiKey = process.env.AI_API_KEY;
+    process.env.AI_PROVIDER = 'mock';
+    process.env.AI_MODEL = 'mock-v1';
+    process.env.AI_API_KEY = 'test-key';
+    const token = getSickbayToken(eventId);
+
+    try {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/patients',
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          eventId,
+          ageGroup: 'adult',
+          presentingComplaint: 'Svimmelhet',
+        },
+      });
+      const patientId = createRes.json().patient.id as string;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/patients/${patientId}/amk-assist/draft`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {},
+      });
+
+      expect(res.statusCode).toBe(200);
+
+      const rows = await db
+        .select()
+        .from(actionEvents)
+        .where(and(eq(actionEvents.entityType, 'patient'), eq(actionEvents.entityId, patientId), eq(actionEvents.actionType, 'patient.amk_ai_draft_generated')));
+
+      expect(rows).toHaveLength(1);
+      expect((rows[0]?.payload as any).provenance).toMatchObject({
+        source: 'provider',
+        model: 'mock-v1',
+        fallbackUsed: false,
+      });
+    } finally {
+      process.env.AI_PROVIDER = prevProvider;
+      process.env.AI_MODEL = prevModel;
+      process.env.AI_API_KEY = prevApiKey;
+    }
+  });
+
+  it('stores a confirmed AMK script as an append-only action', async () => {
+    const token = getSickbayToken(eventId);
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        ageGroup: 'adult',
+        presentingComplaint: 'Synkope',
+      },
+    });
+    const patientId = createRes.json().patient.id as string;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patientId}/amk-assist/confirm`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        criticality: 'høy',
+        spokenScript: 'Dette er sykestue. Vi trenger hjelp nå.',
+        rationale: 'Høy puls og redusert allmenntilstand.',
+        sayFirst: ['Pasient med synkope', 'Puls 124'],
+        sbarDraft: {
+          situation: 'Pasient med synkope',
+          background: 'Ingen kjent sykehistorie',
+          assessment: 'Høy risiko',
+          recommendation: 'Ønsker AMK-vurdering',
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.ok).toBe(true);
+    expect(body.confirmed.criticality).toBe('høy');
+    expect(body.action.actionType).toBe('patient.amk_ai_script_confirmed');
+
+    const rows = await db
+      .select()
+      .from(actionEvents)
+      .where(and(eq(actionEvents.entityType, 'patient'), eq(actionEvents.entityId, patientId), eq(actionEvents.actionType, 'patient.amk_ai_script_confirmed')));
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it('does not trigger patient status transitions from AI draft/confirm actions', async () => {
+    const token = getSickbayToken(eventId);
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        ageGroup: 'adult',
+        presentingComplaint: 'Sirkulasjonssvikt',
+      },
+    });
+    const patientId = createRes.json().patient.id as string;
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patientId}/amk-assist/draft`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patientId}/amk-assist/confirm`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        criticality: 'kritisk',
+        spokenScript: 'Trenger umiddelbar AMK-hjelp.',
+      },
+    });
+
+    const patientRes = await app.inject({
+      method: 'GET',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(patientRes.statusCode).toBe(200);
+    expect(patientRes.json().patient.status).toBe('incoming');
+
+    const statusSetRows = await db
+      .select()
+      .from(actionEvents)
+      .where(and(eq(actionEvents.entityType, 'patient'), eq(actionEvents.entityId, patientId), eq(actionEvents.actionType, 'patient.status_set')));
+
+    expect(statusSetRows).toHaveLength(0);
+  });
+});
+
+describe('Patient event scoping', () => {
+  it('rejects access to a patient from another event', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const firstAiderToken = getSickbayToken(eventId);
+
+    const createEventRes = await app.inject({
+      method: 'POST',
+      url: '/api/events',
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: {
+        name: `Fremmed event ${Date.now()}`,
+        startDate: '2026-04-04T08:00:00.000Z',
+        endDate: '2026-04-04T18:00:00.000Z',
+      },
+    });
+    const foreignEventId = createEventRes.json().event.id as string;
+
+    const foreignPatientRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: {
+        eventId: foreignEventId,
+        ageGroup: 'adult',
+        presentingComplaint: 'Utenfor skopet',
+      },
+    });
+    const foreignPatientId = foreignPatientRes.json().patient.id as string;
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/patients/${foreignPatientId}`,
+      headers: { authorization: `Bearer ${firstAiderToken}` },
+    });
+
+    expect(res.statusCode).toBe(403);
   });
 });
 
