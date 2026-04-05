@@ -225,4 +225,54 @@ describe('IncidentForm — step 3 (confirm and submit)', () => {
       );
     });
   });
+
+  it('keeps indoor locationContext while sending a valid location payload', async () => {
+    vi.mocked(api.createIncident).mockResolvedValue({ incident: { id: 'inc-new' } });
+    vi.mocked(api.getEventIndoorLayout).mockResolvedValue({
+      layout: {
+        venueId: 'venue-1',
+        venueName: 'Testhall',
+        floors: [
+          {
+            id: 'floor-1',
+            label: 'Plan 1',
+            zones: [
+              { id: 'zone-a', label: 'Sone A', center: { lat: 59.913, lng: 10.752 } },
+            ],
+          },
+        ],
+      },
+    });
+    vi.mocked(useGeolocation).mockReturnValue({
+      status: 'ok',
+      position: { lat: 59.912345, lng: 10.752211 },
+    });
+
+    renderForm();
+    await waitFor(() => expect(api.getEventIndoorLayout).toHaveBeenCalled());
+    const indoorModeButton = await screen.findByRole('button', { name: /Innendørs lokasjon/i });
+    fireEvent.click(indoorModeButton);
+    fireEvent.click(screen.getByRole('button', { name: 'Medisinsk' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Neste: MIST →' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Forhåndsvis →' }));
+    fireEvent.click(screen.getByRole('button', { name: /Send hendelse/ }));
+
+    await waitFor(() => {
+      expect(api.createIncident).toHaveBeenCalledWith(
+        expect.objectContaining({
+          location: expect.objectContaining({
+            lat: expect.any(Number),
+            lng: expect.any(Number),
+          }),
+          locationContext: expect.objectContaining({
+            mode: 'indoor_zone',
+            venueId: 'venue-1',
+            floorId: 'floor-1',
+            zoneId: 'zone-a',
+            zoneLabel: 'Sone A',
+          }),
+        }),
+      );
+    });
+  });
 });
