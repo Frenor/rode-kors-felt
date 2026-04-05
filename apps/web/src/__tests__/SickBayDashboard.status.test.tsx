@@ -165,6 +165,24 @@ describe('Patient grouping and closed card visibility', () => {
     expect(screen.getByTestId('patient-section-count-discharged')).toHaveTextContent('1 pasient');
   });
 
+  it('sorts patients by placement number within a status group', async () => {
+    await renderWithPatients([
+      { id: 'pat-a', status: 'incoming', fullName: 'Pasient A', placementType: 'chair', placementNumber: '12' },
+      { id: 'pat-b', status: 'incoming', fullName: 'Pasient B', placementType: 'chair', placementNumber: '2' },
+      { id: 'pat-c', status: 'incoming', fullName: 'Pasient C', placementType: 'bed', placementNumber: '7' },
+    ]);
+
+    const section = screen.getByTestId('patient-section-incoming');
+    const statuses = Array.from(section.querySelectorAll('[data-testid^="patient-status-"]'))
+      .map((el) => el.getAttribute('data-testid'));
+
+    expect(statuses).toEqual([
+      'patient-status-pat-b',
+      'patient-status-pat-c',
+      'patient-status-pat-a',
+    ]);
+  });
+
   it('keeps closed cards collapsed by default and expands on toggle', async () => {
     await renderWithPatients([
       { id: 'pat-closed-1', status: 'discharged', presentingComplaint: 'Closed one' },

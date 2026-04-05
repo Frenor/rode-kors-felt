@@ -319,6 +319,24 @@ export function SickBayDashboard() {
   };
 
   const sortedPatients = [...patients].sort((a, b) => {
+    const aPlacement = a.placementNumber ? Number.parseInt(a.placementNumber, 10) : Number.NaN;
+    const bPlacement = b.placementNumber ? Number.parseInt(b.placementNumber, 10) : Number.NaN;
+    const aHasPlacement = Number.isFinite(aPlacement);
+    const bHasPlacement = Number.isFinite(bPlacement);
+    if (aHasPlacement && bHasPlacement && aPlacement !== bPlacement) {
+      return aPlacement - bPlacement;
+    }
+    if (aHasPlacement !== bHasPlacement) {
+      return aHasPlacement ? -1 : 1;
+    }
+
+    const placementTypeOrder: Record<'chair' | 'bed', number> = { chair: 0, bed: 1 };
+    const aTypeRank = a.placementType ? placementTypeOrder[a.placementType] ?? 9 : 9;
+    const bTypeRank = b.placementType ? placementTypeOrder[b.placementType] ?? 9 : 9;
+    if (aTypeRank !== bTypeRank) {
+      return aTypeRank - bTypeRank;
+    }
+
     const order: Record<string, number> = { high: 0, medium: 1, low: 2, routine: 3 };
     const aLevel = a.latestVitals ? calculateNEWS2(a.latestVitals).alertLevel : 'none';
     const bLevel = b.latestVitals ? calculateNEWS2(b.latestVitals).alertLevel : 'none';
