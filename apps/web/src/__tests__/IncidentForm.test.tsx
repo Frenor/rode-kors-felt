@@ -7,6 +7,7 @@ import { IncidentForm } from '../pages/IncidentForm';
 vi.mock('../lib/api', () => ({
   api: {
     createIncident: vi.fn(),
+    getEventIndoorLayout: vi.fn(),
   },
 }));
 
@@ -32,6 +33,7 @@ function renderForm() {
 
 beforeEach(() => {
   vi.mocked(api.createIncident).mockReset();
+  vi.mocked(api.getEventIndoorLayout).mockResolvedValue({ layout: null });
 });
 
 describe('IncidentForm — step 0 (incident type)', () => {
@@ -102,6 +104,48 @@ describe('IncidentForm — step 2 (MIST)', () => {
     expect(screen.getByText(/I — Skade/)).toBeInTheDocument();
     expect(screen.getByText(/S — Tegn/)).toBeInTheDocument();
     expect(screen.getByText(/T — Behandling/)).toBeInTheDocument();
+  });
+
+  it('prefills MIST tegn chips from selected START-triage tag', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('radio', { name: 'UMIDDELBAR' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Medisinsk' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Neste: MIST →' }));
+
+    expect(screen.getByRole('button', { name: '✓ Pågående blødning' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '✓ Pustevansker' })).toBeInTheDocument();
+  });
+
+  it('updates untouched prefill when triage tag changes before user edits', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('radio', { name: 'MINDRE' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'UMIDDELBAR' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Medisinsk' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Neste: MIST →' }));
+
+    expect(screen.getByTestId('mist-sign-chip-Pågående blødning')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('mist-sign-chip-Pustevansker')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('mist-sign-chip-Går selv')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('does not override user-edited tegn chips when triage tag changes later', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('radio', { name: 'MINDRE' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Medisinsk' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Neste: MIST →' }));
+
+    const dizzinessChip = screen.getByTestId('mist-sign-chip-Svimmelhet');
+    fireEvent.click(dizzinessChip);
+    expect(dizzinessChip).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: '← Tilbake' }));
+    fireEvent.click(screen.getByRole('button', { name: '← Tilbake' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'UMIDDELBAR' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Medisinsk' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Neste: MIST →' }));
+
+    expect(screen.getByTestId('mist-sign-chip-Svimmelhet')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('mist-sign-chip-Pågående blødning')).toHaveAttribute('aria-pressed', 'false');
   });
 });
 

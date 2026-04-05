@@ -37,6 +37,26 @@ const INCIDENT_TYPES: { value: IncidentType; label: string }[] = [
   { value: 'other', label: 'Annet' },
 ];
 
+const MIST_SIGNS_CHIPS = [
+  'Pågående blødning',
+  'Pustevansker',
+  'Bevissthetsreduksjon',
+  'Smerter',
+  'Svimmelhet',
+  'Kvalme',
+  'Stabil respirasjon',
+  'Går selv',
+  'Overfladisk skade',
+  'Ingen respirasjon',
+];
+
+const TRIAGE_SIGNS_PREFILL: Record<TriageTag, string[]> = {
+  immediate: ['Pågående blødning', 'Pustevansker', 'Bevissthetsreduksjon'],
+  delayed: ['Smerter', 'Stabil respirasjon'],
+  minor: ['Går selv', 'Overfladisk skade'],
+  expectant: ['Ingen respirasjon', 'Bevissthetsreduksjon'],
+};
+
 // ─── MIST chip section component ────────────────────────────────────────────
 
 interface MistChipSectionProps {
@@ -145,7 +165,9 @@ export function IncidentForm() {
   const [mistMechanismNote, setMistMechanismNote] = useState('');
   const [mistInjury, setMistInjury] = useState<string[]>([]);
   const [mistInjuryNote, setMistInjuryNote] = useState('');
+  const [mistSigns, setMistSigns] = useState<string[]>([]);
   const [mistSignsNote, setMistSignsNote] = useState('');
+  const [mistSignsTouched, setMistSignsTouched] = useState(false);
   const [mistTreatment, setMistTreatment] = useState<string[]>([]);
   const [mistTreatmentNote, setMistTreatmentNote] = useState('');
 
@@ -216,6 +238,16 @@ export function IncidentForm() {
     }
   }, [indoorLayout, indoorFloorId, indoorZoneId]);
 
+  useEffect(() => {
+    if (mistSignsTouched) return;
+    if (!triageTag) return;
+    const prefill = TRIAGE_SIGNS_PREFILL[triageTag];
+    if (!prefill.length) return;
+
+    // Keep untouched signs deterministic for the currently selected triage tag.
+    setMistSigns(prefill);
+  }, [triageTag, mistSignsTouched]);
+
   const handleSubmit = async () => {
     if (!type || !eventId) return;
     setSubmitting(true);
@@ -276,7 +308,8 @@ export function IncidentForm() {
         vitals.rr ? `RF: ${vitals.rr}/min` : '',
         vitals.pain ? `Smerte: ${vitals.pain}/10` : '',
       ].filter(Boolean).join(', ');
-      const signs = [autoSigns, mistSignsNote].filter(Boolean).join(' — ');
+      const signsFromChips = mistSigns.join(', ');
+      const signs = [signsFromChips, autoSigns, mistSignsNote].filter(Boolean).join(' — ');
       const treatment = [
         ...mistTreatment,
         ...(mistTreatmentNote ? [mistTreatmentNote] : []),
@@ -438,6 +471,7 @@ export function IncidentForm() {
                   onClick={() => setTriageTag(triageTag === opt.value ? null : opt.value)}
                   role="radio"
                   aria-checked={triageTag === opt.value}
+                  data-testid={`triage-${opt.value}`}
                   className="touch-target"
                   style={{
                     minHeight: 56,
@@ -651,6 +685,43 @@ export function IncidentForm() {
             <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
               S — Tegn / symptomer
             </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+              {MIST_SIGNS_CHIPS.map((chip) => {
+                const active = mistSigns.includes(chip);
+                return (
+                  <button
+                    key={chip}
+                    type="button"
+                    aria-pressed={active}
+                    data-testid={`mist-sign-chip-${chip}`}
+                    onClick={() =>
+                      {
+                        setMistSignsTouched(true);
+                        setMistSigns((current) =>
+                          current.includes(chip) ? current.filter((value) => value !== chip) : [...current, chip],
+                        );
+                      }
+                    }
+                    style={{
+                      minHeight: 40,
+                      padding: '0 var(--space-3)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: `2px solid ${active ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                      background: active ? 'var(--color-brand-dim)' : 'transparent',
+                      color: 'var(--color-text)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: active ? 700 : 400,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {active ? '✓ ' : ''}
+                    {chip}
+                  </button>
+                );
+              })}
+            </div>
             <div style={{
               fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
               color: 'var(--color-text-subtle)', marginBottom: 'var(--space-2)',
@@ -668,7 +739,10 @@ export function IncidentForm() {
             <div style={{ position: 'relative' }}>
               <textarea
                 value={mistSignsNote}
-                onChange={(e) => setMistSignsNote(e.target.value)}
+                onChange={(e) => {
+                  setMistSignsTouched(true);
+                  setMistSignsNote(e.target.value);
+                }}
                 placeholder="Tilleggssymptomer..."
                 rows={2}
                 style={{
@@ -795,6 +869,7 @@ export function IncidentForm() {
                     {mistMechanism.length > 0 && <div><strong>M:</strong> {[...mistMechanism, mistMechanismNote].filter(Boolean).join(', ')}</div>}
                     {mistInjury.length > 0 && <div><strong>I:</strong> {[...mistInjury, mistInjuryNote].filter(Boolean).join(', ')}</div>}
                     <div><strong>S:</strong> {[
+                      mistSigns.join(', '),
                       acvpu ? `ACVPU: ${acvpu}` : '',
                       vitals.pulse ? `Puls: ${vitals.pulse}` : '',
                       vitals.spo2 ? `SpO₂: ${vitals.spo2}%` : '',
