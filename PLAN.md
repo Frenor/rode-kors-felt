@@ -1,12 +1,12 @@
 # RKF PLAN v3.1 — English Enums, Distributed Agent Packs, and Parallel Execution
 
 ## 0. Status Board
-- Lane 0 (Plan Commit Gate): `In progress`
-- Lane 1 (Backend Team Workspace + Incoming Feed): `Not started`
-- Lane 2 (First Aider Workspace UX/State): `Not started`
-- Lane 3 (Sick Bay Clarity UX): `Not started`
-- Lane 4 (Enum Migration Across Shared/API/Web): `Not started`
-- Lane 5 (QA Matrix + Pages Visibility Verification): `Not started`
+- Lane 0 (Plan Commit Gate): `Completed`
+- Lane 1 (Backend Team Workspace + Incoming Feed): `In progress`
+- Lane 2 (First Aider Workspace UX/State): `In progress`
+- Lane 3 (Sick Bay Clarity UX): `In progress`
+- Lane 4 (Enum Migration Across Shared/API/Web): `In progress`
+- Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -70,3 +70,52 @@
 - `docs/sprints/v3.1/50-offline-sync-rules.md`
 - `docs/sprints/v3.1/60-agent-pack-index.md`
 - `docs/sprints/v3.1/task-cards.md`
+
+## 8. Checkpoint Log (Active Resume Source)
+- `fbc9e77` `feat(web): surface NEWS2 parameter details for first-aider handover`
+  - Added richer live NEWS2 detail cards in first-aider incident flow.
+  - Added MIST-step recap of recorded NEWS2 parameters for handover speed.
+  - Added deterministic NEWS2 test coverage improvements in IncidentForm tests.
+- `301d17d` `feat(web): show live NEWS2 preview in first-aider vitals and MIST`
+  - Live NEWS2 preview in vitals step and mirrored preview in MIST step.
+- `43e29d9` `feat(web): show live team message stream in coordinator dashboard`
+  - Coordinator can view intra-team message stream for current event.
+- `0b49dd4` `test(web): verify incident manual position override and indoor location context`
+  - Regression tests for incident position override and indoor context payload.
+- `af573b4` `feat(web): allow first-aider teams to adjust incident position before submit`
+  - Team can manually set incident coordinates before submit.
+
+## 9. Current Focus (April 5, 2026)
+- First Aider efficiency uplift:
+  - live NEWS2 support is now implemented and expanded.
+  - next: improve workspace continuity and active-patient recovery UX.
+- Sick Bay clarity:
+  - grouped status + visibility work is ongoing.
+  - next: incoming critical panel signal clarity and progression readability.
+- Quality and deployment confidence:
+  - keep per-feature tests incremental.
+  - keep Pages preview visibility checks active for new UI blocks.
+
+## 10. Next Self-Contained Commit Queue
+1. `feat(web): add first-aider resume card and explicit local-save sync banner`
+  - Scope: first-aider dashboard/workspace only.
+  - Test: web unit/integration for resume + sync states.
+2. `feat(web): harden sickbay progression timeline and critical quick-vitals row`
+  - Scope: sickbay dashboard components only.
+  - Test: component tests for grouping/collapse/progression markers.
+3. `feat(api): expose team workspace aggregate for assigned/monitored/unassigned`
+  - Scope: API endpoints + service layer only.
+  - Test: integration tests with event scope + idempotency.
+4. `refactor(types): finish english enum normalization and legacy fallback guards`
+  - Scope: shared types + API parser normalization + web label mappings.
+  - Test: parser and rendering normalization tests.
+5. `test(e2e): verify first-aider resume and sickbay critical visibility in pages-demo`
+  - Scope: Playwright only.
+  - Test: `local-full`, `pages-demo`, and read-safe smoke assertions.
+
+## 11. Interruption Recovery Protocol
+1. Open this file first: `PLAN.md`.
+2. Start from `Checkpoint Log`, identify latest commit and unfinished queue item.
+3. Continue with exactly one queue item per commit.
+4. Run scoped tests for that queue item before commit.
+5. Update `Checkpoint Log` and `Status Board` in the same working session.
