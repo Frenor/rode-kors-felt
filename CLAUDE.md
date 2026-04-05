@@ -9,6 +9,6 @@ Use [docs/ai/COMPACT-PLAYBOOK.md](/Users/fredrik/Developer/rode-kors-felt/docs/a
 4. Update `PLAN.md` checkpoints for milestone-level changes.
 
 ## Delegation
-- Prefer parallel specialists in `prompts/agents/`.
+- Prefer parallel specialists in `prompts/agents/` with `routing-matrix.md` + `specialists-lite.md`.
 - Default to cheapest capable model + low reasoning.
 - Integrate, verify, and finalize centrally.
