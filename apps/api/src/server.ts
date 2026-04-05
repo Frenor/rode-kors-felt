@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
+import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { createRequire } from 'node:module';
 import { pool } from './db/index.js';
@@ -44,6 +45,12 @@ async function buildServer() {
     credentials: true,
   });
   await app.register(sensible);
+  await app.register(rateLimit, {
+    global: true,
+    max: 120,
+    timeWindow: '1 minute',
+    allowList: ['127.0.0.1', '::1'],
+  });
   await app.register(websocket);
 
   // ── Request tracing — correlation ID header ───────────────────────

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './helpers.js';
+import { verifyToken } from '../middleware/auth.js';
 
 let app: FastifyInstance;
 
@@ -111,5 +112,41 @@ describe('POST /api/auth/refresh', () => {
     expect(body).toHaveProperty('accessToken');
     expect(typeof body.accessToken).toBe('string');
     expect(body.accessToken.length).toBeGreaterThan(0);
+  });
+
+  it('returns 401 when an access token is used on refresh endpoint', async () => {
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'admin@rkf.no', password: 'admin123' },
+    });
+    const { accessToken } = loginRes.json();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      payload: { refreshToken: accessToken },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('issues an access token (not refresh token) from refresh endpoint', async () => {
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'admin@rkf.no', password: 'admin123' },
+    });
+    const { refreshToken } = loginRes.json();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      payload: { refreshToken },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const payload = verifyToken(res.json().accessToken);
+    expect(payload?.type).toBe('access');
   });
 });

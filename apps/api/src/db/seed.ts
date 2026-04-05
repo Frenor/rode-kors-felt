@@ -10,6 +10,7 @@
 
 import { db } from './index.js';
 import { accessCodes, events, teams, users } from './schema.js';
+import { hashPassword } from '../middleware/auth.js';
 
 export async function seedDatabase(): Promise<void> {
   const existing = await db.select().from(events).limit(1);
@@ -63,7 +64,7 @@ export async function seedDatabase(): Promise<void> {
 
   await db.insert(users).values({
     email: 'admin@rkf.no',
-    passwordHash: 'admin123', // MVP only — hash in production
+    passwordHash: hashPassword('admin123'),
     role: 'coordinator',
   });
 }
