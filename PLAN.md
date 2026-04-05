@@ -71,6 +71,11 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `(pending commit)` `docs(ai): compact ai instruction files for lower token usage`
+  - Centralized shared AI operating rules in `docs/ai/COMPACT-PLAYBOOK.md`.
+  - Rewrote `AGENTS.md` and `CLAUDE.md` to compact pointer-based versions.
+  - Compressed all specialist prompts in `prompts/agents/*.md` to minimal role briefs.
+  - Goal: lower prompt/token overhead while preserving execution guardrails.
 - `52f3a81` `feat(web): add sickbay chair-bed placement capture and incoming assignment`
   - Sykestue kan registrere plassering (stol/seng + nummer) ved pasientinntak.
   - Plassering vises tydelig i pasientkort og i kollapsede «closed»-rader.
