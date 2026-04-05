@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { IncidentForm } from '../pages/IncidentForm';
 
@@ -37,6 +37,17 @@ function renderForm() {
       </Routes>
     </MemoryRouter>
   );
+}
+
+function fillStep1NEWS2() {
+  fireEvent.click(screen.getByRole('radio', { name: /Voice/i }));
+  fireEvent.change(screen.getByLabelText('Pustefrekvens (/min)'), { target: { value: '26' } });
+  fireEvent.change(screen.getByLabelText('SpO₂ (%)'), { target: { value: '90' } });
+  fireEvent.change(screen.getByLabelText('Puls (bpm)'), { target: { value: '118' } });
+}
+
+function getStep1NewsPreview() {
+  return screen.getByTestId('incident-news2-preview-step1');
 }
 
 beforeEach(() => {
@@ -101,16 +112,23 @@ describe('IncidentForm — step 1 (AVPU + vitals)', () => {
   it('shows live NEWS2 preview while entering vitals', () => {
     goToStep1();
 
-    const preview = screen.getByTestId('incident-news2-preview-step1');
+    const preview = getStep1NewsPreview();
     expect(preview).toHaveTextContent('Foreløpig NEWS2');
     expect(preview).toHaveTextContent('Ingen score ennå');
 
-    fireEvent.click(screen.getByRole('radio', { name: /Voice/i }));
-    fireEvent.change(screen.getByLabelText('Pustefrekvens (/min)'), { target: { value: '28' } });
-    fireEvent.change(screen.getByLabelText('SpO₂ (%)'), { target: { value: '89' } });
-    fireEvent.change(screen.getByLabelText('Puls (bpm)'), { target: { value: '128' } });
+    fillStep1NEWS2();
 
     expect(preview).toHaveTextContent(/NEWS2 \d+/);
+    expect(preview).toHaveTextContent('Mangler: Systolisk blodtrykk, Temperatur');
+  });
+
+  it('keeps missing hint hidden until vitals are entered', () => {
+    goToStep1();
+
+    const preview = getStep1NewsPreview();
+    expect(preview).not.toHaveTextContent('Mangler:');
+
+    fillStep1NEWS2();
     expect(preview).toHaveTextContent('Mangler: Systolisk blodtrykk, Temperatur');
   });
 });
@@ -176,14 +194,18 @@ describe('IncidentForm — step 2 (MIST)', () => {
   it('carries NEWS2 preview into MIST step with handover guidance', () => {
     renderForm();
     fireEvent.click(screen.getByRole('button', { name: 'Medisinsk' }));
-    fireEvent.click(screen.getByRole('radio', { name: /Voice/i }));
-    fireEvent.change(screen.getByLabelText('Pustefrekvens (/min)'), { target: { value: '26' } });
-    fireEvent.change(screen.getByLabelText('SpO₂ (%)'), { target: { value: '90' } });
+    fillStep1NEWS2();
+
+    const preview = getStep1NewsPreview();
+    const badgeText = within(preview).getByText(/NEWS2 \d+/).textContent ?? '';
+
     fireEvent.click(screen.getByRole('button', { name: 'Neste: MIST →' }));
 
     const mistPreview = screen.getByTestId('incident-news2-preview-step2');
     expect(mistPreview).toHaveTextContent('NEWS2 i MIST');
-    expect(mistPreview).toHaveTextContent(/NEWS2 \d+/);
+    if (badgeText) {
+      expect(mistPreview).toHaveTextContent(badgeText);
+    }
     expect(mistPreview).toHaveTextContent('hold denne med i overlevering');
   });
 });

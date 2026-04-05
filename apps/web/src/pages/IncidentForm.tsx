@@ -222,6 +222,37 @@ export function IncidentForm() {
     .map(([, label]) => label);
   const news2MeasuredCount = NEWS2_PARAMETER_LABELS.length - news2MissingLabels.length;
   const news2Style = news2Colors[news2Preview.alertLevel];
+  const getNews2InputValue = (key: keyof typeof news2Preview.scores) => {
+    switch (key) {
+      case 'respiratoryRate':
+        return vitals.rr ? `${vitals.rr} /min` : null;
+      case 'spo2':
+        return vitals.spo2 ? `${vitals.spo2}%` : null;
+      case 'pulse':
+        return vitals.pulse ? `${vitals.pulse} bpm` : null;
+      case 'systolicBP':
+        return null;
+      case 'temperature':
+        return null;
+      case 'consciousness':
+        return acvpu
+          ? ACVPU_OPTIONS.find((option) => option.value === acvpu)?.short ?? acvpu
+          : null;
+      default:
+        return null;
+    }
+  };
+  const news2ParameterDetails = NEWS2_PARAMETER_LABELS.map(([key, label]) => {
+    const score = news2Preview.scores[key];
+    return {
+      key,
+      label,
+      score,
+      recorded: score !== null,
+      rawValue: getNews2InputValue(key),
+    };
+  });
+  const recordedNews2ParameterDetails = news2ParameterDetails.filter((param) => param.recorded);
 
   useEffect(() => {
     let active = true;
@@ -739,6 +770,39 @@ export function IncidentForm() {
                 Mangler: {news2MissingLabels.join(', ')}
               </p>
             ) : null}
+            <div
+              role="list"
+              aria-label="NEWS2-parametere"
+              style={{
+                marginTop: 'var(--space-3)',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                gap: 'var(--space-2)',
+              }}
+            >
+              {news2ParameterDetails.map((param, index) => (
+                <div
+                  role="listitem"
+                  key={`${param.key}-${index}`}
+                  style={{
+                    padding: 'var(--space-2)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1px solid ${param.recorded ? 'var(--color-border-strong)' : 'var(--color-border)'}`,
+                    background: param.recorded ? 'var(--color-surface-dim)' : 'transparent',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: '2px' }}>{param.label}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-1)' }}>
+                    <span>{param.rawValue ?? 'Ikke registrert'}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+                      {param.recorded ? `Score ${param.score}` : 'Mangler'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
 
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -785,6 +849,29 @@ export function IncidentForm() {
                 ? `${news2MonitoringLabel(news2Preview)} · hold denne med i overlevering`
                 : 'NEWS2 kommer automatisk når vitale tegn registreres i forrige steg.'}
             </p>
+            {hasAnyNewsInput && recordedNews2ParameterDetails.length > 0 ? (
+              <div
+                aria-live="polite"
+                style={{
+                  marginTop: 'var(--space-3)',
+                  padding: 'var(--space-2)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--color-surface-dim)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
+                  Registrerte verdier
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                  {recordedNews2ParameterDetails.map((param) => (
+                    <div key={`${param.key}-recorded`} style={{ fontSize: 'var(--text-xs)', fontWeight: 600 }}>
+                      {param.label}: {param.rawValue ?? 'Score ' + param.score}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <MistChipSection
