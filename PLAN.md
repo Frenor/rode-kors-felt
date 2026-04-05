@@ -54,9 +54,16 @@
 - Clinical artifacts remain append-only.
 
 ## 3. Carryover from Removed TODO.md
-- `5.5` MIST pre-fill from START triage
-- `6.2` Terraform completion
-- `6.5` Load testing p95/throughput
+- `5.5` MIST pre-fill from START triage — `Done` (April 4, 2026)
+  - `apps/web/src/pages/IncidentForm.tsx`: triage-driven MIST signs prefill, editable signs chips, non-overwrite guard for user edits
+  - `apps/web/src/__tests__/IncidentForm.test.tsx`: prefill + untouched-change + edited-non-override coverage
+- `6.2` Terraform completion — `Done` (April 4, 2026)
+  - `infra/terraform/environments/dev/main.tf`: opt-in ECS service + ALB/ACM wiring with explicit dependency/validation contracts
+  - `infra/terraform/environments/dev/README.md`: enablement checklist for full service path
+- `6.5` Load testing p95/throughput — `Done` (April 4, 2026)
+  - `apps/api/src/load/run.ts`: non-destructive autocannon scenarios with threshold gating and auth-scenario requirement toggle
+  - `apps/api/src/load/thresholds.ts` + `thresholds.test.ts`: deterministic threshold evaluation and assertions
+  - `apps/api/LOAD_TESTING.md`: execution and env-contract docs
 
 ## 4. Parallel Execution Model
 - Lane 1 (Product/UX/QA): Section B
