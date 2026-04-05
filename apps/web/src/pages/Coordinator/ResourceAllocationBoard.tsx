@@ -158,6 +158,18 @@ export function ResourceAllocationBoard({
                         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
                           {(TRANSPORT_ICON[team.transport ?? 'foot'] ?? '🚶')} {team.transport ?? 'foot'}
                         </div>
+                        {(team.contactPhone || team.contactRadio) && (
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginTop: 2 }}>
+                            {team.contactPhone && <span title="Mobilnummer">📞 {team.contactPhone}</span>}
+                            {team.contactPhone && team.contactRadio && <span> · </span>}
+                            {team.contactRadio && <span title="ISSI">📻 {team.contactRadio}</span>}
+                          </div>
+                        )}
+                        {team.gear && team.gear.length > 0 && (
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginTop: 1 }}>
+                            {team.gear.length} utstyr
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>

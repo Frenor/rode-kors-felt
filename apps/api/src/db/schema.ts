@@ -91,6 +91,8 @@ export const events = pgTable('events', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const fieldTriageStatusEnum = pgEnum('field_triage_status', ['green', 'yellow', 'red', 'black']);
+
 export const teams = pgTable('teams', {
   id: uuid('id').primaryKey().defaultRandom(),
   eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
@@ -99,6 +101,8 @@ export const teams = pgTable('teams', {
   transport: teamTransportEnum('transport').notNull().default('foot'),
   gear: text('gear').array().notNull().default([]),
   members: text('members').array().notNull().default([]),
+  contactPhone: varchar('contact_phone', { length: 50 }),
+  contactRadio: varchar('contact_radio', { length: 50 }),
   currentPosition: jsonb('current_position').$type<{ lat: number; lng: number }>(),
   lastPositionUpdate: timestamp('last_position_update', { withTimezone: true }),
 });
@@ -175,6 +179,13 @@ export const patients = pgTable('patients', {
     .notNull()
     .default([]),
   diagnosisFlags: text('diagnosis_flags').array().notNull().default([]),
+  label: varchar('label', { length: 200 }),
+  triageStatus: fieldTriageStatusEnum('triage_status'),
+  description: text('description'),
+  positionText: text('position_text'),
+  lat: real('lat'),
+  lon: real('lon'),
+  assignedTeamId: uuid('assigned_team_id').references(() => teams.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
