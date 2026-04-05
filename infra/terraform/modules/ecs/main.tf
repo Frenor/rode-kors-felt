@@ -104,78 +104,80 @@ locals {
   service_name    = "rkf-${var.environment}"
   cluster_name    = "rkf-${var.environment}"
   log_group_name  = "/ecs/rkf-${var.environment}"
-  container_defs = var.create_service ? [
-    {
-      name      = "api"
-      image     = var.api_container_image
-      essential = true
-      portMappings = [
-        {
-          containerPort = var.api_container_port
-          hostPort      = var.api_container_port
-          protocol      = "tcp"
+  container_defs = [
+    for definition in [
+      {
+        name      = "api"
+        image     = var.api_container_image
+        essential = true
+        portMappings = [
+          {
+            containerPort = var.api_container_port
+            hostPort      = var.api_container_port
+            protocol      = "tcp"
+          }
+        ]
+        environment = [
+          { name = "NODE_ENV", value = "production" },
+          { name = "HOST", value = "0.0.0.0" },
+          { name = "PORT", value = tostring(var.api_container_port) },
+          { name = "LOG_LEVEL", value = "info" },
+          { name = "DATABASE_URL", value = var.database_url },
+          { name = "REDIS_URL", value = var.redis_url },
+          { name = "JWT_SECRET", value = var.jwt_secret },
+          { name = "CORS_ORIGIN", value = var.cors_origin },
+        ]
+        healthCheck = {
+          command     = ["CMD-SHELL", "wget -qO- http://127.0.0.1:${var.api_container_port}/health || exit 1"]
+          interval    = 30
+          timeout     = 5
+          retries     = 3
+          startPeriod = 30
         }
-      ]
-      environment = [
-        { name = "NODE_ENV", value = "production" },
-        { name = "HOST", value = "0.0.0.0" },
-        { name = "PORT", value = tostring(var.api_container_port) },
-        { name = "LOG_LEVEL", value = "info" },
-        { name = "DATABASE_URL", value = var.database_url },
-        { name = "REDIS_URL", value = var.redis_url },
-        { name = "JWT_SECRET", value = var.jwt_secret },
-        { name = "CORS_ORIGIN", value = var.cors_origin },
-      ]
-      healthCheck = {
-        command     = ["CMD-SHELL", "wget -qO- http://127.0.0.1:${var.api_container_port}/health || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 30
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-group         = local.log_group_name
+            awslogs-region        = data.aws_region.current.name
+            awslogs-stream-prefix = "api"
+          }
+        }
+      },
+      {
+        name      = "web"
+        image     = var.web_container_image
+        essential = true
+        dependsOn = [
+          {
+            containerName = "api"
+            condition     = "HEALTHY"
+          }
+        ]
+        portMappings = [
+          {
+            containerPort = var.web_container_port
+            hostPort      = var.web_container_port
+            protocol      = "tcp"
+          }
+        ]
+        healthCheck = {
+          command     = ["CMD-SHELL", "wget -qO- http://127.0.0.1:${var.web_container_port}/health || exit 1"]
+          interval    = 30
+          timeout     = 5
+          retries     = 3
+          startPeriod = 15
+        }
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-group         = local.log_group_name
+            awslogs-region        = data.aws_region.current.name
+            awslogs-stream-prefix = "web"
+          }
+        }
       }
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = local.log_group_name
-          awslogs-region        = data.aws_region.current.name
-          awslogs-stream-prefix = "api"
-        }
-      }
-    },
-    {
-      name      = "web"
-      image     = var.web_container_image
-      essential = true
-      dependsOn = [
-        {
-          containerName = "api"
-          condition     = "HEALTHY"
-        }
-      ]
-      portMappings = [
-        {
-          containerPort = var.web_container_port
-          hostPort      = var.web_container_port
-          protocol      = "tcp"
-        }
-      ]
-      healthCheck = {
-        command     = ["CMD-SHELL", "wget -qO- http://127.0.0.1:${var.web_container_port}/health || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 15
-      }
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = local.log_group_name
-          awslogs-region        = data.aws_region.current.name
-          awslogs-stream-prefix = "web"
-        }
-      }
-    }
-  ] : []
+    ] : definition if var.create_service
+  ]
 }
 
 data "aws_region" "current" {}
