@@ -71,6 +71,16 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `52f3a81` `feat(web): add sickbay chair-bed placement capture and incoming assignment`
+  - Sykestue kan registrere plassering (stol/seng + nummer) ved pasientinntak.
+  - Plassering vises tydelig i pasientkort og i kollapsede «closed»-rader.
+  - «Kritisk innkommende»-panelet støtter hurtig tildeling av plassering før pasienten tas inn.
+  - Dashboard-tester oppdatert med dekning for synlighet og innkommende hurtig-tildeling.
+- `f1beac5` `feat(api): add patient sickbay placement fields and validation`
+  - API og DB utvidet med `placementType` (`chair|bed`) og `placementNumber`.
+  - Streng validering: stol/seng + nummer må oppgis sammen.
+  - `PATCH /api/patients/:id` støtter både oppdatering og eksplisitt tømming av plassering.
+  - API-tester utvidet for persistens, validering og clearing av plassering.
 - `8615e04` `refactor(web): remove unused legacy incident api methods`
   - Removed legacy incident methods from web API client and demo store (`updateIncident`, `escalateIncident`, `resolveEscalation`).
   - Web now uses action endpoints as the single incident mutation path.
@@ -114,7 +124,8 @@
 - Sick Bay clarity:
   - grouped status + visibility work is ongoing.
   - patient demographics capture + age display is now implemented in core Sick Bay flows.
-  - next: incoming critical panel signal clarity and progression readability.
+  - placement support is now implemented across intake, overview, and incoming flow.
+  - next: continue tightening progression readability and action hierarchy under load.
 - Quality and deployment confidence:
   - keep per-feature tests incremental.
   - keep Pages preview visibility checks active for new UI blocks.
@@ -129,9 +140,9 @@
 3. `feat(api): expose team workspace aggregate for assigned/monitored/unassigned`
   - Scope: API endpoints + service layer only.
   - Test: integration tests with event scope + idempotency.
-4. `refactor(types): finish english enum normalization and legacy fallback guards`
-  - Scope: shared types + API parser normalization + web label mappings.
-  - Test: parser and rendering normalization tests.
+4. `refactor(types): finish english enum normalization and remove non-canonical branches`
+  - Scope: shared types + API parsers + web label mappings.
+  - Test: parser and rendering tests with canonical enum values only.
 5. `test(e2e): verify first-aider resume and sickbay critical visibility in pages-demo`
   - Scope: Playwright only.
   - Test: `local-full`, `pages-demo`, and read-safe smoke assertions.
