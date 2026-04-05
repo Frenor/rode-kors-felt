@@ -131,6 +131,21 @@
   - keep Pages preview visibility checks active for new UI blocks.
 
 ## 10. Next Self-Contained Commit Queue
+0. `security(api+web): production hardening sweep for findings 1-8`
+  - Scope:
+    - Secure JWT signing/verification and refresh-token validation.
+    - Replace plaintext password verification with secure hash verification.
+    - Tighten event access guards and enforce role guards on sensitive routes.
+    - Bind WS connections to token context and enforce per-event broadcast isolation.
+    - Register API rate limiting.
+    - Remove client token persistence from localStorage and remove token in WS query URL.
+  - Validation:
+    - API typecheck + targeted auth/ws/event-scope tests.
+    - Web typecheck + auth/ws client tests.
+  - Rollout:
+    - Commit A: auth + role/scope + rate-limit (API)
+    - Commit B: websocket isolation (API+Web handshake)
+    - Commit C: token persistence hardening + tests (Web)
 1. `feat(web): add first-aider resume card and explicit local-save sync banner`
   - Scope: first-aider dashboard/workspace only.
   - Test: web unit/integration for resume + sync states.
