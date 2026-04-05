@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { calculateNEWS2 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
-import { escalations, events, incidents, patients, teams } from '../db/schema.js';
+import { actionEvents, escalations, events, incidents, patients, teams, vitalReadings } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 
@@ -144,6 +145,141 @@ export async function eventRoutes(app: FastifyInstance) {
       (event.mapRuntimeConfig as MapRuntimeConfig | null) ?? envEvent,
     );
     return { config: resolved };
+  });
+
+  app.get('/:id/sickbay-incoming', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id } = request.params as { id: string };
+
+    const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    if (!canAccessEvent(user, id)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
+
+    const incomingIncidentStatuses = ['dispatched', 'on_scene', 'transporting', 'at_sickbay'] as const;
+    const incidentRows = await db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.eventId, id))
+      .orderBy(desc(incidents.updatedAt));
+
+    const incomingIncidents = incidentRows.filter((row) => incomingIncidentStatuses.includes(row.status));
+    if (incomingIncidents.length === 0) {
+      return { items: [] };
+    }
+
+    const incidentIds = incomingIncidents.map((row) => row.id);
+    const teamIds = [...new Set(incomingIncidents.map((row) => row.teamId).filter((value): value is string => Boolean(value)))];
+
+    const [patientRows, escalationRows, teamStatusRows] = await Promise.all([
+      db.select().from(patients).where(eq(patients.eventId, id)).orderBy(desc(patients.updatedAt)),
+      db
+        .select()
+        .from(escalations)
+        .where(and(eq(escalations.eventId, id), isNull(escalations.resolvedAt), inArray(escalations.incidentId, incidentIds))),
+      teamIds.length === 0
+        ? Promise.resolve([])
+        : db
+          .select()
+          .from(actionEvents)
+          .where(and(
+            eq(actionEvents.eventId, id),
+            eq(actionEvents.entityType, 'team'),
+            eq(actionEvents.actionType, 'team.status_set'),
+            inArray(actionEvents.entityId, teamIds),
+          ))
+          .orderBy(desc(actionEvents.createdAt)),
+    ]);
+
+    const patientByIncident = new Map<string, typeof patients.$inferSelect>();
+    for (const patient of patientRows) {
+      if (patient.incidentId && !patientByIncident.has(patient.incidentId)) {
+        patientByIncident.set(patient.incidentId, patient);
+      }
+    }
+
+    const patientIds = [...new Set([...patientByIncident.values()].map((row) => row.id))];
+    const vitalsRows = patientIds.length === 0
+      ? []
+      : await db
+        .select()
+        .from(vitalReadings)
+        .where(inArray(vitalReadings.patientId, patientIds))
+        .orderBy(desc(vitalReadings.timestamp));
+
+    const latestVitalsByPatientId = new Map<string, typeof vitalReadings.$inferSelect>();
+    for (const row of vitalsRows) {
+      if (!latestVitalsByPatientId.has(row.patientId)) {
+        latestVitalsByPatientId.set(row.patientId, row);
+      }
+    }
+
+    const teamStatusByTeamId = new Map<string, string>();
+    for (const row of teamStatusRows) {
+      if (!teamStatusByTeamId.has(row.entityId)) {
+        const status = (row.payload as { status?: string }).status;
+        if (status) teamStatusByTeamId.set(row.entityId, status);
+      }
+    }
+
+    const activeEscalations = new Set(escalationRows.map((row) => row.incidentId));
+    const items = incomingIncidents.map((incident) => {
+      const patient = patientByIncident.get(incident.id) ?? null;
+      const latestVitals = patient ? latestVitalsByPatientId.get(patient.id) ?? null : null;
+
+      const mappedVitals = latestVitals
+        ? {
+            id: latestVitals.id,
+            patientId: latestVitals.patientId,
+            timestamp: latestVitals.timestamp.toISOString(),
+            pulse: latestVitals.pulse ?? undefined,
+            spo2: latestVitals.spo2 ?? undefined,
+            respiratoryRate: latestVitals.respiratoryRate ?? undefined,
+            painScore: latestVitals.painScore ?? undefined,
+            systolicBP: latestVitals.systolicBp ?? undefined,
+            temperature: latestVitals.temperature ?? undefined,
+            onSupplementalOxygen: latestVitals.onSupplementalOxygen ?? undefined,
+            acvpu: latestVitals.acvpu ?? undefined,
+          }
+        : null;
+
+      const news2 = mappedVitals ? calculateNEWS2(mappedVitals) : null;
+      const criticalReasons: Array<'needs_assistance' | 'open_escalation' | 'triage_immediate' | 'news2_high'> = [];
+
+      if (incident.teamId && teamStatusByTeamId.get(incident.teamId) === 'needs_assistance') {
+        criticalReasons.push('needs_assistance');
+      }
+      if (activeEscalations.has(incident.id)) {
+        criticalReasons.push('open_escalation');
+      }
+      if (incident.triageTag === 'immediate') {
+        criticalReasons.push('triage_immediate');
+      }
+      if (news2?.alertLevel === 'high') {
+        criticalReasons.push('news2_high');
+      }
+
+      return {
+        incidentId: incident.id,
+        patientId: patient?.id ?? null,
+        teamId: incident.teamId ?? null,
+        progressStage: incident.status,
+        critical: criticalReasons.length > 0,
+        criticalReasons,
+        latestVitals: mappedVitals,
+        news2: news2 ? { total: news2.total, alertLevel: news2.alertLevel } : null,
+        triageTag: incident.triageTag ?? null,
+        updatedAt: incident.updatedAt.toISOString(),
+      };
+    });
+
+    items.sort((a, b) => {
+      if (a.critical !== b.critical) return a.critical ? -1 : 1;
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+
+    return { items };
   });
 
   // Create event (coordinator/admin only)

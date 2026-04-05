@@ -7,10 +7,17 @@ import { events as eventsTable } from '../db/schema.js';
 
 let app: FastifyInstance;
 let eventId: string;
+let teamId: string;
 
 beforeAll(async () => {
   app = await buildApp();
   eventId = await getEventId(app);
+  const eventRes = await app.inject({
+    method: 'GET',
+    url: `/api/events/${eventId}`,
+    headers: { authorization: `Bearer ${getCoordinatorToken()}` },
+  });
+  teamId = eventRes.json().teams[0].id as string;
 });
 
 afterAll(async () => {
@@ -236,5 +243,54 @@ describe('Indoor layout and map config', () => {
     });
 
     expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('GET /api/events/:id/sickbay-incoming', () => {
+  it('returns incoming items with critical reasons', async () => {
+    const firstAiderToken = getFirstAiderToken(eventId);
+    const coordinatorToken = getCoordinatorToken();
+
+    const incidentRes = await app.inject({
+      method: 'POST',
+      url: '/api/incidents',
+      headers: { authorization: `Bearer ${firstAiderToken}` },
+      payload: {
+        eventId,
+        teamId,
+        type: 'medical',
+        location: { lat: 59.9139, lng: 10.7522 },
+        triageTag: 'immediate',
+      },
+    });
+    expect(incidentRes.statusCode).toBe(201);
+    const incidentId = incidentRes.json().incident.id as string;
+
+    const statusActionRes = await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${firstAiderToken}` },
+      payload: {
+        type: 'team.status_set',
+        status: 'needs_assistance',
+        clientActionId: crypto.randomUUID(),
+      },
+    });
+    expect(statusActionRes.statusCode).toBe(201);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}/sickbay-incoming`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(Array.isArray(body.items)).toBe(true);
+    const item = body.items.find((row: { incidentId: string }) => row.incidentId === incidentId);
+    expect(item).toBeTruthy();
+    expect(item.critical).toBe(true);
+    expect(item.criticalReasons).toContain('needs_assistance');
+    expect(item.criticalReasons).toContain('triage_immediate');
   });
 });

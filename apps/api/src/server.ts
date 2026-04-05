@@ -13,6 +13,7 @@ import { incidentRoutes } from './routes/incidents.js';
 import { patientRoutes } from './routes/patients.js';
 import { actionRoutes } from './routes/action-events.js';
 import { wsHandler } from './routes/ws.js';
+import { teamRoutes } from './routes/teams.js';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -95,6 +96,7 @@ async function buildServer() {
   await app.register(eventRoutes, { prefix: '/api/events' });
   await app.register(incidentRoutes, { prefix: '/api/incidents' });
   await app.register(patientRoutes, { prefix: '/api/patients' });
+  await app.register(teamRoutes, { prefix: '/api/teams' });
   await app.register(actionRoutes, { prefix: '/api/actions' });
   await app.register(wsHandler, { prefix: '/ws' });
 

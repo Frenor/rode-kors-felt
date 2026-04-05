@@ -30,6 +30,12 @@ export async function runMigrations(): Promise<void> {
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
       DO $$ BEGIN
+        CREATE TYPE team_operational_status AS ENUM (
+          'available', 'en_route', 'on_scene', 'needs_assistance', 'unavailable'
+        );
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$ BEGIN
         CREATE TYPE incident_type AS ENUM ('medical', 'trauma', 'psychiatric', 'other');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
@@ -64,6 +70,10 @@ export async function runMigrations(): Promise<void> {
       DO $$ BEGIN
         CREATE TYPE action_entity_type AS ENUM ('incident', 'patient', 'event');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+
+    await client.query(`
+      ALTER TYPE action_entity_type ADD VALUE IF NOT EXISTS 'team';
     `);
 
     // ── Tables ─────────────────────────────────────────────────────
@@ -217,6 +227,14 @@ export async function runMigrations(): Promise<void> {
 
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS triage_tag triage_tag;
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS location_context JSONB;
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_action_events_event_entity_created
+      ON action_events (event_id, entity_type, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_action_events_event_action_created
+      ON action_events (event_id, action_type, created_at DESC);
     `);
 
     await client.query('COMMIT');

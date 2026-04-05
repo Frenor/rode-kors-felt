@@ -24,6 +24,13 @@ import {
 export const eventStatusEnum = pgEnum('event_status', ['draft', 'active', 'archived']);
 export const userRoleEnum = pgEnum('user_role', ['admin', 'coordinator', 'sickbay', 'first_aider']);
 export const teamTransportEnum = pgEnum('team_transport', ['foot', 'bike', 'vehicle', 'atv']);
+export const teamOperationalStatusEnum = pgEnum('team_operational_status', [
+  'available',
+  'en_route',
+  'on_scene',
+  'needs_assistance',
+  'unavailable',
+]);
 export const incidentTypeEnum = pgEnum('incident_type', ['medical', 'trauma', 'psychiatric', 'other']);
 export const incidentStatusEnum = pgEnum('incident_status', [
   'dispatched', 'on_scene', 'transporting', 'at_sickbay', 'handed_over', 'resolved',
@@ -35,7 +42,7 @@ export const patientStatusEnum = pgEnum('patient_status', [
 ]);
 export const escalationPathEnum = pgEnum('escalation_path', ['path_a_rk_ambulance', 'path_b_113']);
 export const triageTagEnum = pgEnum('triage_tag', ['immediate', 'delayed', 'minor', 'expectant']);
-export const actionEntityTypeEnum = pgEnum('action_entity_type', ['incident', 'patient', 'event']);
+export const actionEntityTypeEnum = pgEnum('action_entity_type', ['incident', 'patient', 'event', 'team']);
 
 // ─── Tables ──────────────────────────────────────────────────────
 
