@@ -495,6 +495,78 @@ export async function eventRoutes(app: FastifyInstance) {
       discharged: eventPatients.filter((p) => p.status === 'discharged').length,
     };
   });
+
+  // Create a field patient scoped to an event (coordinator-friendly, location optional)
+  app.post('/:id/patients', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id: eventId } = request.params as { id: string };
+
+    const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, eventId)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    if (!canAccessEvent(user, eventId)) return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+
+    const body = request.body as {
+      label?: string;
+      triageStatus?: string;
+      description?: string;
+      positionText?: string;
+      lat?: number;
+      lon?: number;
+      assignedTeamId?: string;
+    };
+
+    const label = body.label?.trim();
+    if (!label) return reply.code(400).send({ error: 'label er påkrevd' });
+
+    const VALID_TRIAGE = new Set(['green', 'yellow', 'red', 'black']);
+    if (body.triageStatus && !VALID_TRIAGE.has(body.triageStatus)) {
+      return reply.code(400).send({ error: 'Ugyldig triagstatus' });
+    }
+
+    if (body.assignedTeamId) {
+      const [teamRow] = await db.select({ id: teams.id, eventId: teams.eventId }).from(teams).where(eq(teams.id, body.assignedTeamId)).limit(1);
+      if (!teamRow || teamRow.eventId !== eventId) return reply.code(400).send({ error: 'Ukjent lag' });
+    }
+
+    const [created] = await db
+      .insert(patients)
+      .values({
+        eventId,
+        label,
+        triageStatus: body.triageStatus as 'green' | 'yellow' | 'red' | 'black' | undefined,
+        description: body.description ?? null,
+        positionText: body.positionText ?? null,
+        lat: body.lat ?? null,
+        lon: body.lon ?? null,
+        assignedTeamId: body.assignedTeamId ?? null,
+        notes: [],
+        diagnosisFlags: [],
+      })
+      .returning();
+
+    const mapped = {
+      ...created!,
+      label: created!.label ?? null,
+      triageStatus: created!.triageStatus ?? null,
+      description: created!.description ?? null,
+      positionText: created!.positionText ?? null,
+      lat: created!.lat ?? null,
+      lon: created!.lon ?? null,
+      assignedTeamId: created!.assignedTeamId ?? null,
+      arrivalTime: created!.arrivalTime.toISOString(),
+      createdAt: created!.createdAt.toISOString(),
+      updatedAt: created!.updatedAt.toISOString(),
+    };
+
+    broadcast({
+      type: 'patient.created',
+      eventId,
+      payload: { patient: mapped, changedFields: Object.keys(body).filter((k) => (body as any)[k] !== undefined) },
+      timestamp: mapped.createdAt,
+    });
+
+    return reply.code(201).send({ patient: mapped });
+  });
 }
 
 async function buildMciSummaryAttachment(input: {

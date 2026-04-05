@@ -17,6 +17,7 @@ import { ResourceAllocationBoard } from './Coordinator/ResourceAllocationBoard';
 import { StatsGrid } from './Coordinator/StatsGrid';
 import { IncidentFeed } from './Coordinator/IncidentFeed';
 import { TeamMessageStreamPanel } from './Coordinator/TeamMessageStreamPanel';
+import { PatientManagementPanel, type FieldPatient } from './Coordinator/PatientManagementPanel';
 import type { EventIndoorLayout, MapRuntimeConfig } from '../lib/types';
 
 const filterIncidentsByStatKey = (incs: Incident[], key: string): Incident[] => {
@@ -54,6 +55,9 @@ export function CoordinatorDashboard() {
   const [lastStatsUpdatedAt, setLastStatsUpdatedAt] = useState<number | undefined>(undefined);
   const [prevStats, setPrevStats] = useState<Record<string, number> | null>(null);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [fieldPatients, setFieldPatients] = useState<FieldPatient[]>([]);
+  const [creatingPatient, setCreatingPatient] = useState(false);
+
   const [teamMessages, setTeamMessages] = useState<Array<{
     id: string;
     text: string;
@@ -148,6 +152,10 @@ export function CoordinatorDashboard() {
         }
       setLoading(false);
     }).catch(() => setLoading(false));
+
+    api.getPatients(eventId).then((res) => {
+      setFieldPatients(res.patients as FieldPatient[]);
+    }).catch(() => {});
   }, [eventId]);
 
   useEffect(() => {
@@ -241,6 +249,12 @@ export function CoordinatorDashboard() {
             return next.slice(0, 100);
           });
         }
+      } else if (msg.type === 'patient.created') {
+        const p = (msg.payload as any)?.patient;
+        if (p) setFieldPatients((prev) => [p as FieldPatient, ...prev]);
+      } else if (msg.type === 'patient.updated') {
+        const p = (msg.payload as any)?.patient;
+        if (p) setFieldPatients((prev) => prev.map((fp) => fp.id === p.id ? p as FieldPatient : fp));
       } else if (msg.type === 'system.connected_users') {
         const { count } = (msg.payload as any) ?? {};
         if (typeof count === 'number') setConnectedUsers(count);
@@ -405,6 +419,30 @@ export function CoordinatorDashboard() {
     });
   };
 
+  const handleCreatePatient = async (data: Omit<FieldPatient, 'id' | 'updatedAt'>) => {
+    if (!eventId) return;
+    setCreatingPatient(true);
+    try {
+      const res = await api.createFieldPatient(eventId, {
+        label: data.label ?? '',
+        triageStatus: data.triageStatus,
+        description: data.description,
+        positionText: data.positionText,
+        lat: data.lat,
+        lon: data.lon,
+        assignedTeamId: data.assignedTeamId,
+      });
+      setFieldPatients((prev) => [res.patient as FieldPatient, ...prev]);
+    } finally {
+      setCreatingPatient(false);
+    }
+  };
+
+  const handleUpdatePatient = async (id: string, data: Partial<Omit<FieldPatient, 'id' | 'updatedAt'>>) => {
+    const res = await api.updatePatient(id, data as Record<string, unknown>);
+    setFieldPatients((prev) => prev.map((p) => p.id === id ? res.patient as FieldPatient : p));
+  };
+
   const filteredIncidents = activeFilter ? filterIncidentsByStatKey(incidents, activeFilter) : incidents;
   const incidentsWithLocation = incidents.filter((inc): inc is Incident & { location: { lat: number; lng: number } } => !!inc.location);
   const sectors = mciSectors.length > 0 ? mciSectors : ['Nord', 'Sentrum', 'Sør', 'Vest'];
@@ -486,6 +524,14 @@ export function CoordinatorDashboard() {
           />
         </>
       )}
+
+      <PatientManagementPanel
+        patients={fieldPatients}
+        teams={teams}
+        creating={creatingPatient}
+        onCreatePatient={handleCreatePatient}
+        onUpdatePatient={handleUpdatePatient}
+      />
 
       <StatsGrid
         stats={stats}

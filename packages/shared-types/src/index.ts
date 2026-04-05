@@ -43,6 +43,9 @@ export const PatientStatus = z.enum([
 ]);
 export type PatientStatus = z.infer<typeof PatientStatus>;
 
+export const FieldTriageStatus = z.enum(['green', 'yellow', 'red', 'black']);
+export type FieldTriageStatus = z.infer<typeof FieldTriageStatus>;
+
 export const TeamTransport = z.enum(['foot', 'bike', 'vehicle', 'atv']);
 export type TeamTransport = z.infer<typeof TeamTransport>;
 
@@ -209,6 +212,14 @@ export const Patient = z.object({
   })),
   diagnosisFlags: z.array(z.string()),
   ageYears: z.number().int().nonnegative().optional(),
+  // Field / coordinator patient fields
+  label: z.string().max(200).nullable().optional(),
+  triageStatus: FieldTriageStatus.nullable().optional(),
+  description: z.string().nullable().optional(),
+  positionText: z.string().max(500).nullable().optional(),
+  lat: z.number().nullable().optional(),
+  lon: z.number().nullable().optional(),
+  assignedTeamId: z.string().uuid().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -238,6 +249,8 @@ export const Team = z.object({
   transport: TeamTransport,
   gear: z.array(z.string()),
   members: z.array(z.string()),
+  contactPhone: z.string().max(50).nullable().optional(),
+  contactRadio: z.string().max(50).nullable().optional(),
   currentPosition: GeoPoint.optional(),
   lastPositionUpdate: z.string().datetime().optional(),
 });
@@ -403,6 +416,8 @@ export const WsEventType = z.enum([
   'team.message',
   'escalation.raised',
   'escalation.resolved',
+  'patient.created',
+  'patient.updated',
   'patient.vitals_updated',
   'patient.deterioration_alert',
   'event.mci_activated',

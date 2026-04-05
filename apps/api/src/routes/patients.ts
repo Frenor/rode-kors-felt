@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   AmkAssistDraft,
   AmkCallLog,
@@ -7,7 +7,7 @@ import {
   CreateAmkCallLogRequest,
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
-import { actionEvents, incidents, medicationRecords, patients, vitalReadings } from '../db/schema.js';
+import { actionEvents, incidents, medicationRecords, patients, teams, vitalReadings } from '../db/schema.js';
 import { canAccessEvent, requireAuth } from '../middleware/auth.js';
 import { applyPatientAction, getActionHistoryByEntityIds } from './action-events.js';
 import { broadcast } from './ws.js';
@@ -120,7 +120,7 @@ export async function patientRoutes(app: FastifyInstance) {
   // List patients for an event (with latest vitals attached)
   app.get('/', { preHandler: requireAuth }, async (request) => {
     const user = (request as any).user as AuthUser;
-    const { eventId } = request.query as { eventId?: string };
+    const { eventId, assignedTeamId } = request.query as { eventId?: string; assignedTeamId?: string };
     const targetEventId = eventId ?? user.eventId;
 
     if (!targetEventId) {
@@ -130,10 +130,14 @@ export async function patientRoutes(app: FastifyInstance) {
       return { patients: [] };
     }
 
+    const whereClause = assignedTeamId
+      ? and(eq(patients.eventId, targetEventId), eq(patients.assignedTeamId, assignedTeamId))
+      : eq(patients.eventId, targetEventId);
+
     const patientRows = await db
       .select()
       .from(patients)
-      .where(eq(patients.eventId, targetEventId))
+      .where(whereClause)
       .orderBy(desc(patients.arrivalTime));
 
     const actionHistoryByPatientId = await getActionHistoryByEntityIds({
@@ -287,6 +291,14 @@ export async function patientRoutes(app: FastifyInstance) {
       birthDate: string;
       placementType: string | null;
       placementNumber: string | null;
+      // Field patient fields
+      label: string | null;
+      triageStatus: string | null;
+      description: string | null;
+      positionText: string | null;
+      lat: number | null;
+      lon: number | null;
+      assignedTeamId: string | null;
     }>;
 
     const [existing] = await db
@@ -337,6 +349,34 @@ export async function patientRoutes(app: FastifyInstance) {
       return result;
     }
 
+    // Validate assignedTeamId if provided
+    if (body.assignedTeamId !== undefined && body.assignedTeamId !== null) {
+      const [teamRow] = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, body.assignedTeamId)).limit(1);
+      if (!teamRow) return reply.code(400).send({ error: 'Ukjent lag' });
+    }
+
+    const VALID_TRIAGE = new Set(['green', 'yellow', 'red', 'black']);
+    if (body.triageStatus !== undefined && body.triageStatus !== null && !VALID_TRIAGE.has(body.triageStatus)) {
+      return reply.code(400).send({ error: 'Ugyldig triagstatus' });
+    }
+
+    // Compute changedFields by comparing with existing
+    const changedFields: string[] = [];
+    const fieldChecks: Array<[string, unknown, unknown]> = [
+      ['label', existing.label, body.label],
+      ['triageStatus', existing.triageStatus, body.triageStatus],
+      ['description', existing.description, body.description],
+      ['positionText', existing.positionText, body.positionText],
+      ['lat', existing.lat, body.lat],
+      ['lon', existing.lon, body.lon],
+      ['assignedTeamId', existing.assignedTeamId, body.assignedTeamId],
+      ['assignedClinician', existing.assignedClinician, body.assignedClinician],
+      ['fullName', existing.fullName, body.fullName !== undefined ? body.fullName?.trim() : undefined],
+    ];
+    for (const [field, oldVal, newVal] of fieldChecks) {
+      if (newVal !== undefined && newVal !== oldVal) changedFields.push(field);
+    }
+
     const [updated] = await db
       .update(patients)
       .set({
@@ -349,12 +389,27 @@ export async function patientRoutes(app: FastifyInstance) {
           placementType: parsedPlacement.placementType,
           placementNumber: parsedPlacement.placementNumber,
         }),
+        ...(body.label !== undefined && { label: body.label }),
+        ...(body.triageStatus !== undefined && { triageStatus: body.triageStatus as 'green' | 'yellow' | 'red' | 'black' | null }),
+        ...(body.description !== undefined && { description: body.description }),
+        ...(body.positionText !== undefined && { positionText: body.positionText }),
+        ...(body.lat !== undefined && { lat: body.lat }),
+        ...(body.lon !== undefined && { lon: body.lon }),
+        ...(body.assignedTeamId !== undefined && { assignedTeamId: body.assignedTeamId }),
         updatedAt: new Date(),
       })
       .where(eq(patients.id, id))
       .returning();
 
-    return { patient: mapPatient(updated!) };
+    const mapped = mapPatient(updated!);
+    broadcast({
+      type: 'patient.updated',
+      eventId: existing.eventId,
+      payload: { patient: mapped, changedFields },
+      timestamp: mapped.updatedAt,
+    });
+
+    return { patient: mapped };
   });
 
   app.post('/:id/actions', { preHandler: requireAuth }, async (request, reply) => {
@@ -709,6 +764,14 @@ function mapPatient(row: typeof patients.$inferSelect, extras?: { actionHistory?
     placementType: row.placementType ?? undefined,
     placementNumber: row.placementNumber ?? undefined,
     ageYears,
+    // Field patient fields
+    label: row.label ?? null,
+    triageStatus: row.triageStatus ?? null,
+    description: row.description ?? null,
+    positionText: row.positionText ?? null,
+    lat: row.lat ?? null,
+    lon: row.lon ?? null,
+    assignedTeamId: row.assignedTeamId ?? null,
     arrivalTime: row.arrivalTime.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
