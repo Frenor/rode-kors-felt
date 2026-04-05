@@ -30,6 +30,22 @@ export function PatientActionButtons({
 }: PatientActionButtonsProps) {
   const currentStatus = patient.status as keyof typeof STATUS_TRANSITIONS;
   const nextStatuses = STATUS_TRANSITIONS[currentStatus] ?? [];
+  const actionCopy: Record<string, { label: string; icon: string }> = {
+    'incoming:in_treatment': { label: 'Start behandling', icon: '▶' },
+    'incoming:observation': { label: 'Legg til observasjon', icon: '⊕' },
+    'in_treatment:observation': { label: 'Flytt til observasjon', icon: '→' },
+    'observation:in_treatment': { label: 'Start behandling', icon: '▶' },
+    'in_treatment:discharged': { label: 'Skriv ut', icon: '✓' },
+    'observation:discharged': { label: 'Skriv ut', icon: '✓' },
+    'in_treatment:transferred': { label: 'Overfør til AMK (SBAR)', icon: '⇢' },
+    'observation:transferred': { label: 'Overfør til AMK (SBAR)', icon: '⇢' },
+    'discharged:observation': { label: 'Flytt til observasjon', icon: '↺' },
+    'transferred:observation': { label: 'Flytt til observasjon', icon: '↺' },
+    'discharged:in_treatment': { label: 'Start behandling', icon: '↺' },
+    'transferred:in_treatment': { label: 'Start behandling', icon: '↺' },
+    'in_treatment:incoming': { label: 'Til innkommende', icon: '↩' },
+    'observation:incoming': { label: 'Til innkommende', icon: '↩' },
+  };
 
   return (
     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
@@ -106,12 +122,13 @@ export function PatientActionButtons({
             aria-live="polite"
             style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}
           >
-            Status:
+            {`Status: ${statusLabels[patient.status] ?? patient.status}`}
           </span>
           <div role="group" aria-label="Mulige statusendringer" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
             {nextStatuses.map((nextStatus) => {
               const sc = statusColors[nextStatus] ?? { color: 'var(--color-text-subtle)', bg: 'transparent' };
               const isTransfer = nextStatus === 'transferred';
+              const copy = actionCopy[`${currentStatus}:${nextStatus}`];
               return (
                 <button
                   key={nextStatus}
@@ -133,7 +150,10 @@ export function PatientActionButtons({
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  → {statusLabels[nextStatus]}
+                  <span aria-hidden="true" style={{ marginRight: 6 }}>
+                    {copy?.icon ?? '→'}
+                  </span>
+                  <span>{copy?.label ?? statusLabels[nextStatus]}</span>
                 </button>
               );
             })}

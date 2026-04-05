@@ -9,12 +9,13 @@ import {
   news2MonitoringLabel,
   type News2Result,
 } from '@rkf/shared-types';
-import type { SickBayPatient, MedicationRecord } from '../lib/types';
+import type { SickBayPatient, MedicationRecord, SickbayIncomingItem } from '../lib/types';
 import { SickBayHeader } from './SickBay/SickBayHeader';
 import { PatientIntakeModal, type IntakeFormShape } from './SickBay/PatientIntakeModal';
 import { SBARHandoverModal, type SbarFormShape } from './SickBay/SBARHandoverModal';
 import { AmkBriefModal } from './SickBay/AmkBriefModal';
 import { PatientCard } from './SickBay/PatientCard';
+import { IncomingCriticalPanel } from './SickBay/IncomingCriticalPanel';
 import type { VitalsFormShape } from './SickBay/VitalsEntryForm';
 import type { MedFormShape } from './SickBay/MedicationPanel';
 import { ageLabels, statusLabels } from '../lib/constants';
@@ -55,6 +56,7 @@ export function SickBayDashboard() {
   });
 
   const [medications, setMedications] = useState<Record<string, MedicationRecord[]>>({});
+  const [incomingItems, setIncomingItems] = useState<SickbayIncomingItem[]>([]);
   const [expandedClosedCards, setExpandedClosedCards] = useState<Record<string, boolean>>({});
   const UNDO_WINDOW_MS = 10_000;
 
@@ -74,8 +76,12 @@ export function SickBayDashboard() {
 
   const fetchPatients = () => {
     if (!eventId) return;
-    api.getPatients(eventId).then((res) => {
-      setPatients(res.patients);
+    Promise.all([
+      api.getPatients(eventId),
+      api.getSickbayIncoming(eventId).catch(() => ({ items: [] as SickbayIncomingItem[] })),
+    ]).then(([patientRes, incomingRes]) => {
+      setPatients(patientRes.patients);
+      setIncomingItems(incomingRes.items.filter((item) => item.critical));
       setLoading(false);
     }).catch(() => setLoading(false));
   };
@@ -249,6 +255,11 @@ export function SickBayDashboard() {
     fetchPatients();
   };
 
+  const handleStartTreatment = async (patientId: string) => {
+    const patient = patients.find((row) => row.id === patientId);
+    await handleStatusChange(patientId, 'in_treatment', patient);
+  };
+
   const sortedPatients = [...patients].sort((a, b) => {
     const order: Record<string, number> = { high: 0, medium: 1, low: 2, routine: 3 };
     const aLevel = a.latestVitals ? calculateNEWS2(a.latestVitals).alertLevel : 'none';
@@ -272,6 +283,11 @@ export function SickBayDashboard() {
   return (
     <div className="animate-fade-in">
       <SickBayHeader onNewPatient={() => setShowIntake(true)} />
+
+      <IncomingCriticalPanel
+        items={incomingItems}
+        onStartTreatment={handleStartTreatment}
+      />
 
       {showIntake && (
         <PatientIntakeModal
