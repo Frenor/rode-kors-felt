@@ -98,8 +98,8 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await expect(amkDialog.getByText('Pasient med brystsmerter', { exact: true }).first()).toBeVisible();
   await amkDialog.getByRole('button', { name: 'Lukk' }).click();
   await expect(amkDialog).not.toBeVisible();
-  await expect(page.getByRole('button', { name: 'Start behandling' }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Legg til observasjon' }).first()).toBeVisible();
+  await expect(page.getByTestId('status-btn-in_treatment').first()).toBeVisible();
+  await expect(page.getByTestId('status-btn-observation').first()).toBeVisible();
 
   await loginAsCoordinator(page);
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
