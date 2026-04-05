@@ -4,6 +4,7 @@ import { isProject, loginAsCoordinator, loginAsFirstAider, resetBrowserState } f
 async function loginAsSickBay(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => sessionStorage.clear());
   await page.context().clearCookies();
   await page.goto('/');
   for (const digit of ['6', '5', '4', '3', '2', '1']) {
