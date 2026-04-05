@@ -56,7 +56,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'rkf-auth',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => sessionStorage),
     },
   ),
 );

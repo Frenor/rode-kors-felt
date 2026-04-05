@@ -14,6 +14,7 @@ const initialState = {
 beforeEach(() => {
   useAuthStore.setState(initialState);
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 describe('auth store — login()', () => {
@@ -92,19 +93,28 @@ describe('auth store — logout()', () => {
   });
 });
 
-describe('auth store — localStorage persistence', () => {
-  it('writes the access token to localStorage under the rkf-auth key after login', () => {
+describe('auth store — storage safety', () => {
+  it('does not persist auth state to localStorage after login', () => {
     useAuthStore.getState().login({
       accessToken: 'persisted-token',
       refreshToken: 'ref',
       role: 'first_aider',
     });
 
-    const raw = localStorage.getItem('rkf-auth');
+    expect(localStorage.getItem('rkf-auth')).toBeNull();
+  });
+
+  it('persists auth state to sessionStorage for current tab session', () => {
+    useAuthStore.getState().login({
+      accessToken: 'persisted-token',
+      refreshToken: 'ref',
+      role: 'first_aider',
+    });
+
+    const raw = sessionStorage.getItem('rkf-auth');
     expect(raw).not.toBeNull();
 
     const parsed = JSON.parse(raw!);
-    // Zustand persist wraps the value under a `state` key
     expect(parsed.state.accessToken).toBe('persisted-token');
   });
 });

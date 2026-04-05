@@ -17,6 +17,7 @@ export function isProject(testInfo: TestInfo, allowed: string | string[]) {
 export async function resetBrowserState(page: Page) {
   await page.goto('./');
   await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => sessionStorage.clear());
   await page.context().clearCookies();
 }
 
@@ -39,7 +40,7 @@ export async function loginAsCoordinator(page: Page) {
 
 export async function seedAuthState(page: Page, state: unknown) {
   await page.addInitScript((authState) => {
-    localStorage.setItem('rkf-auth', JSON.stringify(authState));
+    sessionStorage.setItem('rkf-auth', JSON.stringify(authState));
   }, state);
 }
 
