@@ -6,6 +6,15 @@ test.beforeEach(async ({ page }, testInfo) => {
   await resetBrowserState(page);
 });
 
+async function selectTeamIfNeeded(page: import('@playwright/test').Page) {
+  const chooseTeam = page.getByRole('heading', { name: /Velg patrulje/i });
+  if (await chooseTeam.isVisible().catch(() => false)) {
+    const teamButton = page.locator('button.touch-target').first();
+    await expect(teamButton).toBeVisible();
+    await teamButton.click();
+  }
+}
+
 test('supports the demo login and role navigation flow', async ({ page }) => {
   expect(process.env.PLAYWRIGHT_DEMO_BASE_URL, 'PLAYWRIGHT_DEMO_BASE_URL must be provided for Pages demo checks').toBeTruthy();
 
@@ -19,6 +28,12 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await page.getByRole('button', { name: /Koble til arrangement/i }).click();
   await page.waitForURL('**/firstaid');
   await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
+  await selectTeamIfNeeded(page);
+  await expect(page.getByTestId('firstaid-patient-workspace')).toBeVisible();
+  await expect(page.getByText('Aktiv pasient')).toBeVisible();
+  await expect(page.getByText('Overvåkede pasienter')).toBeVisible();
+  await expect(page.getByText('Utildelte pasienter')).toBeVisible();
+  await expect(page.getByTestId('firstaid-field-status-controls')).toBeVisible();
   await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
   await page.waitForURL('**/firstaid/incident');
   await page.getByRole('button', { name: 'Medisinsk' }).click();
@@ -52,6 +67,8 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await expect(amkDialog.getByRole('button', { name: 'Generer AI-forslag' })).toBeVisible();
   await amkDialog.getByRole('button', { name: 'Lukk' }).click();
   await expect(amkDialog).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start behandling' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Legg til observasjon' }).first()).toBeVisible();
 
   // Coordinator flow: verify map presentation controls in demo preview.
   if (await logoutBtn.isVisible().catch(() => false)) {

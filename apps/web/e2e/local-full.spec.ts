@@ -13,6 +13,15 @@ async function loginAsSickBay(page: import('@playwright/test').Page) {
   await page.waitForURL('**/sickbay');
 }
 
+async function selectTeamIfNeeded(page: import('@playwright/test').Page) {
+  const chooseTeam = page.getByRole('heading', { name: /Velg patrulje/i });
+  if (await chooseTeam.isVisible().catch(() => false)) {
+    const teamButton = page.locator('button.touch-target').first();
+    await expect(teamButton).toBeVisible();
+    await teamButton.click();
+  }
+}
+
 test.beforeEach(async ({ page }, testInfo) => {
   test.skip(!isProject(testInfo, 'local-full'), 'local-full only');
   await resetBrowserState(page);
@@ -21,6 +30,12 @@ test.beforeEach(async ({ page }, testInfo) => {
 test('covers the full incident to coordinator handoff path', async ({ page }) => {
   await loginAsFirstAider(page);
   await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
+  await selectTeamIfNeeded(page);
+  await expect(page.getByTestId('firstaid-patient-workspace')).toBeVisible();
+  await expect(page.getByText('Aktiv pasient')).toBeVisible();
+  await expect(page.getByText('Overvåkede pasienter')).toBeVisible();
+  await expect(page.getByText('Utildelte pasienter')).toBeVisible();
+  await expect(page.getByTestId('firstaid-field-status-controls')).toBeVisible();
 
   await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
   await page.waitForURL('**/firstaid/incident');
@@ -86,6 +101,8 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await expect(amkDialog.getByText('Pasient med brystsmerter', { exact: true }).first()).toBeVisible();
   await amkDialog.getByRole('button', { name: 'Lukk' }).click();
   await expect(amkDialog).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start behandling' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Legg til observasjon' }).first()).toBeVisible();
 
   await loginAsCoordinator(page);
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
