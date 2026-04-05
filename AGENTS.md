@@ -1,167 +1,150 @@
-# AGENTS.md — Project Instructions for Codex
+# AGENTS.md — RKF Operating Playbook
 
-## Project: RKF — Røde Kors Felt (Red Cross Event Medical System)
+## 1) Purpose
+This file is the shared operating contract for Codex and all spawned agents in:
+- `/Users/fredrik/Developer/rode-kors-felt`
 
-### What This Is
-A PWA for Norwegian Red Cross event medical coordination. Three roles: First Aider (mobile), Sick Bay (tablet), Coordinator (desktop). Offline-first, real-time where connected, GDPR-compliant.
-
-### Monorepo Structure
-```
-apps/web/     — React 19 + TypeScript + Vite PWA (port 3000)
-apps/api/     — Fastify + TypeScript API (port 4000)
-packages/shared-types/ — Zod schemas shared between web and API
-packages/ui/  — Shared UI component library
-infra/        — Terraform (AWS eu-central-1) + Docker
-docs/         — ADRs, design specs, API docs
-```
-
-### Tech Stack
-- Frontend: React 19, TypeScript, Vite, Tailwind CSS v4, Zustand, TanStack Query, Dexie.js, Leaflet
-- Backend: Fastify 5, TypeScript, Drizzle ORM, PostgreSQL 16, Redis 7
-- Infra: AWS ECS Fargate, RDS, ElastiCache, Terraform, Docker
-- CI: GitHub Actions (`.github/workflows/`)
-
-### Key Commands
-```bash
-pnpm install              # Install all deps
-pnpm dev                  # Start all services
-pnpm --filter @rkf/web dev    # Web only
-pnpm --filter @rkf/api dev    # API only
-pnpm lint                 # ESLint all packages
-pnpm typecheck            # TypeScript strict
-pnpm test                 # Vitest unit tests
-pnpm test:e2e             # Playwright E2E
-docker compose up -d      # Start Postgres + Redis locally
-```
-
-### Git Conventions
-- Conventional Commits: `feat(web):`, `fix(api):`, `a11y(ui):`, `design(ui):`
-- Branch naming: `feature/fe-XX-description`, `fix/XX-description`, `chore/`, `infra/`, `docs/`
-- Small commits, one logical change each
-- Squash merge to develop, merge commit to main
-
-### Design System
-- Typography: IBM Plex Sans (UI) + IBM Plex Mono (data/clinical)
-- Theme: follows device `prefers-color-scheme`, manual toggle available, NO role-based overrides
-- Clinical data contrast: ≥ 7:1 (WCAG AAA)
-- Touch targets: ≥ 56px (glove operation for first aiders)
-- Status colors calibrated per mode (light/dark)
-- Design tokens in `apps/web/src/styles/tokens.css`
-
-### Critical Rules
-1. All clinical data (vitals, AVPU) is append-only — NEVER overwrite
-1. All queries scoped by eventId — row-level security
-1. No mandatory PII — GDPR by design
-1. Norwegian language for all user-facing strings
-1. Offline-first: all writes go to IndexedDB first, sync when online
-1. Vitals validation: pulse 20-220, SpO₂ 50-100, RF 4-60, pain 0-10
-
-### Current State (as of 2026-03-22)
-- Sprints 1–5 substantially implemented (see TODO.md for details)
-- Sprint 6 in progress: 3/5 done (report endpoint, GitHub Actions deploy, request tracing)
-- API uses Drizzle ORM + PostgreSQL (in-memory store removed from routes)
-- `docker compose up -d` starts Postgres + Redis; API auto-migrates on startup
-- Web: 65 unit tests pass (`pnpm --filter @rkf/web test`)
-- API unit tests require running PostgreSQL (`docker compose up -d` first)
-- E2E tests (Playwright) exist for coordinator and incident flows
-
-### What Needs Doing Next
-1. Write Playwright E2E test for the full incident-to-discharge chain (Oppgave 1)
-1. Verify event isolation with automated tests (Oppgave 2)
-1. Verify append-only enforcement with automated tests (Oppgave 3)
-1. Refactor `SickBayDashboard.tsx` (large) and `CoordinatorDashboard.tsx` (large) into sub-components (Oppgave 4)
-1. Fix critical/serious axe-core a11y violations — focus trap, AVPU radiogroup, MCI aria-live (Oppgave 5)
-1. Complete Terraform modules (ECS Fargate, RDS Multi-AZ, ElastiCache, ALB + ACM)
-1. Implement remaining Sprint 4–5 items: resource allocation board, MCI handover, MIST pre-fill
-
-### Demo Credentials
-- First Aider code: `123456`
-- Sick Bay code: `654321`
-- Admin: `admin@rkf.no` / `admin123`
+Use this as the default way of working unless a newer explicit user instruction overrides it.
 
 ---
 
-## Multi-Agent Orchestration Protocol
+## 2) Project Snapshot
+RKF (Røde Kors Felt) is an offline-first medical coordination PWA for event operations with three main roles:
+- First Aider (mobile)
+- Sick Bay (tablet)
+- Coordinator (desktop)
 
-This project has a specialist agent team in `prompts/agents/`. **You must use it.**
-Do not solve tasks alone as a generalist. For every non-trivial request, identify the
-relevant specialists, launch them **in parallel**, and synthesize their outputs.
+Core stack:
+- `apps/web`: React 19 + TypeScript + Vite PWA
+- `apps/api`: Fastify + TypeScript + Drizzle + PostgreSQL
+- `packages/shared-types`: Zod schemas shared across web/api
+- `infra`: Terraform + Docker
 
-### Step 1 — Classify the Request
+---
 
-Map the incoming request to one or more agents using this routing matrix:
+## 3) Non-Negotiables
+1. Safety first: decisions prioritize `Safety > Offline > Accessibility > GDPR > Performance > DX`.
+2. Offline-first: writes must be robust under unstable connectivity.
+3. Clinical append-only behavior remains protected where designed (vitals/clinical timeline artifacts).
+4. Event scoping is mandatory (`eventId` isolation).
+5. User-facing text is Norwegian Bokmål.
+6. Accessibility baseline is WCAG 2.2 AA, with high readability for clinical data.
+7. **No backward compatibility layers by default.**
+8. **No transition windows by default.**
+9. **No legacy enum aliases in API/storage contracts.**
+10. Canonical enums in code/API/storage are English; translation happens in view layer only.
 
-| Request type | Launch these agents in parallel |
-|---|---|
-| New UI component or screen | `frontend-engineer` + `ux-designer` |
-| New API endpoint | `backend-engineer` + `frontend-engineer` |
-| Full-stack feature | `frontend-engineer` + `backend-engineer` + `ux-designer` + `qa-engineer` |
-| Bug fix (frontend) | `frontend-engineer` + `qa-engineer` |
-| Bug fix (backend) | `backend-engineer` + `qa-engineer` |
-| Accessibility issue | `ux-designer` + `frontend-engineer` + `qa-engineer` |
-| Performance problem | `frontend-engineer` or `backend-engineer` + `devops-engineer` |
-| Infra / CI / deploy | `devops-engineer` + `backend-engineer` |
-| Usability review | `ux-designer` + `field-user` |
-| Design system / tokens | `ux-designer` + `frontend-engineer` |
-| Test coverage / quality | `qa-engineer` |
-| Sprint or feature planning | `product-lead` (delegates further) |
+If a compatibility layer is desired, it must be explicitly requested by the user for that task.
 
-### Step 2 — Launch Agents in Parallel
+---
 
-In a **single response**, call the Agent tool multiple times — one per specialist.
-Never send them sequentially when they can work at the same time.
+## 4) Source Of Truth
+`PLAN.md` is the live execution source of truth.
 
-Each Agent tool call must use this prompt structure:
+Required behavior:
+1. Open and align with `PLAN.md` before substantial implementation.
+2. Update `PLAN.md` checkpoint/status when meaningful milestones are completed.
+3. Keep `PLAN.md` synchronized with git commits to make interruption recovery trivial.
 
+`TODO.md` is not used as execution source.
+
+---
+
+## 5) Git And Delivery Mode
+Use small, self-contained, rollback-safe commits.
+
+Required workflow:
+1. One logical change per commit.
+2. Commit message uses conventional commit prefix.
+3. Push frequently so demo/progress stays visible (prefer push after each meaningful commit).
+4. Avoid batching unrelated changes into one commit.
+5. Never rewrite history unless explicitly requested.
+
+If push hangs in the environment:
+1. Retry once with TTY.
+2. Report exact commit hashes immediately.
+3. Continue with next isolated change so user can push manually if needed.
+
+---
+
+## 6) Multi-Agent Protocol (Default)
+For non-trivial tasks, use specialist agents in parallel with disjoint ownership.
+
+### 6.1 Model/Cost policy
+Default delegation target:
+- cheapest capable coding model
+- lowest reasonable reasoning level
+
+Upgrade model/reasoning only if blocked by correctness/complexity.
+
+### 6.2 Delegation policy
+1. Split into bounded tasks with file ownership.
+2. Run in parallel when write scopes do not overlap.
+3. Keep main agent as integrator: review, resolve conflicts, run tests, commit, push.
+4. Never ask agents to add backward compatibility unless user explicitly asks.
+
+### 6.3 Synthesis policy
+After agent outputs:
+1. Resolve contract conflicts centrally.
+2. Prefer canonical target-state implementation over compatibility shims.
+3. Validate with focused typecheck/tests before commit.
+
+---
+
+## 7) Execution Gates Per Change
+Before each commit:
+1. Run scoped typecheck and relevant tests for touched area.
+2. Confirm no unrelated files staged.
+3. Confirm commit scope matches one logical unit.
+
+Before declaring done:
+1. Ensure branch is pushed.
+2. Ensure `PLAN.md` has checkpoint for milestone-level changes.
+3. For UI-visible changes intended for demo, ensure Pages visibility checks are included in validation flow.
+
+---
+
+## 8) API/Enum Rules
+1. Public API contracts should be explicit and canonical.
+2. Enum values in API/storage/shared types are English only.
+3. UI translation maps convert canonical enum values to Norwegian labels.
+4. Reject invalid enum input; do not silently normalize legacy aliases.
+
+---
+
+## 9) UI Rules For This Project
+1. Maintain operational readability in stress scenarios.
+2. Favor clear status language and explicit visual hierarchy.
+3. Keep touch targets suitable for field use.
+4. Prefer deterministic, testable UI behavior over implicit heuristics.
+
+---
+
+## 10) Recommended Commands
+```bash
+pnpm --filter @rkf/api typecheck
+pnpm --filter @rkf/api test -- <relevant-specs>
+pnpm --filter @rkf/web typecheck
+pnpm --filter @rkf/web test -- <relevant-specs>
+pnpm --filter @rkf/web exec playwright test --project=pages-demo
+git status -sb
+git log --oneline -n 10
 ```
-You are the [ROLE] for the RKF project (Røde Kors Felt — Norwegian Red Cross event
-medical system).
 
-## Your Role
-[full contents of prompts/agents/<role>.md]
+---
 
-## Non-Negotiables
-- Offline-first: all writes go to Dexie/IndexedDB first, sync when online
-- Append-only clinical data (vitals, AVPU) — never overwrite
-- All queries scoped by eventId (row-level security)
-- Norwegian Bokmål for all user-facing strings
-- GDPR: no mandatory PII, AWS eu-central-1 only
-- WCAG 2.2 AA minimum; ≥ 7:1 contrast for clinical data; 56px touch targets
-- Vitals bounds: pulse 20–220, SpO₂ 50–100, RF 4–60, pain 0–10
+## 11) Quick Start For Any Agent
+1. Read `PLAN.md` first.
+2. Identify the next smallest self-contained task.
+3. Implement target-state (no compatibility shim unless explicitly requested).
+4. Run scoped tests/typecheck.
+5. Commit small.
+6. Push.
+7. Update `PLAN.md` checkpoint.
 
-## Your Task
-[specific sub-task scoped to this agent's domain]
+---
 
-## Return Format
-### Assessment
-### Proposed Changes (files + code snippets)
-### Dependencies on Other Agents
-### Risks / Blockers
-```
-
-### Step 3 — Synthesize
-
-After all parallel agents respond:
-
-1. Identify any **conflicts** (e.g., mismatched API contracts between frontend and backend agents).
-2. Resolve conflicts using the priority order: **Safety > Offline > Accessibility > GDPR > Performance > DX**.
-3. Check that QA's test plan covers the changes proposed by other agents.
-4. If `field-user` reported any blockers, treat them as **P0** — stop and fix before proceeding.
-5. Produce a unified implementation plan or directly implement the changes.
-
-### Agent Roster
-
-```
-prompts/agents/
-  README.md              — Team overview
-  product-lead.md        — Orchestrator; owns backlog, sprint planning, handoffs
-  ux-designer.md         — Design system, accessibility, Norwegian copy
-  frontend-engineer.md   — React 19 PWA, offline sync, Zustand, TanStack Query
-  backend-engineer.md    — Fastify, Drizzle ORM, PostgreSQL, WebSockets
-  qa-engineer.md         — Vitest, Playwright, axe-core, quality gates
-  devops-engineer.md     — Terraform, AWS ECS, GitHub Actions, Docker
-  field-user.md          — Kari Larsen: Norwegian usability tester (thinks aloud,
-                           gives up after 3 failed attempts, reports in Norwegian)
-```
-
-**Field User veto:** a single blocker from Kari Larsen is a P0 — no release until resolved.
+## 12) Demo Credentials (Local/Demo Use)
+- First Aider code: `123456`
+- Sick Bay code: `654321`
+- Admin: `admin@rkf.no` / `admin123`
