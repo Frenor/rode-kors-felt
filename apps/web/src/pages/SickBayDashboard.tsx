@@ -17,11 +17,16 @@ import { AmkBriefModal } from './SickBay/AmkBriefModal';
 import { PatientCard } from './SickBay/PatientCard';
 import type { VitalsFormShape } from './SickBay/VitalsEntryForm';
 import type { MedFormShape } from './SickBay/MedicationPanel';
+import { ageLabels, statusLabels } from '../lib/constants';
 
 // In dev mode the monitoring timer fires after 1 min instead of the clinical interval.
 const DEV_INTERVALS = import.meta.env.DEV && import.meta.env.VITE_NEWS2_DEV_INTERVALS === 'true';
 
 type AcvpuLevel = 'alert' | 'confused' | 'voice' | 'pain' | 'unresponsive';
+type PatientStatus = 'incoming' | 'in_treatment' | 'observation' | 'discharged' | 'transferred';
+
+const STATUS_GROUP_ORDER: PatientStatus[] = ['incoming', 'in_treatment', 'observation', 'discharged', 'transferred'];
+const CLOSED_STATUSES = new Set<PatientStatus>(['discharged', 'transferred']);
 
 export function SickBayDashboard() {
   const { eventId } = useAuthStore();
@@ -50,6 +55,7 @@ export function SickBayDashboard() {
   });
 
   const [medications, setMedications] = useState<Record<string, MedicationRecord[]>>({});
+  const [expandedClosedCards, setExpandedClosedCards] = useState<Record<string, boolean>>({});
   const UNDO_WINDOW_MS = 10_000;
 
   const pushUndoToast = (message: string, actionId?: string) => {
@@ -252,6 +258,17 @@ export function SickBayDashboard() {
     return aRank - bRank;
   });
 
+  const groupedPatients = STATUS_GROUP_ORDER
+    .map((status) => ({
+      status,
+      patients: sortedPatients.filter((patient) => patient.status === status),
+    }))
+    .filter((group) => group.patients.length > 0);
+
+  const toggleClosedCard = (patientId: string) => {
+    setExpandedClosedCards((prev) => ({ ...prev, [patientId]: !prev[patientId] }));
+  };
+
   return (
     <div className="animate-fade-in">
       <SickBayHeader onNewPatient={() => setShowIntake(true)} />
@@ -295,19 +312,119 @@ export function SickBayDashboard() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {sortedPatients.map((patient) => (
-            <PatientCard
-              key={patient.id}
-              patient={patient}
-              medications={medications[patient.id] ?? []}
-              onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
-              onSubmitVitals={(form) => handleRecordVitals(patient, form)}
-              onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
-              onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
-              onLoadMedications={() => handleLoadMedications(patient.id)}
-              onOpenAmk={() => handleOpenAmk(patient)}
-            />
-          ))}
+          {groupedPatients.map((group) => {
+            const isClosedGroup = CLOSED_STATUSES.has(group.status as PatientStatus);
+            return (
+              <section
+                key={group.status}
+                data-testid={`patient-section-${group.status}`}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 'var(--space-3)',
+                  padding: 'var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)',
+                  background: 'var(--color-surface)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
+                    {statusLabels[group.status] || group.status}
+                  </h2>
+                  <span
+                    data-testid={`patient-section-count-${group.status}`}
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--color-text-subtle)',
+                    }}
+                  >
+                    {group.patients.length} pasient{group.patients.length === 1 ? '' : 'er'}
+                  </span>
+                </div>
+
+                {group.patients.map((patient) => {
+                  if (!isClosedGroup) {
+                    return (
+                      <PatientCard
+                        key={patient.id}
+                        patient={patient}
+                        medications={medications[patient.id] ?? []}
+                        onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
+                        onSubmitVitals={(form) => handleRecordVitals(patient, form)}
+                        onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
+                        onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
+                        onLoadMedications={() => handleLoadMedications(patient.id)}
+                        onOpenAmk={() => handleOpenAmk(patient)}
+                      />
+                    );
+                  }
+
+                  const expanded = !!expandedClosedCards[patient.id];
+                  return (
+                    <div
+                      key={patient.id}
+                      data-testid={`closed-patient-${patient.id}`}
+                      style={{
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'var(--color-surface-sunken)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        data-testid={`toggle-closed-${patient.id}`}
+                        aria-expanded={expanded}
+                        aria-controls={`closed-panel-${patient.id}`}
+                        onClick={() => toggleClosedCard(patient.id)}
+                        style={{
+                          width: '100%',
+                          minHeight: 56,
+                          padding: 'var(--space-3)',
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--color-text)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 'var(--space-3)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 600 }}>{patient.presentingComplaint || 'Ukjent problemstilling'}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                            {ageLabels[patient.ageGroup] || ''} · {statusLabels[patient.status] || patient.status}
+                          </span>
+                        </div>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                          {expanded ? 'Skjul detaljer ▲' : 'Vis detaljer ▼'}
+                        </span>
+                      </button>
+
+                      {expanded && (
+                        <div id={`closed-panel-${patient.id}`} data-testid={`closed-panel-${patient.id}`} style={{ padding: 'var(--space-3)' }}>
+                          <PatientCard
+                            patient={patient}
+                            medications={medications[patient.id] ?? []}
+                            onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
+                            onSubmitVitals={(form) => handleRecordVitals(patient, form)}
+                            onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
+                            onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
+                            onLoadMedications={() => handleLoadMedications(patient.id)}
+                            onOpenAmk={() => handleOpenAmk(patient)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>

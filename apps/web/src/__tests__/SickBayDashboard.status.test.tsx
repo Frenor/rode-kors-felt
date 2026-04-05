@@ -129,6 +129,42 @@ async function renderWithPatient(status: string, patientOverrides: Record<string
   return { ...utils, patient };
 }
 
+async function renderWithPatients(patients: Array<Record<string, unknown>>) {
+  const payload = patients.map((entry) => makePatient(entry));
+  vi.mocked(api.getPatients).mockResolvedValue({ patients: payload });
+  const utils = render(<SickBayDashboard />);
+  await screen.findByText(payload[0]?.presentingComplaint as string);
+  return { ...utils, patients: payload };
+}
+
+describe('Patient grouping and closed card visibility', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('renders one section per present status group with count', async () => {
+    await renderWithPatients([
+      { id: 'pat-incoming', status: 'incoming', presentingComplaint: 'Incoming case' },
+      { id: 'pat-treatment', status: 'in_treatment', presentingComplaint: 'Treatment case' },
+      { id: 'pat-closed', status: 'discharged', presentingComplaint: 'Closed case' },
+    ]);
+
+    expect(screen.getByTestId('patient-section-incoming')).toBeInTheDocument();
+    expect(screen.getByTestId('patient-section-in_treatment')).toBeInTheDocument();
+    expect(screen.getByTestId('patient-section-discharged')).toBeInTheDocument();
+    expect(screen.getByTestId('patient-section-count-discharged')).toHaveTextContent('1 pasient');
+  });
+
+  it('keeps closed cards collapsed by default and expands on toggle', async () => {
+    await renderWithPatients([
+      { id: 'pat-closed-1', status: 'discharged', presentingComplaint: 'Closed one' },
+    ]);
+
+    expect(screen.queryByTestId('patient-status-pat-closed-1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('toggle-closed-pat-closed-1'));
+    expect(screen.getByTestId('closed-panel-pat-closed-1')).toBeInTheDocument();
+    expect(screen.getByTestId('patient-status-pat-closed-1')).toBeInTheDocument();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 1. State machine — correct buttons per status
 // ---------------------------------------------------------------------------
@@ -179,6 +215,7 @@ describe('Status transition buttons — discharged/transferred remain reversible
 
   it('discharged: shows reversible options', async () => {
     const { patient } = await renderWithPatient('discharged');
+    fireEvent.click(screen.getByTestId(`toggle-closed-${patient.id}`));
     const container = screen.getByTestId(`patient-status-${patient.id}`);
     expect(within(container).getByTestId('status-btn-in_treatment')).toBeInTheDocument();
     expect(within(container).getByTestId('status-btn-observation')).toBeInTheDocument();
@@ -186,6 +223,7 @@ describe('Status transition buttons — discharged/transferred remain reversible
 
   it('transferred: shows reversible options', async () => {
     const { patient } = await renderWithPatient('transferred');
+    fireEvent.click(screen.getByTestId(`toggle-closed-${patient.id}`));
     const container = screen.getByTestId(`patient-status-${patient.id}`);
     expect(within(container).getByTestId('status-btn-in_treatment')).toBeInTheDocument();
     expect(within(container).getByTestId('status-btn-observation')).toBeInTheDocument();
