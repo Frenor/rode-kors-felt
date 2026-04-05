@@ -1,0 +1,103 @@
+name: API Load Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+concurrency:
+  group: load-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  load:
+    name: Read-Only API Load Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: rkf
+          POSTGRES_USER: rkf_dev
+          POSTGRES_PASSWORD: rkf_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://rkf_dev:rkf_dev_password@127.0.0.1:5432/rkf
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_SECRET: load-test-secret
+      CORS_ORIGIN: http://localhost:3000
+      LOAD_TEST_BASE_URL: http://127.0.0.1:4000
+      LOAD_TEST_DURATION_SECONDS: "10"
+      LOAD_TEST_CONNECTIONS: "20"
+      LOAD_TEST_P95_MAX_MS: "500"
+      LOAD_TEST_RPS_MIN: "20"
+      LOAD_TEST_ERROR_RATE_MAX: "0.02"
+      LOAD_TEST_REQUIRE_AUTH_SCENARIOS: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build API
+        run: pnpm --filter @rkf/api build
+
+      - name: Start API
+        run: |
+          pnpm --filter @rkf/api start > api.log 2>&1 &
+          echo $! > api.pid
+
+      - name: Wait for API health
+        run: |
+          timeout 60 bash -c 'until curl -sf http://127.0.0.1:4000/health >/dev/null; do sleep 1; done'
+
+      - name: Run load test
+        run: pnpm --filter @rkf/api test:load
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f api.pid ]; then
+            kill "$(cat api.pid)" || true
+          fi
+
+      - name: Upload load artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-load-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            api.log
+          if-no-files-found: ignore
+          retention-days: 7

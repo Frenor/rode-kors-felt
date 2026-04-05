@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:load": "tsx src/load/run.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
@@ -35,7 +36,9 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.0",
     "@rkf/eslint-config": "workspace:*",
+    "@types/autocannon": "^7.12.6",
     "@types/pg": "^8.11.0",
+    "autocannon": "^8.0.0",
     "drizzle-kit": "^0.30.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
