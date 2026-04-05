@@ -93,6 +93,44 @@ describe('POST /api/patients', () => {
     expect(body.patient.ageYears).toBe(expectedAge);
   });
 
+  it('stores sickbay placement when placement type and number are provided', async () => {
+    const token = getSickbayToken(eventId);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        fullName: 'Plassering Test',
+        placementType: 'bed',
+        placementNumber: '12',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.patient.placementType).toBe('bed');
+    expect(body.patient.placementNumber).toBe('12');
+  });
+
+  it('rejects incomplete sickbay placement payloads', async () => {
+    const token = getSickbayToken(eventId);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        placementType: 'chair',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toHaveProperty('error');
+  });
+
   it('rejects invalid birthDate values', async () => {
     const token = getSickbayToken(eventId);
 
@@ -789,6 +827,54 @@ describe('PATCH /api/patients/:id — valid status transitions', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().patient.status).toBe('transferred');
+  });
+});
+
+describe('PATCH /api/patients/:id — placement updates', () => {
+  it('updates placementType and placementNumber for an existing patient', async () => {
+    const { token, patientId } = await createTestPatient();
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        placementType: 'chair',
+        placementNumber: '5',
+      },
+    });
+
+    expect(patchRes.statusCode).toBe(200);
+    expect(patchRes.json().patient.placementType).toBe('chair');
+    expect(patchRes.json().patient.placementNumber).toBe('5');
+  });
+
+  it('clears placement when both placement fields are empty/null', async () => {
+    const { token, patientId } = await createTestPatient();
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        placementType: 'bed',
+        placementNumber: '1',
+      },
+    });
+
+    const clearRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        placementType: null,
+        placementNumber: null,
+      },
+    });
+
+    expect(clearRes.statusCode).toBe(200);
+    expect(clearRes.json().patient.placementType).toBeUndefined();
+    expect(clearRes.json().patient.placementNumber).toBeUndefined();
   });
 });
 

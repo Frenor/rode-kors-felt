@@ -165,6 +165,8 @@ export const patients = pgTable('patients', {
   birthDate: date('birth_date'),
   ageGroup: varchar('age_group', { length: 50 }),
   gender: varchar('gender', { length: 50 }),
+  placementType: varchar('placement_type', { length: 16 }),
+  placementNumber: varchar('placement_number', { length: 20 }),
   presentingComplaint: text('presenting_complaint'),
   arrivalTime: timestamp('arrival_time', { withTimezone: true }).notNull().defaultNow(),
   assignedClinician: varchar('assigned_clinician', { length: 100 }),

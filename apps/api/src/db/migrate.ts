@@ -163,6 +163,8 @@ export async function runMigrations(): Promise<void> {
         status               patient_status NOT NULL DEFAULT 'incoming',
         age_group            VARCHAR(50),
         gender               VARCHAR(50),
+        placement_type       VARCHAR(16),
+        placement_number     VARCHAR(20),
         presenting_complaint TEXT,
         arrival_time         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         assigned_clinician   VARCHAR(100),
@@ -229,6 +231,8 @@ export async function runMigrations(): Promise<void> {
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS location_context JSONB;
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS full_name VARCHAR(200);
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS birth_date DATE;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS placement_type VARCHAR(16);
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS placement_number VARCHAR(20);
     `);
 
     await client.query(`

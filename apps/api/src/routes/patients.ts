@@ -32,6 +32,8 @@ function getActor(user: AuthUser): string {
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const ALLOWED_GENDERS = new Set(['male', 'female', 'other']);
+const ALLOWED_PLACEMENT_TYPES = new Set(['chair', 'bed']);
+const PLACEMENT_NUMBER_REGEX = /^\d{1,4}$/;
 
 function normalizeGender(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -48,6 +50,39 @@ function parseBirthDate(value: unknown): string | undefined {
   const todayIso = new Date().toISOString().slice(0, 10);
   if (value > todayIso) return undefined;
   return value;
+}
+
+function normalizePlacementType(value: unknown): 'chair' | 'bed' | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!ALLOWED_PLACEMENT_TYPES.has(normalized)) return undefined;
+  return normalized as 'chair' | 'bed';
+}
+
+function normalizePlacementNumber(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  if (!PLACEMENT_NUMBER_REGEX.test(normalized)) return undefined;
+  return normalized;
+}
+
+function parsePlacementPair(
+  placementTypeValue: unknown,
+  placementNumberValue: unknown,
+): { placementType: 'chair' | 'bed' | null; placementNumber: string | null } | { error: string } {
+  const typeBlank = placementTypeValue == null || (typeof placementTypeValue === 'string' && !placementTypeValue.trim());
+  const numberBlank = placementNumberValue == null || (typeof placementNumberValue === 'string' && !placementNumberValue.trim());
+  if (typeBlank && numberBlank) {
+    return { placementType: null, placementNumber: null };
+  }
+
+  const placementType = normalizePlacementType(placementTypeValue);
+  const placementNumber = normalizePlacementNumber(placementNumberValue);
+
+  if (!placementType || !placementNumber) {
+    return { error: 'Plassering må være stol/seng og et nummer (1-9999)' };
+  }
+  return { placementType, placementNumber };
 }
 
 function calculateAgeYears(birthDate: string, reference: Date = new Date()): number {
@@ -181,6 +216,8 @@ export async function patientRoutes(app: FastifyInstance) {
       gender?: string;
       fullName?: string;
       birthDate?: string;
+      placementType?: string;
+      placementNumber?: string;
       presentingComplaint?: string;
       assignedClinician?: string;
     };
@@ -203,7 +240,17 @@ export async function patientRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Ugyldig kjønn' });
     }
 
+    const hasPlacementInput = body.placementType !== undefined || body.placementNumber !== undefined;
+    const parsedPlacement = hasPlacementInput
+      ? parsePlacementPair(body.placementType, body.placementNumber)
+      : null;
+    if (parsedPlacement && 'error' in parsedPlacement) {
+      return reply.code(400).send({ error: parsedPlacement.error });
+    }
+
     const fullName = body.fullName?.trim() || undefined;
+    const placementType = parsedPlacement?.placementType ?? undefined;
+    const placementNumber = parsedPlacement?.placementNumber ?? undefined;
     const [patient] = await db
       .insert(patients)
       .values({
@@ -213,6 +260,8 @@ export async function patientRoutes(app: FastifyInstance) {
         gender: normalizedGender,
         fullName,
         birthDate: parsedBirthDate,
+        placementType,
+        placementNumber,
         presentingComplaint: body.presentingComplaint,
         assignedClinician: body.assignedClinician,
         notes: [],
@@ -242,6 +291,8 @@ export async function patientRoutes(app: FastifyInstance) {
       fullName: string;
       gender: string;
       birthDate: string;
+      placementType: string | null;
+      placementNumber: string | null;
     }>;
 
     const [existing] = await db
@@ -267,6 +318,19 @@ export async function patientRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Ugyldig fødselsdato' });
     }
 
+    const hasPlacementType = Object.prototype.hasOwnProperty.call(body, 'placementType');
+    const hasPlacementNumber = Object.prototype.hasOwnProperty.call(body, 'placementNumber');
+    if (hasPlacementType !== hasPlacementNumber) {
+      return reply.code(400).send({ error: 'placementType og placementNumber må oppgis sammen' });
+    }
+
+    const parsedPlacement = hasPlacementType
+      ? parsePlacementPair(body.placementType, body.placementNumber)
+      : null;
+    if (parsedPlacement && 'error' in parsedPlacement) {
+      return reply.code(400).send({ error: parsedPlacement.error });
+    }
+
     if (body.status) {
       const result = await applyPatientAction({
         patientId: id,
@@ -287,6 +351,10 @@ export async function patientRoutes(app: FastifyInstance) {
         ...(body.fullName !== undefined && { fullName: body.fullName.trim() }),
         ...(normalizedGender !== undefined && { gender: normalizedGender }),
         ...(parsedBirthDate && { birthDate: parsedBirthDate }),
+        ...(parsedPlacement && {
+          placementType: parsedPlacement.placementType,
+          placementNumber: parsedPlacement.placementNumber,
+        }),
         updatedAt: new Date(),
       })
       .where(eq(patients.id, id))
@@ -644,6 +712,8 @@ function mapPatient(row: typeof patients.$inferSelect, extras?: { actionHistory?
     fullName: row.fullName ?? undefined,
     gender: row.gender ?? undefined,
     birthDate: birthDateString,
+    placementType: row.placementType ?? undefined,
+    placementNumber: row.placementNumber ?? undefined,
     ageYears,
     arrivalTime: row.arrivalTime.toISOString(),
     createdAt: row.createdAt.toISOString(),

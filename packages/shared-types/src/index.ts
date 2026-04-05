@@ -46,6 +46,9 @@ export type PatientStatus = z.infer<typeof PatientStatus>;
 export const TeamTransport = z.enum(['foot', 'bike', 'vehicle', 'atv']);
 export type TeamTransport = z.infer<typeof TeamTransport>;
 
+export const SickBayPlacementType = z.enum(['chair', 'bed']);
+export type SickBayPlacementType = z.infer<typeof SickBayPlacementType>;
+
 export const TeamOperationalStatus = z.enum([
   'available',
   'en_route',
@@ -195,6 +198,8 @@ export const Patient = z.object({
   fullName: z.string().max(200).optional(),
   gender: z.enum(['male', 'female', 'other']).optional(),
   birthDate: z.string().optional(),
+  placementType: SickBayPlacementType.optional(),
+  placementNumber: z.string().max(20).optional(),
   arrivalTime: z.string().datetime(),
   assignedClinician: z.string().max(100).optional(),
   notes: z.array(z.object({
