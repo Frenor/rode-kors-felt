@@ -1,4 +1,4 @@
-import { AmkAssistDraft, calculateNEWS2, normalizeAmkCriticalityInput } from '@rkf/shared-types';
+import { AmkAssistDraft, calculateNEWS2 } from '@rkf/shared-types';
 
 type LatestVitalsInput = {
   pulse?: number | null;
@@ -109,14 +109,6 @@ async function generateViaProvider(config: ProviderConfig, input: AmkAssistInput
   throw new Error(`Provider ${config.provider} is not configured in this build`);
 }
 
-function normalizeAssistDraftCriticality<T extends { criticality?: unknown }>(draft: T): T {
-  const normalized = normalizeAmkCriticalityInput(
-    typeof draft.criticality === 'string' ? draft.criticality : null,
-  );
-  if (!normalized) return draft;
-  return { ...draft, criticality: normalized };
-}
-
 export async function generateAmkAssistDraft(input: AmkAssistInput): Promise<{
   draft: ReturnType<typeof AmkAssistDraft.parse>;
   provenance: AmkAssistProvenance;
@@ -139,9 +131,7 @@ export async function generateAmkAssistDraft(input: AmkAssistInput): Promise<{
   }
 
   try {
-    const providerDraft = normalizeAssistDraftCriticality(
-      await generateViaProvider({ provider, model, apiKey }, input),
-    );
+    const providerDraft = await generateViaProvider({ provider, model, apiKey }, input);
     return {
       draft: providerDraft,
       provenance: {

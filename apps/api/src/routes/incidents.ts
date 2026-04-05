@@ -261,7 +261,6 @@ export async function incidentRoutes(app: FastifyInstance) {
     return result;
   });
 
-  // Escalate an incident (legacy compatibility)
   app.post('/:id/escalate', { preHandler: requireAuth }, async (request, reply) => {
     const user = (request as any).user as { role?: string; eventId?: string };
     const { id } = request.params as { id: string };
@@ -283,7 +282,6 @@ export async function incidentRoutes(app: FastifyInstance) {
     return reply.code(201).send({ escalation: result.escalation, action: result.action });
   });
 
-  // Resolve escalation (legacy compatibility) -> reversible action
   app.delete('/:id/escalate', { preHandler: requireAuth }, async (request, reply) => {
     const user = (request as any).user as { role?: string; eventId?: string };
     const { id } = request.params as { id: string };

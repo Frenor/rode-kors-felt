@@ -388,7 +388,7 @@ describe('AMK call workflows', () => {
       url: `/api/patients/${foreignPatientId}/amk-assist/confirm`,
       headers: { authorization: `Bearer ${tokenFromOtherEvent}` },
       payload: {
-        criticality: 'middels',
+        criticality: 'medium',
         spokenScript: 'Test',
       },
     });
@@ -575,7 +575,7 @@ describe('AMK call workflows', () => {
       url: `/api/patients/${patientId}/amk-assist/confirm`,
       headers: { authorization: `Bearer ${token}` },
       payload: {
-        criticality: 'kritisk',
+        criticality: 'critical',
         spokenScript: 'Trenger umiddelbar AMK-hjelp.',
       },
     });
