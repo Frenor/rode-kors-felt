@@ -553,20 +553,6 @@ export const demoStore = {
     return { incident };
   },
 
-  updateIncident: (id: string, data: Record<string, unknown>) => {
-    incidents = incidents.map((i) =>
-      i.id === id ? { ...i, ...data, updatedAt: new Date().toISOString() } : i,
-    );
-    const incident = incidents.find((i) => i.id === id);
-    return { incident: incident ? mapWithHistory('incident', incident) : undefined };
-  },
-
-  escalateIncident: (incidentId: string, data: { path: string; reason?: string }) =>
-    demoStore.executeIncidentAction(incidentId, { type: 'escalation.raise', ...data }),
-
-  resolveEscalation: (incidentId: string) =>
-    demoStore.executeIncidentAction(incidentId, { type: 'escalation.resolve' }),
-
   getPatients: (_eventId: string) => ({
     patients: patients.map((p) => mapWithHistory('patient', p)),
   }),

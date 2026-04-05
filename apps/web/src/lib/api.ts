@@ -201,29 +201,6 @@ class ApiClient {
     });
   }
 
-  async escalateIncident(incidentId: string, data: { path: string; reason?: string }) {
-    if (DEMO) return demoStore.escalateIncident(incidentId, data);
-    return this.request<{ escalation: any }>(`/incidents/${incidentId}/escalate`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async resolveEscalation(incidentId: string) {
-    if (DEMO) return demoStore.resolveEscalation(incidentId);
-    return this.request<{ ok: boolean }>(`/incidents/${incidentId}/escalate`, {
-      method: 'DELETE',
-    });
-  }
-
-  async updateIncident(id: string, data: Record<string, unknown>) {
-    if (DEMO) return demoStore.updateIncident(id, data);
-    return this.request<{ incident: any }>(`/incidents/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-  }
-
   async executeIncidentAction(
     incidentId: string,
     data:
