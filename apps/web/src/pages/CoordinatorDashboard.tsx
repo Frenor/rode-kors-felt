@@ -16,6 +16,7 @@ import { MCIOverviewPanel } from './Coordinator/MCIOverviewPanel';
 import { ResourceAllocationBoard } from './Coordinator/ResourceAllocationBoard';
 import { StatsGrid } from './Coordinator/StatsGrid';
 import { IncidentFeed } from './Coordinator/IncidentFeed';
+import { TeamMessageStreamPanel } from './Coordinator/TeamMessageStreamPanel';
 import type { EventIndoorLayout, MapRuntimeConfig } from '../lib/types';
 
 const filterIncidentsByStatKey = (incs: Incident[], key: string): Incident[] => {
@@ -53,6 +54,13 @@ export function CoordinatorDashboard() {
   const [lastStatsUpdatedAt, setLastStatsUpdatedAt] = useState<number | undefined>(undefined);
   const [prevStats, setPrevStats] = useState<Record<string, number> | null>(null);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [teamMessages, setTeamMessages] = useState<Array<{
+    id: string;
+    text: string;
+    fromTeamId?: string | null;
+    toTeamId?: string | null;
+    sentAt: string;
+  }>>([]);
   const UNDO_WINDOW_MS = 10_000;
 
   // Nytt koordinatoroppdrag state
@@ -213,13 +221,33 @@ export function CoordinatorDashboard() {
             });
           }
         }
+      } else if (msg.type === 'team.message') {
+        if (eventId && msg.eventId && msg.eventId !== eventId) {
+          return;
+        }
+        const payload = (msg.payload as any) ?? {};
+        if (typeof payload.text === 'string' && payload.text.trim()) {
+          setTeamMessages((prev) => {
+            const next = [
+              {
+                id: payload.id ?? crypto.randomUUID(),
+                text: payload.text,
+                fromTeamId: payload.fromTeamId ?? null,
+                toTeamId: payload.toTeamId ?? null,
+                sentAt: payload.sentAt ?? new Date().toISOString(),
+              },
+              ...prev,
+            ];
+            return next.slice(0, 100);
+          });
+        }
       } else if (msg.type === 'system.connected_users') {
         const { count } = (msg.payload as any) ?? {};
         if (typeof count === 'number') setConnectedUsers(count);
       }
     });
     return off;
-  }, [onMessage]);
+  }, [eventId, onMessage]);
 
   const pushUndoToast = (message: string, actionId?: string) => {
     if (!actionId) return;
@@ -465,6 +493,8 @@ export function CoordinatorDashboard() {
         prevStats={prevStats}
         onFilter={(key) => setActiveFilter(key)}
       />
+
+      <TeamMessageStreamPanel messages={teamMessages} teams={teams} />
 
       {/* Two-column layout: feed left, map right */}
       <div style={{
