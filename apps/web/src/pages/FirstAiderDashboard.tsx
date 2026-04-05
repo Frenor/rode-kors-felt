@@ -1,18 +1,37 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
+import { useFirstAidWorkspaceStore } from '../stores/firstaid-workspace';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useTeamPositionBroadcast } from '../hooks/useTeamPositionBroadcast';
 import { useWsStore } from '../stores/ws';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { offlineQueueDb } from '../lib/offline-queue';
+import { offlineFirstAiderQueueDb } from '../lib/offline-firstaid-queue';
+import {
+  enqueueTeamAction,
+  markTeamActionFailed,
+  markTeamActionSyncing,
+  removeTeamAction,
+  type QueuedTeamActionPayload,
+} from '../lib/offline-firstaid-queue';
 import { api } from '../lib/api';
+import type { TeamOperationalStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
 
 export function FirstAiderDashboard() {
   const { eventId, teams } = useAuthStore();
-  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const selectedTeam = useFirstAidWorkspaceStore((s) => s.selectedTeamId);
+  const setSelectedTeam = useFirstAidWorkspaceStore((s) => s.setSelectedTeam);
+  const activePatientIdByTeam = useFirstAidWorkspaceStore((s) => s.activePatientIdByTeam);
+  const latestStatusByTeam = useFirstAidWorkspaceStore((s) => s.latestStatusByTeam);
+  const lastSyncedAtByTeam = useFirstAidWorkspaceStore((s) => s.lastSyncedAtByTeam);
+  const setActivePatient = useFirstAidWorkspaceStore((s) => s.setActivePatient);
+  const setTeamStatus = useFirstAidWorkspaceStore((s) => s.setTeamStatus);
+  const setTeamSyncedAt = useFirstAidWorkspaceStore((s) => s.setTeamSyncedAt);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspace, setWorkspace] = useState<TeamWorkspaceResponse | null>(null);
   const navigate = useNavigate();
   const { position: gpsPosition } = useGeolocation();
   const wsSend = useWsStore((s) => s.send);
@@ -32,6 +51,11 @@ export function FirstAiderDashboard() {
     [],
     [],
   );
+  const queuedTeamActions = useLiveQuery(
+    () => offlineFirstAiderQueueDb.queue.toArray(),
+    [],
+    [],
+  );
 
   useEffect(() => {
     if (!eventId) return;
@@ -40,6 +64,27 @@ export function FirstAiderDashboard() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [eventId]);
+
+  useEffect(() => {
+    if (!eventId || !selectedTeam) {
+      setWorkspace(null);
+      return;
+    }
+    setWorkspaceLoading(true);
+    api.getTeamWorkspace(selectedTeam)
+      .then((res) => {
+        setWorkspace(res);
+      })
+      .finally(() => setWorkspaceLoading(false));
+  }, [eventId, selectedTeam]);
+
+  useEffect(() => {
+    if (!eventId || !selectedTeam || !workspace) return;
+    if (activePatientIdByTeam[`${eventId}:${selectedTeam}`]) return;
+    if (workspace.activePatientId) {
+      setActivePatient(eventId, selectedTeam, workspace.activePatientId);
+    }
+  }, [activePatientIdByTeam, eventId, selectedTeam, setActivePatient, workspace]);
 
   // Receive team messages via WebSocket
   useEffect(() => {
@@ -117,6 +162,77 @@ export function FirstAiderDashboard() {
     resolved: 'Løst',
   };
 
+  const teamStatusLabels: Record<TeamOperationalStatus, string> = {
+    available: 'Ledig',
+    en_route: 'På vei',
+    on_scene: 'Fremme på stedet',
+    needs_assistance: 'Trenger bistand',
+    unavailable: 'Utilgjengelig',
+  };
+
+  const workspaceKey = eventId && selectedTeam ? `${eventId}:${selectedTeam}` : null;
+  const activePatientId = workspaceKey ? activePatientIdByTeam[workspaceKey] : undefined;
+  const selectedTeamStatus = workspaceKey
+    ? latestStatusByTeam[workspaceKey] ?? workspace?.latestStatus ?? 'available'
+    : 'available';
+  const lastSyncedAt = workspaceKey ? lastSyncedAtByTeam[workspaceKey] : undefined;
+  const pendingTeamActionCount = (queuedTeamActions ?? []).filter((item) => item.status === 'pending').length;
+  const failedTeamActionCount = (queuedTeamActions ?? []).filter((item) => item.status === 'failed').length;
+  const syncLabel = !navigator.onLine
+    ? 'Laget lokalt'
+    : pendingTeamActionCount > 0
+      ? 'Synkroniserer'
+      : failedTeamActionCount > 0
+        ? 'Ikke synkronisert'
+        : 'Synkronisert';
+
+  const allVisiblePatients: TeamWorkspacePatient[] = [
+    ...(workspace?.assignedPatients ?? []),
+    ...(workspace?.monitoredPatients ?? []),
+    ...(workspace?.unassignedPatients ?? []),
+  ];
+  const monitoredPatients = [...(workspace?.assignedPatients ?? []), ...(workspace?.monitoredPatients ?? [])];
+
+  const queueAndSyncTeamAction = async (teamId: string, payload: QueuedTeamActionPayload) => {
+    await enqueueTeamAction(teamId, payload);
+    if (!navigator.onLine) return;
+    try {
+      await markTeamActionSyncing(payload.clientActionId);
+      await api.postTeamAction(teamId, payload, { skipOfflineQueue: true });
+      await removeTeamAction(payload.clientActionId);
+      if (eventId) {
+        setTeamSyncedAt(eventId, teamId, new Date().toISOString());
+      }
+    } catch {
+      await markTeamActionFailed(payload.clientActionId);
+    }
+  };
+
+  const setTeamOperationalStatus = async (status: TeamOperationalStatus) => {
+    if (!eventId || !selectedTeam) return;
+    const payload = {
+      type: 'team.status_set' as const,
+      status,
+      clientActionId: crypto.randomUUID(),
+    };
+    setTeamStatus(eventId, selectedTeam, status);
+    await queueAndSyncTeamAction(selectedTeam, payload);
+  };
+
+  const handleSetActivePatient = async (patientId: string) => {
+    if (!eventId || !selectedTeam) return;
+    setActivePatient(eventId, selectedTeam, patientId);
+    const monitored = workspace?.monitoredPatients.some((patient) => patient.id === patientId)
+      || workspace?.assignedPatients.some((patient) => patient.id === patientId);
+    if (!monitored) {
+      await queueAndSyncTeamAction(selectedTeam, {
+        type: 'team.monitor_started',
+        patientId,
+        clientActionId: crypto.randomUUID(),
+      });
+    }
+  };
+
   const typeLabels: Record<string, string> = {
     medical: 'Medisinsk',
     trauma: 'Traume',
@@ -177,6 +293,182 @@ export function FirstAiderDashboard() {
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
             Oppdatert {new Date(sectorAssignments[selectedTeam]!.assignedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
           </div>
+        </section>
+      )}
+
+      {selectedTeam && (
+        <section
+          data-testid="firstaid-patient-workspace"
+          style={{
+            marginBottom: 'var(--space-4)',
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-3)',
+          }}
+        >
+          <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 700 }}>Mine pasienter</h2>
+              <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                {syncLabel}
+                {lastSyncedAt ? ` · ${new Date(lastSyncedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                {pendingTeamActionCount > 0 ? ` · ${pendingTeamActionCount} i kø` : ''}
+              </p>
+            </div>
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--text-xs)',
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-full)',
+                background: selectedTeamStatus === 'needs_assistance'
+                  ? 'var(--color-status-critical-bg)'
+                  : 'var(--color-surface-sunken)',
+                color: selectedTeamStatus === 'needs_assistance'
+                  ? 'var(--color-status-critical)'
+                  : 'var(--color-text-subtle)',
+              }}
+            >
+              {teamStatusLabels[selectedTeamStatus as TeamOperationalStatus]}
+            </span>
+          </header>
+
+          <div
+            role="radiogroup"
+            aria-label="Lagstatus i felt"
+            data-testid="firstaid-field-status-controls"
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}
+          >
+            {(Object.keys(teamStatusLabels) as TeamOperationalStatus[]).map((status) => (
+              <button
+                key={status}
+                data-testid={`firstaid-field-status-${status}`}
+                onClick={() => setTeamOperationalStatus(status)}
+                className="touch-target"
+                style={{
+                  minHeight: 'var(--touch-min)',
+                  padding: 'var(--space-2)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: `1px solid ${selectedTeamStatus === status ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                  background: selectedTeamStatus === status ? 'var(--color-brand-dim)' : 'transparent',
+                  color: 'var(--color-text)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {teamStatusLabels[status]}
+              </button>
+            ))}
+          </div>
+
+          {workspaceLoading ? (
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>Laster pasientarbeidsflate...</p>
+          ) : (
+            <>
+              <div style={{ padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-sunken)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Aktiv pasient</div>
+                <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+                  {activePatientId
+                    ? allVisiblePatients.find((patient) => patient.id === activePatientId)?.presentingComplaint ?? `Pasient ${activePatientId.slice(0, 8)}`
+                    : 'Ingen aktiv pasient'}
+                </div>
+              </div>
+
+              <div data-testid="firstaid-patient-list" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Overvåkede pasienter</div>
+                {monitoredPatients.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+                    Ingen overvåkede pasienter ennå.
+                  </p>
+                ) : (
+                  monitoredPatients.map((patient) => (
+                    <div
+                      key={patient.id}
+                      data-testid={`firstaid-patient-item-${patient.id}`}
+                      style={{
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: 'var(--space-2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 'var(--space-2)',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                          {patient.presentingComplaint || 'Ukjent problemstilling'}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                          Sist oppdatert {new Date(patient.updatedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleSetActivePatient(patient.id)}
+                        className="touch-target"
+                        style={{
+                          minHeight: 'var(--touch-min)',
+                          padding: '0 var(--space-3)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--color-brand)',
+                          background: activePatientId === patient.id ? 'var(--color-brand)' : 'transparent',
+                          color: activePatientId === patient.id ? 'white' : 'var(--color-brand)',
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {activePatientId === patient.id ? 'Aktiv' : 'Sett aktiv'}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <section aria-labelledby="firstaid-unassigned-patients" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                <h3
+                  id="firstaid-unassigned-patients"
+                  style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}
+                >
+                  Utildelte pasienter
+                </h3>
+                {(workspace?.unassignedPatients ?? []).map((patient) => (
+                  <div key={patient.id} style={{ padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                    <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                      {patient.presentingComplaint || 'Ukjent problemstilling'}
+                    </div>
+                    <button
+                      onClick={() => handleSetActivePatient(patient.id)}
+                      className="touch-target"
+                      style={{
+                        marginTop: 'var(--space-2)',
+                        minHeight: 44,
+                        padding: '0 var(--space-3)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-brand)',
+                        background: 'transparent',
+                        color: 'var(--color-brand)',
+                        fontSize: 'var(--text-xs)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Overvåk pasient
+                    </button>
+                  </div>
+                ))}
+                {(workspace?.unassignedPatients ?? []).length === 0 && (
+                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+                    Ingen utildelte pasienter tilgjengelig.
+                  </p>
+                )}
+              </section>
+            </>
+          )}
         </section>
       )}
 

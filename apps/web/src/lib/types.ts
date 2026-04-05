@@ -38,7 +38,7 @@ export interface MedicationRecord {
 export interface ActionHistoryEntry {
   id: string;
   eventId: string;
-  entityType: 'incident' | 'patient' | 'event';
+  entityType: 'incident' | 'patient' | 'event' | 'team';
   entityId: string;
   actionType: string;
   payload: Record<string, unknown>;
@@ -50,7 +50,15 @@ export interface ActionHistoryEntry {
   undoOfActionId?: string;
 }
 
-export type AmkCriticality = 'lav' | 'middels' | 'høy' | 'kritisk';
+export type AmkCriticality = 'low' | 'medium' | 'high' | 'critical';
+export type LegacyAmkCriticality = AmkCriticality | 'lav' | 'middels' | 'høy' | 'hoy' | 'kritisk';
+
+export type TeamOperationalStatus =
+  | 'available'
+  | 'en_route'
+  | 'on_scene'
+  | 'needs_assistance'
+  | 'unavailable';
 
 export interface AmkCallLog {
   id: string;
@@ -66,7 +74,7 @@ export interface AmkCallLog {
 }
 
 export interface AmkAssistDraft {
-  criticality: AmkCriticality;
+  criticality: LegacyAmkCriticality;
   rationale: string;
   sayFirst: string[];
   spokenScript: string;
@@ -177,6 +185,44 @@ export interface Team {
   name: string;
   transport?: string;
   currentPosition?: GeoPoint | null;
+}
+
+export interface TeamWorkspacePatient {
+  id: string;
+  incidentId: string | null;
+  status: string;
+  presentingComplaint: string | null;
+  updatedAt: string;
+}
+
+export interface TeamWorkspaceResponse {
+  teamId: string;
+  eventId: string;
+  latestStatus: TeamOperationalStatus;
+  activePatientId: string | null;
+  assignedPatients: TeamWorkspacePatient[];
+  monitoredPatients: TeamWorkspacePatient[];
+  unassignedPatients: TeamWorkspacePatient[];
+  updatedAt: string;
+}
+
+export type SickbayIncomingCriticalReason =
+  | 'needs_assistance'
+  | 'open_escalation'
+  | 'triage_immediate'
+  | 'news2_high';
+
+export interface SickbayIncomingItem {
+  incidentId: string;
+  patientId: string | null;
+  teamId: string | null;
+  progressStage: string;
+  critical: boolean;
+  criticalReasons: SickbayIncomingCriticalReason[];
+  latestVitals?: VitalsReading | null;
+  news2?: { total: number; alertLevel: 'routine' | 'low' | 'medium' | 'high' } | null;
+  triageTag?: string | null;
+  updatedAt: string;
 }
 
 export interface DeteriorationAlert {

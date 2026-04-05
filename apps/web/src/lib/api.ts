@@ -1,7 +1,16 @@
 import { useAuthStore } from '../stores/auth';
 import { enqueue } from './offline-queue';
+import { enqueueTeamAction } from './offline-firstaid-queue';
 import { demoStore } from './demo-store';
-import type { AmkAssistDraft, AmkCallLog, EventIndoorLayout, MapRuntimeConfig } from './types';
+import type {
+  AmkAssistDraft,
+  AmkCallLog,
+  EventIndoorLayout,
+  MapRuntimeConfig,
+  SickbayIncomingItem,
+  TeamOperationalStatus,
+  TeamWorkspaceResponse,
+} from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
@@ -228,6 +237,43 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  async postTeamAction(
+    teamId: string,
+    data:
+      | { type: 'team.status_set'; status: TeamOperationalStatus; incidentId?: string; note?: string; clientActionId: string }
+      | { type: 'team.monitor_started'; patientId: string; clientActionId: string }
+      | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string },
+    options?: { skipOfflineQueue?: boolean },
+  ) {
+    if (DEMO) return demoStore.postTeamAction(teamId, data);
+    if (!options?.skipOfflineQueue && !navigator.onLine) {
+      await enqueueTeamAction(teamId, data);
+      return {
+        action: {
+          id: data.clientActionId,
+          actionType: data.type,
+          payload: data,
+          createdAt: new Date().toISOString(),
+          _queued: true,
+        },
+      };
+    }
+    return this.request<{ action: any; deduplicated?: boolean }>(`/teams/${teamId}/actions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getTeamWorkspace(teamId: string) {
+    if (DEMO) return demoStore.getTeamWorkspace(teamId);
+    return this.request<TeamWorkspaceResponse>(`/teams/${teamId}/workspace`);
+  }
+
+  async getSickbayIncoming(eventId: string) {
+    if (DEMO) return demoStore.getSickbayIncoming(eventId);
+    return this.request<{ items: SickbayIncomingItem[] }>(`/events/${eventId}/sickbay-incoming`);
   }
 
   async executePatientAction(patientId: string, data: { type: 'status.set'; status: string }) {

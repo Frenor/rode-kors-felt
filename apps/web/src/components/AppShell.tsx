@@ -2,12 +2,14 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useAuthStore } from '../stores/auth';
 import { useWsStore } from '../stores/ws';
 import { useOfflineSync } from '../hooks/useOfflineSync';
+import { useOfflineTeamSync } from '../hooks/useOfflineTeamSync';
 import { useNavigate } from 'react-router-dom';
 import { ToastContainer } from './ToastContainer';
 import { DemoBanner } from './DemoBanner';
 import { DemoWalkthrough } from './DemoWalkthrough';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { offlineQueueDb } from '../lib/offline-queue';
+import { offlineFirstAiderQueueDb } from '../lib/offline-firstaid-queue';
 
 const IS_DEMO =
   import.meta.env.VITE_DEMO_MODE === 'true' ||
@@ -28,6 +30,7 @@ export function AppShell({ children }: AppShellProps) {
 
   // Offline sync for first aiders
   useOfflineSync();
+  useOfflineTeamSync();
 
   // Pending queue count for banner
   const queueCount = useLiveQuery(
@@ -35,6 +38,25 @@ export function AppShell({ children }: AppShellProps) {
     [],
     0,
   );
+  const firstAidQueueCounts = useLiveQuery(
+    async () => {
+      const [pending, syncing, failed] = await Promise.all([
+        offlineFirstAiderQueueDb.queue.where('status').equals('pending').count(),
+        offlineFirstAiderQueueDb.queue.where('status').equals('syncing').count(),
+        offlineFirstAiderQueueDb.queue.where('status').equals('failed').count(),
+      ]);
+      return { pending, syncing, failed };
+    },
+    [],
+    { pending: 0, syncing: 0, failed: 0 },
+  );
+  const firstAidSyncLabel = !isOnline
+    ? 'Laget lokalt'
+    : (firstAidQueueCounts.pending + firstAidQueueCounts.syncing) > 0
+      ? 'Synkroniserer'
+      : firstAidQueueCounts.failed > 0
+        ? 'Ikke synkronisert'
+        : 'Synkronisert';
 
   // Connect WebSocket for all authenticated roles
   useEffect(() => {
@@ -272,6 +294,29 @@ export function AppShell({ children }: AppShellProps) {
             }}
           />
           Gjenoppretter sanntidsforbindelsen — siste data kan mangle
+        </div>
+      )}
+
+      {/* Always-visible first aider sync banner */}
+      {role === 'first_aider' && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            background: 'var(--color-surface-sunken)',
+            borderBottom: '1px solid var(--color-border)',
+            padding: 'var(--space-2) var(--space-4)',
+            textAlign: 'center',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-sm)',
+            color: firstAidSyncLabel === 'Ikke synkronisert'
+              ? 'var(--color-status-critical)'
+              : firstAidSyncLabel === 'Synkroniserer' || firstAidSyncLabel === 'Laget lokalt'
+                ? 'var(--color-status-warning)'
+                : 'var(--color-status-ok)',
+          }}
+        >
+          {firstAidSyncLabel}
         </div>
       )}
 
