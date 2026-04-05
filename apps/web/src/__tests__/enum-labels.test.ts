@@ -8,30 +8,32 @@ import {
 } from '../lib/constants';
 
 describe('enum normalization and labels', () => {
-  it('normalizes legacy and english AMK criticality values', () => {
-    expect(normalizeAmkCriticality('lav')).toBe('low');
-    expect(normalizeAmkCriticality('middels')).toBe('medium');
-    expect(normalizeAmkCriticality('høy')).toBe('high');
-    expect(normalizeAmkCriticality('kritisk')).toBe('critical');
+  it('accepts canonical AMK criticality values', () => {
     expect(normalizeAmkCriticality('low')).toBe('low');
     expect(normalizeAmkCriticality('medium')).toBe('medium');
     expect(normalizeAmkCriticality('high')).toBe('high');
     expect(normalizeAmkCriticality('critical')).toBe('critical');
   });
 
+  it('throws when non-canonical AMK criticality is provided', () => {
+    expect(() => normalizeAmkCriticality('lav')).toThrow();
+    expect(() => normalizeAmkCriticality('kritisk')).toThrow();
+    expect(() => normalizeAmkCriticality('deprecated')).toThrow();
+  });
+
   it('renders Norwegian labels from normalized criticality', () => {
-    expect(amkCriticalityLabel('lav')).toBe('Lav');
+    expect(amkCriticalityLabel('low')).toBe('Lav');
     expect(amkCriticalityLabel('medium')).toBe('Middels');
     expect(amkCriticalityLabel('high')).toBe('Høy');
-    expect(amkCriticalityLabel('kritisk')).toBe('Kritisk');
     expect(AMK_CRITICALITY_LABELS.critical).toBe('Kritisk');
   });
 
   it('normalizes llm triage levels from legacy and english', () => {
-    expect(normalizeLlmTriageLevel('lav')).toBe('low');
-    expect(normalizeLlmTriageLevel('middels')).toBe('medium');
-    expect(normalizeLlmTriageLevel('høy')).toBe('high');
-    expect(normalizeLlmTriageLevel('kritisk')).toBe('critical');
+    expect(normalizeLlmTriageLevel('low')).toBe('low');
+    expect(normalizeLlmTriageLevel('medium')).toBe('medium');
+    expect(normalizeLlmTriageLevel('high')).toBe('high');
+    expect(normalizeLlmTriageLevel('critical')).toBe('critical');
+    expect(normalizeLlmTriageLevel('invalid')).toBe('medium');
     expect(normalizeLlmTriageLevel(undefined)).toBe('medium');
   });
 

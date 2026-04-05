@@ -78,6 +78,9 @@ export const typeLabels: Record<string, string> = {
   other: 'Annet',
 };
 
+type KnownCriticality = 'low' | 'medium' | 'high' | 'critical';
+const CANONICAL_AMK_CRITICALITIES: KnownCriticality[] = ['low', 'medium', 'high', 'critical'];
+
 export const TRIAGE_COLORS: Record<string, { color: string; bg: string; label: string }> = {
   low: { color: 'var(--color-status-ok)', bg: 'var(--color-status-ok-bg)', label: 'Lav' },
   medium: { color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', label: 'Middels' },
@@ -92,34 +95,27 @@ export const AMK_CRITICALITY_LABELS: Record<'low' | 'medium' | 'high' | 'critica
   critical: 'Kritisk',
 };
 
-const AMK_CRITICALITY_NORMALIZATION: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
-  low: 'low',
-  lav: 'low',
-  medium: 'medium',
-  middels: 'medium',
-  high: 'high',
-  hoy: 'high',
-  'høy': 'high',
-  critical: 'critical',
-  kritisk: 'critical',
-};
-
-export function normalizeAmkCriticality(value: string | null | undefined): 'low' | 'medium' | 'high' | 'critical' {
+export function normalizeAmkCriticality(value: string | null | undefined): KnownCriticality {
   if (!value) return 'low';
-  return AMK_CRITICALITY_NORMALIZATION[value.trim().toLowerCase()] ?? 'low';
+  const normalized = value.trim().toLowerCase();
+  if (CANONICAL_AMK_CRITICALITIES.includes(normalized as KnownCriticality)) {
+    return normalized as KnownCriticality;
+  }
+  throw new Error(`Unsupported AMK criticality '${value}'`);
 }
 
 export function amkCriticalityLabel(value: string | null | undefined): string {
-  return AMK_CRITICALITY_LABELS[normalizeAmkCriticality(value)];
+  const canonical = normalizeAmkCriticality(value);
+  return AMK_CRITICALITY_LABELS[canonical];
 }
 
-const LLM_TRIAGE_LEVEL_NORMALIZATION: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
-  ...AMK_CRITICALITY_NORMALIZATION,
-};
-
-export function normalizeLlmTriageLevel(value: string | null | undefined): 'low' | 'medium' | 'high' | 'critical' {
+export function normalizeLlmTriageLevel(value: string | null | undefined): KnownCriticality {
   if (!value) return 'medium';
-  return LLM_TRIAGE_LEVEL_NORMALIZATION[value.trim().toLowerCase()] ?? 'medium';
+  const normalized = value.trim().toLowerCase();
+  if (CANONICAL_AMK_CRITICALITIES.includes(normalized as KnownCriticality)) {
+    return normalized as KnownCriticality;
+  }
+  return 'medium';
 }
 
 export const TEAM_OPERATIONAL_STATUS_LABELS: Record<string, string> = {

@@ -51,7 +51,6 @@ export interface ActionHistoryEntry {
 }
 
 export type AmkCriticality = 'low' | 'medium' | 'high' | 'critical';
-export type LegacyAmkCriticality = AmkCriticality | 'lav' | 'middels' | 'høy' | 'hoy' | 'kritisk';
 
 export type TeamOperationalStatus =
   | 'available'
@@ -74,7 +73,7 @@ export interface AmkCallLog {
 }
 
 export interface AmkAssistDraft {
-  criticality: LegacyAmkCriticality;
+  criticality: AmkCriticality;
   rationale: string;
   sayFirst: string[];
   spokenScript: string;
