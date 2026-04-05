@@ -16,7 +16,15 @@ vi.mock('../stores/auth', () => ({
   useAuthStore: vi.fn(() => ({ eventId: 'evt-1' })),
 }));
 
+vi.mock('../hooks/useGeolocation', () => ({
+  useGeolocation: vi.fn(() => ({
+    position: null,
+    status: 'idle',
+  })),
+}));
+
 import { api } from '../lib/api';
+import { useGeolocation } from '../hooks/useGeolocation';
 
 function renderForm() {
   return render(
@@ -34,6 +42,7 @@ function renderForm() {
 beforeEach(() => {
   vi.mocked(api.createIncident).mockReset();
   vi.mocked(api.getEventIndoorLayout).mockResolvedValue({ layout: null });
+  vi.mocked(useGeolocation).mockReturnValue({ position: null, status: 'idle' });
 });
 
 describe('IncidentForm — step 0 (incident type)', () => {
@@ -167,6 +176,53 @@ describe('IncidentForm — step 3 (confirm and submit)', () => {
 
     await waitFor(() => {
       expect(api.createIncident).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('uses GPS position by default when GPS is available', async () => {
+    vi.mocked(api.createIncident).mockResolvedValue({ incident: { id: 'inc-new' } });
+    vi.mocked(useGeolocation).mockReturnValue({
+      status: 'ok',
+      position: { lat: 60.123456, lng: 11.654321 },
+    });
+
+    goToStep3();
+    fireEvent.click(screen.getByRole('button', { name: /Send hendelse/ }));
+
+    await waitFor(() => {
+      expect(api.createIncident).toHaveBeenCalledWith(
+        expect.objectContaining({
+          location: expect.objectContaining({
+            lat: 60.123456,
+            lng: 11.654321,
+          }),
+        }),
+      );
+    });
+  });
+
+  it('uses manually adjusted coordinates when user overrides position', async () => {
+    vi.mocked(api.createIncident).mockResolvedValue({ incident: { id: 'inc-new' } });
+    vi.mocked(useGeolocation).mockReturnValue({
+      status: 'ok',
+      position: { lat: 60.123456, lng: 11.654321 },
+    });
+
+    goToStep3();
+    fireEvent.change(screen.getByTestId('incident-manual-lat'), { target: { value: '61.111111' } });
+    fireEvent.change(screen.getByTestId('incident-manual-lng'), { target: { value: '12.222222' } });
+    fireEvent.click(screen.getByTestId('incident-apply-manual-location'));
+    fireEvent.click(screen.getByRole('button', { name: /Send hendelse/ }));
+
+    await waitFor(() => {
+      expect(api.createIncident).toHaveBeenCalledWith(
+        expect.objectContaining({
+          location: expect.objectContaining({
+            lat: 61.111111,
+            lng: 12.222222,
+          }),
+        }),
+      );
     });
   });
 });

@@ -1,4 +1,5 @@
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import { useEffect } from 'react';
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -17,23 +18,82 @@ const PIN_ICON = L.divIcon({
 interface GpsMiniMapProps {
   lat: number;
   lng: number;
+  interactive?: boolean;
+  onPositionChange?: (position: { lat: number; lng: number }) => void;
 }
 
-export default function GpsMiniMap({ lat, lng }: GpsMiniMapProps) {
+function RecenterMap({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setView([lat, lng], map.getZoom(), { animate: false });
+  }, [lat, lng, map]);
+
+  return null;
+}
+
+function ClickToSetMarker({
+  onPositionChange,
+}: {
+  onPositionChange: (position: { lat: number; lng: number }) => void;
+}) {
+  useMapEvents({
+    click: (event) => {
+      onPositionChange({
+        lat: event.latlng.lat,
+        lng: event.latlng.lng,
+      });
+    },
+  });
+
+  return null;
+}
+
+export default function GpsMiniMap({
+  lat,
+  lng,
+  interactive = false,
+  onPositionChange,
+}: GpsMiniMapProps) {
+  const canInteract = interactive && typeof onPositionChange === 'function';
+
   return (
-    <div style={{ height: 150, borderRadius: 'var(--radius-md)', overflow: 'hidden', marginTop: 4 }}>
+    <div
+      data-testid={canInteract ? 'incident-location-editor-map' : 'incident-location-preview-map'}
+      style={{ height: 150, borderRadius: 'var(--radius-md)', overflow: 'hidden', marginTop: 4 }}
+    >
       <MapContainer
         center={[lat, lng]}
         zoom={15}
-        style={{ height: '100%', width: '100%', pointerEvents: 'none' }}
-        zoomControl={false}
+        style={{ height: '100%', width: '100%', pointerEvents: canInteract ? 'auto' : 'none' }}
+        zoomControl={canInteract}
         attributionControl={false}
-        scrollWheelZoom={false}
-        dragging={false}
-        doubleClickZoom={false}
+        scrollWheelZoom={canInteract}
+        dragging={canInteract}
+        doubleClickZoom={canInteract}
       >
+        <RecenterMap lat={lat} lng={lng} />
+        {canInteract ? <ClickToSetMarker onPositionChange={onPositionChange} /> : null}
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <Marker position={[lat, lng]} icon={PIN_ICON} />
+        <Marker
+          position={[lat, lng]}
+          icon={PIN_ICON}
+          draggable={canInteract}
+          eventHandlers={
+            canInteract
+              ? {
+                  dragend: (event) => {
+                    const marker = event.target;
+                    const position = marker.getLatLng();
+                    onPositionChange({
+                      lat: position.lat,
+                      lng: position.lng,
+                    });
+                  },
+                }
+              : undefined
+          }
+        />
       </MapContainer>
     </div>
   );

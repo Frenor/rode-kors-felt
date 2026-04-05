@@ -14,6 +14,9 @@ type IncidentType = 'medical' | 'trauma' | 'psychiatric' | 'other';
 type TriageTag = 'immediate' | 'delayed' | 'minor' | 'expectant';
 type IndoorLocationMode = 'gps' | 'indoor_zone';
 type IncidentLocationContext = NonNullable<SharedIncident['locationContext']>;
+type IncidentPoint = { lat: number; lng: number };
+
+const FALLBACK_LOCATION: IncidentPoint = { lat: 59.964, lng: 10.776 }; // Holmenkollen
 
 const TRIAGE_OPTIONS: { value: TriageTag; label: string; color: string; bg: string; border: string }[] = [
   { value: 'immediate', label: 'UMIDDELBAR', color: '#fff', bg: '#cc0000', border: '#aa0000' },
@@ -142,6 +145,16 @@ const GPS_STATUS_COLORS: Record<string, string> = {
   idle: 'var(--color-text-subtle)',
 };
 
+function validateCoordinates(lat: number, lng: number): string {
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+    return 'Breddegrad må være mellom -90 og 90.';
+  }
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+    return 'Lengdegrad må være mellom -180 og 180.';
+  }
+  return '';
+}
+
 export function IncidentForm() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -159,6 +172,10 @@ export function IncidentForm() {
   const [indoorFloorId, setIndoorFloorId] = useState('');
   const [indoorZoneId, setIndoorZoneId] = useState('');
   const [indoorLoading, setIndoorLoading] = useState(false);
+  const [manualLocation, setManualLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [manualLat, setManualLat] = useState('');
+  const [manualLng, setManualLng] = useState('');
+  const [locationError, setLocationError] = useState('');
 
   // MIST — chip selections + optional free-text overrides
   const [mistMechanism, setMistMechanism] = useState<string[]>([]);
@@ -176,6 +193,8 @@ export function IncidentForm() {
   const [error, setError] = useState('');
   const [isListening, setIsListening] = useState(false);
   const hasSpeechApi = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+  const baseLocation = gpsStatus === 'ok' && gpsPosition ? gpsPosition : FALLBACK_LOCATION;
+  const effectiveLocation = manualLocation ?? baseLocation;
 
   useEffect(() => {
     let active = true;
@@ -239,6 +258,12 @@ export function IncidentForm() {
   }, [indoorLayout, indoorFloorId, indoorZoneId]);
 
   useEffect(() => {
+    if (manualLocation) return;
+    setManualLat(baseLocation.lat.toFixed(6));
+    setManualLng(baseLocation.lng.toFixed(6));
+  }, [baseLocation.lat, baseLocation.lng, manualLocation]);
+
+  useEffect(() => {
     if (mistSignsTouched) return;
     if (!triageTag) return;
     const prefill = TRIAGE_SIGNS_PREFILL[triageTag];
@@ -258,9 +283,7 @@ export function IncidentForm() {
         eventId,
         teamId,
         type,
-        location: gpsStatus === 'ok' && gpsPosition
-        ? gpsPosition
-        : { lat: 59.964, lng: 10.776 }, // fallback: Holmenkollen
+        location: effectiveLocation,
         acvpu,
         triageTag: triageTag ?? undefined,
         clientId: crypto.randomUUID(),
@@ -335,6 +358,31 @@ export function IncidentForm() {
   const stepTitles = ['Hendelsestype', 'ABCDE-vurdering', 'MIST-rapport', 'Bekreft og send'];
   const selectedIndoorFloor = indoorLayout?.floors.find((floor) => floor.id === indoorFloorId) ?? indoorLayout?.floors[0];
   const selectedIndoorZone = selectedIndoorFloor?.zones.find((zone) => zone.id === indoorZoneId) ?? selectedIndoorFloor?.zones[0];
+
+  const handleMapPositionChange = (position: { lat: number; lng: number }) => {
+    setManualLocation(position);
+    setManualLat(position.lat.toFixed(6));
+    setManualLng(position.lng.toFixed(6));
+    setLocationError('');
+  };
+
+  const handleApplyManualCoordinates = () => {
+    const nextLat = Number.parseFloat(manualLat);
+    const nextLng = Number.parseFloat(manualLng);
+    const validationError = validateCoordinates(nextLat, nextLng);
+    if (validationError) {
+      setLocationError(validationError);
+      return;
+    }
+    handleMapPositionChange({ lat: nextLat, lng: nextLng });
+  };
+
+  const handleResetManualCoordinates = () => {
+    setManualLocation(null);
+    setLocationError('');
+    setManualLat(baseLocation.lat.toFixed(6));
+    setManualLng(baseLocation.lng.toFixed(6));
+  };
 
   // Success screen — shown 1.5s before redirect
   if (submitted) {
@@ -900,19 +948,139 @@ export function IncidentForm() {
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginTop: 4 }}>
                       {indoorLayout.venueName ?? indoorLayout.venueId}
                     </div>
+                    <p style={{ margin: 'var(--space-2) 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                      Trenger du manuell kartposisjon? Bytt til GPS-fallback i forrige steg.
+                    </p>
                   </div>
-                ) : gpsStatus === 'ok' && gpsPosition ? (
-                  <>
+                ) : (
+                  <div style={{ marginTop: 'var(--space-2)' }}>
                     <Suspense fallback={<div style={{ height: 150, background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)' }} />}>
-                      <GpsMiniMap lat={gpsPosition.lat} lng={gpsPosition.lng} />
+                      <GpsMiniMap
+                        lat={effectiveLocation.lat}
+                        lng={effectiveLocation.lng}
+                        interactive
+                        onPositionChange={handleMapPositionChange}
+                      />
                     </Suspense>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: GPS_STATUS_COLORS[gpsStatus], marginTop: 4 }}>
-                      📍 {gpsPosition.lat.toFixed(4)}, {gpsPosition.lng.toFixed(4)}
+                      {manualLocation
+                        ? `📍 Manuell posisjon: ${effectiveLocation.lat.toFixed(4)}, ${effectiveLocation.lng.toFixed(4)}`
+                        : gpsStatus === 'ok' && gpsPosition
+                          ? `📍 GPS-posisjon: ${effectiveLocation.lat.toFixed(4)}, ${effectiveLocation.lng.toFixed(4)}`
+                          : `📍 Standardposisjon: ${effectiveLocation.lat.toFixed(4)}, ${effectiveLocation.lng.toFixed(4)}`}
                     </div>
-                  </>
-                ) : (
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: GPS_STATUS_COLORS[gpsStatus] }}>
-                    ⚠ Fallback-posisjon (arrangementet)
+                    <p style={{ margin: 'var(--space-2) 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                      Trykk i kartet eller dra markøren for å justere posisjon før innsending.
+                    </p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                      <div>
+                        <label
+                          htmlFor="manual-lat"
+                          style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}
+                        >
+                          Breddegrad (lat)
+                        </label>
+                        <input
+                          id="manual-lat"
+                          data-testid="incident-manual-lat"
+                          inputMode="decimal"
+                          value={manualLat}
+                          onChange={(event) => {
+                            setManualLat(event.target.value);
+                            setLocationError('');
+                          }}
+                          style={{
+                            width: '100%',
+                            height: 44,
+                            padding: '0 var(--space-2)',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--color-input-border)',
+                            background: 'var(--color-input-bg)',
+                            color: 'var(--color-text)',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--text-sm)',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="manual-lng"
+                          style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}
+                        >
+                          Lengdegrad (lng)
+                        </label>
+                        <input
+                          id="manual-lng"
+                          data-testid="incident-manual-lng"
+                          inputMode="decimal"
+                          value={manualLng}
+                          onChange={(event) => {
+                            setManualLng(event.target.value);
+                            setLocationError('');
+                          }}
+                          style={{
+                            width: '100%',
+                            height: 44,
+                            padding: '0 var(--space-2)',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--color-input-border)',
+                            background: 'var(--color-input-bg)',
+                            color: 'var(--color-text)',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--text-sm)',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                      <button
+                        type="button"
+                        data-testid="incident-apply-manual-location"
+                        onClick={handleApplyManualCoordinates}
+                        className="touch-target"
+                        style={{
+                          minHeight: 44,
+                          padding: '0 var(--space-3)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--color-brand)',
+                          background: 'var(--color-brand-dim)',
+                          color: 'var(--color-brand)',
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Oppdater posisjon
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="incident-reset-location"
+                        onClick={handleResetManualCoordinates}
+                        disabled={gpsStatus !== 'ok' || !gpsPosition}
+                        className="touch-target"
+                        style={{
+                          minHeight: 44,
+                          padding: '0 var(--space-3)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--color-border)',
+                          background: 'var(--color-surface)',
+                          color: 'var(--color-text)',
+                          fontSize: 'var(--text-xs)',
+                          cursor: gpsStatus !== 'ok' || !gpsPosition ? 'not-allowed' : 'pointer',
+                          opacity: gpsStatus !== 'ok' || !gpsPosition ? 0.6 : 1,
+                        }}
+                      >
+                        Bruk GPS igjen
+                      </button>
+                    </div>
+
+                    {locationError ? (
+                      <p role="alert" style={{ margin: 'var(--space-2) 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}>
+                        {locationError}
+                      </p>
+                    ) : null}
                   </div>
                 )}
               </div>
