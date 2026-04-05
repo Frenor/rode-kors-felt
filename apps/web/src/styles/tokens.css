@@ -89,17 +89,17 @@
 
     --color-text: #e6edf3;
     --color-text-muted: #9ca3b0;
-    --color-text-subtle: #636c78;
+    --color-text-subtle: #7b8597;
 
-    --color-border: #21262d;
-    --color-border-strong: #30363d;
+    --color-border: #3d444d;
+    --color-border-strong: #5f6b7b;
 
     --color-brand: #e8112d;
     --color-brand-hover: #ff2d4a;
     --color-brand-dim: rgba(232, 17, 45, 0.15);
 
     /* Status — calibrated for dark surfaces (≥ 7:1) */
-    --color-status-critical: #f87171;
+    --color-status-critical: #ff7f7f;
     --color-status-critical-bg: rgba(248, 113, 113, 0.1);
     --color-status-critical-border: rgba(248, 113, 113, 0.25);
 
@@ -111,25 +111,25 @@
     --color-status-ok-bg: rgba(74, 222, 128, 0.1);
     --color-status-ok-border: rgba(74, 222, 128, 0.25);
 
-    --color-status-info: #60a5fa;
+    --color-status-info: #6aaeff;
     --color-status-info-bg: rgba(96, 165, 250, 0.1);
     --color-status-info-border: rgba(96, 165, 250, 0.25);
 
     /* ACVPU — dark mode values (≥ 7:1 on dark surface) */
     --color-avpu-alert: #4ade80;
     --color-avpu-alert-bg: rgba(74, 222, 128, 0.12);
-    --color-avpu-confused: #60a5fa;
+    --color-avpu-confused: #6aaeff;
     --color-avpu-confused-bg: rgba(96, 165, 250, 0.12);
     --color-avpu-voice: #fbbf24;
     --color-avpu-voice-bg: rgba(251, 191, 36, 0.12);
-    --color-avpu-pain: #f87171;
+    --color-avpu-pain: #ff7f7f;
     --color-avpu-pain-bg: rgba(248, 113, 113, 0.12);
     --color-avpu-unresponsive: #fca5a5;
     --color-avpu-unresponsive-bg: rgba(252, 165, 165, 0.15);
 
     --color-focus-ring: #58a6ff;
     --color-input-bg: #0d1117;
-    --color-input-border: #30363d;
+    --color-input-border: #5f6b7b;
   }
 }
 
@@ -144,16 +144,16 @@
 
   --color-text: #e6edf3;
   --color-text-muted: #9ca3b0;
-  --color-text-subtle: #636c78;
+  --color-text-subtle: #7b8597;
 
-  --color-border: #21262d;
-  --color-border-strong: #30363d;
+  --color-border: #3d444d;
+  --color-border-strong: #5f6b7b;
 
   --color-brand: #e8112d;
   --color-brand-hover: #ff2d4a;
   --color-brand-dim: rgba(232, 17, 45, 0.15);
 
-  --color-status-critical: #f87171;
+  --color-status-critical: #ff7f7f;
   --color-status-critical-bg: rgba(248, 113, 113, 0.1);
   --color-status-critical-border: rgba(248, 113, 113, 0.25);
 
@@ -165,24 +165,24 @@
   --color-status-ok-bg: rgba(74, 222, 128, 0.1);
   --color-status-ok-border: rgba(74, 222, 128, 0.25);
 
-  --color-status-info: #60a5fa;
+  --color-status-info: #6aaeff;
   --color-status-info-bg: rgba(96, 165, 250, 0.1);
   --color-status-info-border: rgba(96, 165, 250, 0.25);
 
   --color-avpu-alert: #4ade80;
   --color-avpu-alert-bg: rgba(74, 222, 128, 0.12);
-  --color-avpu-confused: #60a5fa;
+  --color-avpu-confused: #6aaeff;
   --color-avpu-confused-bg: rgba(96, 165, 250, 0.12);
   --color-avpu-voice: #fbbf24;
   --color-avpu-voice-bg: rgba(251, 191, 36, 0.12);
-  --color-avpu-pain: #f87171;
+  --color-avpu-pain: #ff7f7f;
   --color-avpu-pain-bg: rgba(248, 113, 113, 0.12);
   --color-avpu-unresponsive: #fca5a5;
   --color-avpu-unresponsive-bg: rgba(252, 165, 165, 0.15);
 
   --color-focus-ring: #58a6ff;
   --color-input-bg: #0d1117;
-  --color-input-border: #30363d;
+  --color-input-border: #5f6b7b;
 }
 
 /* ═══════════════════════════════════════════════
