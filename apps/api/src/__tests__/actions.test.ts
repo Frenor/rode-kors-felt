@@ -86,25 +86,25 @@ describe('Reversible action APIs', () => {
     expect(readRes.json().incident.status).toBe('on_scene');
   });
 
-  it('DELETE /api/incidents/:id/escalate stays compatible and emits action metadata', async () => {
+  it('POST /api/incidents/:id/actions resolves escalation and emits action metadata', async () => {
     const incident = await createIncident();
     const token = getCoordinatorToken();
 
     await app.inject({
       method: 'POST',
-      url: `/api/incidents/${incident.id}/escalate`,
+      url: `/api/incidents/${incident.id}/actions`,
       headers: { Authorization: `Bearer ${token}` },
-      payload: { path: 'path_a_rk_ambulance' },
+      payload: { type: 'escalation.raise', path: 'path_a_rk_ambulance' },
     });
 
     const res = await app.inject({
-      method: 'DELETE',
-      url: `/api/incidents/${incident.id}/escalate`,
+      method: 'POST',
+      url: `/api/incidents/${incident.id}/actions`,
       headers: { Authorization: `Bearer ${token}` },
+      payload: { type: 'escalation.resolve' },
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().ok).toBe(true);
     expect(res.json().action.actionType).toBe('incident.escalation_resolved');
   });
 

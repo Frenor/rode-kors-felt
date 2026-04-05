@@ -174,67 +174,6 @@ export async function incidentRoutes(app: FastifyInstance) {
     return reply.code(201).send({ incident: mapped });
   });
 
-  // Update incident (legacy compatibility)
-  app.patch('/:id', { preHandler: requireAuth }, async (request, reply) => {
-    const user = (request as any).user as { role?: string; eventId?: string };
-    const { id } = request.params as { id: string };
-    const body = request.body as Partial<{
-      status: string;
-      teamId: string;
-      acvpu: string;
-      triageTag: string;
-      notes: string;
-      locationContext: {
-        mode: 'gps' | 'indoor_zone';
-        venueId?: string;
-        floorId?: string;
-        zoneId?: string;
-        zoneLabel?: string;
-      };
-    }>;
-
-    const [existing] = await db.select().from(incidents).where(eq(incidents.id, id)).limit(1);
-    if (!existing) return reply.code(404).send({ error: 'Hendelse ikke funnet' });
-    if (!canAccessEvent(user, existing.eventId)) {
-      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
-    }
-
-    // Status updates are now routed through action engine.
-    if (body.status) {
-      const result = await applyIncidentAction({
-        incidentId: id,
-        user,
-        body: { type: 'status.set', status: body.status },
-      });
-      if (result.error) return reply.code(result.error.code).send({ error: result.error.message });
-      return { incident: result.incident, action: result.action };
-    }
-
-    const [updated] = await db
-      .update(incidents)
-      .set({
-        ...(body.teamId !== undefined && { teamId: body.teamId }),
-        ...(body.acvpu && { acvpu: body.acvpu as typeof incidents.$inferInsert['acvpu'] }),
-        ...(body.notes !== undefined && { notes: body.notes }),
-        ...(body.triageTag !== undefined && { triageTag: body.triageTag as typeof incidents.$inferInsert['triageTag'] }),
-        ...(body.locationContext !== undefined && { locationContext: body.locationContext }),
-        updatedAt: new Date(),
-      })
-      .where(eq(incidents.id, id))
-      .returning();
-
-    const mapped = mapIncident(updated!);
-
-    broadcast({
-      type: 'incident.updated',
-      eventId: mapped.eventId,
-      payload: { incident: mapped },
-      timestamp: mapped.updatedAt,
-    });
-
-    return { incident: mapped };
-  });
-
   // Reversible incident action API
   app.post('/:id/actions', { preHandler: requireAuth }, async (request, reply) => {
     const user = (request as any).user as { role?: string; eventId?: string };
@@ -259,47 +198,6 @@ export async function incidentRoutes(app: FastifyInstance) {
 
     if (result.error) return reply.code(result.error.code).send({ error: result.error.message });
     return result;
-  });
-
-  app.post('/:id/escalate', { preHandler: requireAuth }, async (request, reply) => {
-    const user = (request as any).user as { role?: string; eventId?: string };
-    const { id } = request.params as { id: string };
-    const body = request.body as { path: string; reason?: string };
-
-    const [existing] = await db.select().from(incidents).where(eq(incidents.id, id)).limit(1);
-    if (!existing) return reply.code(404).send({ error: 'Hendelse ikke funnet' });
-    if (!canAccessEvent(user, existing.eventId)) {
-      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
-    }
-
-    const result = await applyIncidentAction({
-      incidentId: id,
-      user,
-      body: { type: 'escalation.raise', path: body.path, reason: body.reason },
-    });
-
-    if (result.error) return reply.code(result.error.code).send({ error: result.error.message });
-    return reply.code(201).send({ escalation: result.escalation, action: result.action });
-  });
-
-  app.delete('/:id/escalate', { preHandler: requireAuth }, async (request, reply) => {
-    const user = (request as any).user as { role?: string; eventId?: string };
-    const { id } = request.params as { id: string };
-
-    const [existing] = await db.select().from(incidents).where(eq(incidents.id, id)).limit(1);
-    if (!existing) return reply.code(404).send({ error: 'Hendelse ikke funnet' });
-    if (!canAccessEvent(user, existing.eventId)) {
-      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
-    }
-
-    const result = await applyIncidentAction({
-      incidentId: id,
-      user,
-      body: { type: 'escalation.resolve' },
-    });
-
-    if (result.error) return reply.code(result.error.code).send({ error: result.error.message });
-    return { ok: true, action: result.action };
   });
 }
 

@@ -28,20 +28,20 @@ async function createIncident(token: string) {
   return res.json().incident;
 }
 
-describe('POST /api/incidents/:id/escalate', () => {
-  it('returns 201 with escalation containing path and incidentId', async () => {
+describe('POST /api/incidents/:id/actions (escalation)', () => {
+  it('returns 200 with escalation containing path and incidentId', async () => {
     const token = getFirstAiderToken(eventId);
     const coordToken = getCoordinatorToken();
     const incident = await createIncident(token);
 
     const res = await app.inject({
       method: 'POST',
-      url: `/api/incidents/${incident.id}/escalate`,
+      url: `/api/incidents/${incident.id}/actions`,
       headers: { Authorization: `Bearer ${coordToken}` },
-      payload: { path: 'path_a_rk_ambulance', reason: 'Kritisk pasient' },
+      payload: { type: 'escalation.raise', path: 'path_a_rk_ambulance', reason: 'Kritisk pasient' },
     });
 
-    expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(200);
     const { escalation } = res.json();
     expect(escalation.path).toBe('path_a_rk_ambulance');
     expect(escalation.incidentId).toBe(incident.id);
@@ -55,16 +55,16 @@ describe('POST /api/incidents/:id/escalate', () => {
 
     await app.inject({
       method: 'POST',
-      url: `/api/incidents/${incident.id}/escalate`,
+      url: `/api/incidents/${incident.id}/actions`,
       headers: { Authorization: `Bearer ${coordToken}` },
-      payload: { path: 'path_b_113' },
+      payload: { type: 'escalation.raise', path: 'path_b_113' },
     });
 
     const res = await app.inject({
       method: 'POST',
-      url: `/api/incidents/${incident.id}/escalate`,
+      url: `/api/incidents/${incident.id}/actions`,
       headers: { Authorization: `Bearer ${coordToken}` },
-      payload: { path: 'path_a_rk_ambulance' },
+      payload: { type: 'escalation.raise', path: 'path_a_rk_ambulance' },
     });
 
     expect(res.statusCode).toBe(409);

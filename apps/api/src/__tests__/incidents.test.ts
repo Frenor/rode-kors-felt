@@ -134,8 +134,8 @@ describe('POST /api/incidents', () => {
   });
 });
 
-describe('PATCH /api/incidents/:id', () => {
-  it('updates incident status and returns 200', async () => {
+describe('POST /api/incidents/:id/actions', () => {
+  it('updates incident status via action endpoint and returns 200', async () => {
     const firstAiderToken = getFirstAiderToken(eventId);
     const coordinatorToken = getCoordinatorToken();
 
@@ -153,10 +153,10 @@ describe('PATCH /api/incidents/:id', () => {
     const incidentId = createRes.json().incident.id;
 
     const patchRes = await app.inject({
-      method: 'PATCH',
-      url: `/api/incidents/${incidentId}`,
+      method: 'POST',
+      url: `/api/incidents/${incidentId}/actions`,
       headers: { authorization: `Bearer ${coordinatorToken}` },
-      payload: { status: 'resolved' },
+      payload: { type: 'status.set', status: 'resolved' },
     });
 
     expect(patchRes.statusCode).toBe(200);
