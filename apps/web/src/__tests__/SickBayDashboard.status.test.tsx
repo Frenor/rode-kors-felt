@@ -58,6 +58,7 @@ const mockCreateAmkCallLog = vi.fn().mockResolvedValue({
 vi.mock('../lib/api', () => ({
   api: {
     getPatients: vi.fn(),
+    getSickbayIncoming: vi.fn().mockResolvedValue({ items: [] }),
     executePatientAction: (...args: unknown[]) => mockExecutePatientAction(...args),
     addPatientNote: (...args: unknown[]) => mockAddPatientNote(...args),
     createPatient: vi.fn(),
@@ -120,6 +121,7 @@ function makePatient(overrides: Record<string, unknown> = {}) {
 async function renderWithPatient(status: string, patientOverrides: Record<string, unknown> = {}) {
   const patient = makePatient({ status, ...patientOverrides });
   vi.mocked(api.getPatients).mockResolvedValue({ patients: [patient] });
+  vi.mocked(api.getSickbayIncoming).mockResolvedValue({ items: [] });
 
   const utils = render(<SickBayDashboard />);
 
@@ -132,6 +134,7 @@ async function renderWithPatient(status: string, patientOverrides: Record<string
 async function renderWithPatients(patients: Array<Record<string, unknown>>) {
   const payload = patients.map((entry) => makePatient(entry));
   vi.mocked(api.getPatients).mockResolvedValue({ patients: payload });
+  vi.mocked(api.getSickbayIncoming).mockResolvedValue({ items: [] });
   const utils = render(<SickBayDashboard />);
   await screen.findByText(payload[0]?.presentingComplaint as string);
   return { ...utils, patients: payload };
@@ -326,7 +329,7 @@ describe('AMK brief modal — structured 113 flow', () => {
     vi.clearAllMocks();
     mockGetAmkCallLogs.mockResolvedValue({ callLogs: [] });
     mockGenerateAmkAssistDraft.mockResolvedValue({
-      criticality: 'høy',
+      criticality: 'high',
       rationale: 'NEWS2 og kliniske funn tilsier høy prioritet.',
       sayFirst: ['Si først 1', 'Si først 2'],
       spokenScript: 'Foreslått script',
@@ -341,7 +344,7 @@ describe('AMK brief modal — structured 113 flow', () => {
       ok: true,
       action: { id: 'ai-confirm-1' },
       confirmed: {
-        criticality: 'høy',
+        criticality: 'high',
         spokenScript: 'Foreslått script',
         rationale: 'NEWS2 og kliniske funn tilsier høy prioritet.',
         sayFirst: ['Si først 1', 'Si først 2'],
@@ -388,7 +391,7 @@ describe('AMK brief modal — structured 113 flow', () => {
       expect(mockConfirmAmkAssist).toHaveBeenCalledWith(
         patient.id,
         expect.objectContaining({
-          criticality: 'høy',
+          criticality: 'high',
         }),
         'Redigert script',
       );
@@ -434,7 +437,7 @@ describe('AMK brief modal — structured 113 flow', () => {
         entityType: 'patient',
         entityId: 'pat-1',
         actionType: 'patient.amk_ai_script_confirmed',
-        payload: { confirmed: { criticality: 'høy', spokenScript: 'Redigert script' } },
+        payload: { confirmed: { criticality: 'high', spokenScript: 'Redigert script' } },
         createdAt: now,
         createdBy: 'demo-user',
       },
