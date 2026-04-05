@@ -53,14 +53,10 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await page.waitForURL('**/sickbay');
   await expect(page.getByRole('heading', { name: 'Sykestue' })).toBeVisible();
 
-  const ring113Button = page.getByTestId('patient-ring-113').first();
-  const hasPatient = await ring113Button.isVisible({ timeout: 1500 }).catch(() => false);
-  if (!hasPatient) {
-    await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
-    await page.getByLabel('Problemstilling').fill('Brystsmerter demo');
-    await page.getByLabel('Behandler').fill('Demo-kliniker');
-    await page.getByRole('button', { name: 'Registrer' }).click();
-  }
+  await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
+  await page.getByLabel('Problemstilling').fill('Brystsmerter demo');
+  await page.getByLabel('Behandler').fill('Demo-kliniker');
+  await page.getByRole('button', { name: 'Registrer' }).click();
 
   await page.getByTestId('patient-ring-113').first().click();
   const amkDialog = page.getByRole('dialog', { name: 'AMK-brief' });
@@ -68,11 +64,8 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await expect(amkDialog.getByRole('button', { name: 'Generer AI-forslag' })).toBeVisible();
   await amkDialog.getByRole('button', { name: 'Lukk' }).click();
   await expect(amkDialog).not.toBeVisible();
-  await expect(
-    page.getByRole('button', {
-      name: /Start behandling|Legg til observasjon|Flytt til observasjon|Skriv ut|Overfør til AMK \(SBAR\)/,
-    }).first(),
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start behandling' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Legg til observasjon' }).first()).toBeVisible();
 
   // Coordinator flow: verify map presentation controls in demo preview.
   if (await logoutBtn.isVisible().catch(() => false)) {

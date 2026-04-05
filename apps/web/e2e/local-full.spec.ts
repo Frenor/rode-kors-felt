@@ -78,14 +78,10 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await loginAsSickBay(page);
   await expect(page.getByRole('heading', { name: 'Sykestue' })).toBeVisible();
 
-  const ring113Button = page.getByTestId('patient-ring-113').first();
-  const hasRingButton = await ring113Button.isVisible({ timeout: 2000 }).catch(() => false);
-  if (!hasRingButton) {
-    await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
-    await page.getByLabel('Problemstilling').fill('Brystsmerter under aktivitet');
-    await page.getByLabel('Behandler').fill('Testkliniker');
-    await page.getByRole('button', { name: 'Registrer' }).click();
-  }
+  await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
+  await page.getByLabel('Problemstilling').fill('Brystsmerter under aktivitet');
+  await page.getByLabel('Behandler').fill('Testkliniker');
+  await page.getByRole('button', { name: 'Registrer' }).click();
 
   await page.getByTestId('patient-ring-113').first().click();
   const amkDialog = await page.getByRole('dialog', { name: 'AMK-brief' });
@@ -102,11 +98,8 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await expect(amkDialog.getByText('Pasient med brystsmerter', { exact: true }).first()).toBeVisible();
   await amkDialog.getByRole('button', { name: 'Lukk' }).click();
   await expect(amkDialog).not.toBeVisible();
-  await expect(
-    page.getByRole('button', {
-      name: /Start behandling|Legg til observasjon|Flytt til observasjon|Skriv ut|Overfør til AMK \(SBAR\)/,
-    }).first(),
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start behandling' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Legg til observasjon' }).first()).toBeVisible();
 
   await loginAsCoordinator(page);
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
