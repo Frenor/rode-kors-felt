@@ -40,8 +40,15 @@ async function buildServer() {
 
   // Plugins
   await app.register(helmet, { contentSecurityPolicy: false });
+  const corsOrigin = process.env.CORS_ORIGIN?.trim();
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    // In production we usually serve the SPA and API from the same origin via a reverse proxy.
+    // When CORS_ORIGIN is not set, allow requests from any Origin (Fastify will reflect it).
+    origin: corsOrigin
+      ? corsOrigin.split(',').map((o) => o.trim()).filter(Boolean)
+      : process.env.NODE_ENV === 'production'
+        ? true
+        : 'http://localhost:3000',
     credentials: true,
   });
   await app.register(sensible);
