@@ -1,10 +1,16 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  calculateNEWS2,
+  news2BadgeLabel,
+  news2MonitoringLabel,
+} from '@rkf/shared-types';
 import { useAuthStore } from '../stores/auth';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { api } from '../lib/api';
 import type { EventIndoorLayout, Incident as SharedIncident } from '../lib/types';
 import { IndoorLocationPicker } from '../components/IndoorLocationPicker';
+import { news2Colors } from '../lib/constants';
 
 // Lazy-load GPS mini-map to avoid bloating first-aider bundle
 const GpsMiniMap = lazy(() => import('./GpsMiniMap'));
@@ -155,6 +161,15 @@ function validateCoordinates(lat: number, lng: number): string {
   return '';
 }
 
+const NEWS2_PARAMETER_LABELS: Array<[keyof ReturnType<typeof calculateNEWS2>['scores'], string]> = [
+  ['respiratoryRate', 'Pustefrekvens'],
+  ['spo2', 'SpO₂'],
+  ['systolicBP', 'Systolisk blodtrykk'],
+  ['pulse', 'Puls'],
+  ['consciousness', 'Bevissthet (ACVPU)'],
+  ['temperature', 'Temperatur'],
+];
+
 export function IncidentForm() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -195,6 +210,18 @@ export function IncidentForm() {
   const hasSpeechApi = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
   const baseLocation = gpsStatus === 'ok' && gpsPosition ? gpsPosition : FALLBACK_LOCATION;
   const effectiveLocation = manualLocation ?? baseLocation;
+  const hasAnyNewsInput = Boolean(vitals.rr || vitals.spo2 || vitals.pulse || acvpu);
+  const news2Preview = calculateNEWS2({
+    respiratoryRate: vitals.rr ? parseInt(vitals.rr, 10) : undefined,
+    spo2: vitals.spo2 ? parseInt(vitals.spo2, 10) : undefined,
+    pulse: vitals.pulse ? parseInt(vitals.pulse, 10) : undefined,
+    acvpu: acvpu ?? undefined,
+  });
+  const news2MissingLabels = NEWS2_PARAMETER_LABELS
+    .filter(([key]) => news2Preview.scores[key] === null)
+    .map(([, label]) => label);
+  const news2MeasuredCount = NEWS2_PARAMETER_LABELS.length - news2MissingLabels.length;
+  const news2Style = news2Colors[news2Preview.alertLevel];
 
   useEffect(() => {
     let active = true;
@@ -685,6 +712,35 @@ export function IncidentForm() {
             </div>
           </fieldset>
 
+          <section
+            aria-live="polite"
+            data-testid="incident-news2-preview-step1"
+            style={{
+              marginBottom: 'var(--space-4)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-md)',
+              border: `1px solid ${news2Style.color}`,
+              background: news2Style.bg,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <strong style={{ fontSize: 'var(--text-sm)', color: news2Style.color }}>Foreløpig NEWS2</strong>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, color: news2Style.color }}>
+                {hasAnyNewsInput ? news2BadgeLabel(news2Preview) : 'Ingen score ennå'}
+              </span>
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+              {hasAnyNewsInput
+                ? `${news2MonitoringLabel(news2Preview)} · ${news2MeasuredCount}/${NEWS2_PARAMETER_LABELS.length} parametere registrert`
+                : 'Legg inn vitale tegn for å få tidlig varsel om kritisk pasient.'}
+            </p>
+            {hasAnyNewsInput && news2MissingLabels.length > 0 ? (
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                Mangler: {news2MissingLabels.join(', ')}
+              </p>
+            ) : null}
+          </section>
+
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button onClick={() => setStep(0)} className="touch-target" style={{
               flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
@@ -707,6 +763,30 @@ export function IncidentForm() {
       {/* Step 2: MIST — chip-based quick entry */}
       {step === 2 && (
         <div key="step-2" className="animate-slide-up">
+          <section
+            aria-live="polite"
+            data-testid="incident-news2-preview-step2"
+            style={{
+              marginBottom: 'var(--space-4)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-md)',
+              border: `1px solid ${news2Style.color}`,
+              background: news2Style.bg,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <strong style={{ fontSize: 'var(--text-sm)', color: news2Style.color }}>NEWS2 i MIST</strong>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, color: news2Style.color }}>
+                {hasAnyNewsInput ? news2BadgeLabel(news2Preview) : 'Ingen score ennå'}
+              </span>
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+              {hasAnyNewsInput
+                ? `${news2MonitoringLabel(news2Preview)} · hold denne med i overlevering`
+                : 'NEWS2 kommer automatisk når vitale tegn registreres i forrige steg.'}
+            </p>
+          </section>
+
           <MistChipSection
             label="M — Skademekanisme"
             chips={['Fall', 'Kollisjon', 'Hjerterelatert', 'Termisk', 'Psykisk', 'Annet']}

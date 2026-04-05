@@ -97,6 +97,22 @@ describe('IncidentForm — step 1 (AVPU + vitals)', () => {
     // Step 2 shows MIST labels
     expect(screen.getByText(/M — Skademekanisme/)).toBeInTheDocument();
   });
+
+  it('shows live NEWS2 preview while entering vitals', () => {
+    goToStep1();
+
+    const preview = screen.getByTestId('incident-news2-preview-step1');
+    expect(preview).toHaveTextContent('Foreløpig NEWS2');
+    expect(preview).toHaveTextContent('Ingen score ennå');
+
+    fireEvent.click(screen.getByRole('radio', { name: /Voice/i }));
+    fireEvent.change(screen.getByLabelText('Pustefrekvens (/min)'), { target: { value: '28' } });
+    fireEvent.change(screen.getByLabelText('SpO₂ (%)'), { target: { value: '89' } });
+    fireEvent.change(screen.getByLabelText('Puls (bpm)'), { target: { value: '128' } });
+
+    expect(preview).toHaveTextContent(/NEWS2 \d+/);
+    expect(preview).toHaveTextContent('Mangler: Systolisk blodtrykk, Temperatur');
+  });
 });
 
 describe('IncidentForm — step 2 (MIST)', () => {
@@ -155,6 +171,20 @@ describe('IncidentForm — step 2 (MIST)', () => {
 
     expect(screen.getByTestId('mist-sign-chip-Svimmelhet')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('mist-sign-chip-Pågående blødning')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('carries NEWS2 preview into MIST step with handover guidance', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Medisinsk' }));
+    fireEvent.click(screen.getByRole('radio', { name: /Voice/i }));
+    fireEvent.change(screen.getByLabelText('Pustefrekvens (/min)'), { target: { value: '26' } });
+    fireEvent.change(screen.getByLabelText('SpO₂ (%)'), { target: { value: '90' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Neste: MIST →' }));
+
+    const mistPreview = screen.getByTestId('incident-news2-preview-step2');
+    expect(mistPreview).toHaveTextContent('NEWS2 i MIST');
+    expect(mistPreview).toHaveTextContent(/NEWS2 \d+/);
+    expect(mistPreview).toHaveTextContent('hold denne med i overlevering');
   });
 });
 
