@@ -72,6 +72,14 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `057d999` `feat(web): capture patient demographics and show derived age`
+  - Sick Bay intake now supports `fullName`, `gender`, and `birthDate`.
+  - Derived age is shown in patient cards, collapsed closed rows, and SBAR/AMK headers.
+  - Demo dataset and dashboard tests updated for demographics flow.
+- `3a83405` `feat(api): add patient demographics and age derivation`
+  - API/DB now stores patient `fullName` and `birthDate` (with `gender` normalization).
+  - Patient responses include computed `ageYears`.
+  - Added backend tests for valid/invalid birth date and demographic persistence.
 - `fbc9e77` `feat(web): surface NEWS2 parameter details for first-aider handover`
   - Added richer live NEWS2 detail cards in first-aider incident flow.
   - Added MIST-step recap of recorded NEWS2 parameters for handover speed.
@@ -91,6 +99,7 @@
   - next: improve workspace continuity and active-patient recovery UX.
 - Sick Bay clarity:
   - grouped status + visibility work is ongoing.
+  - patient demographics capture + age display is now implemented in core Sick Bay flows.
   - next: incoming critical panel signal clarity and progression readability.
 - Quality and deployment confidence:
   - keep per-feature tests incremental.
