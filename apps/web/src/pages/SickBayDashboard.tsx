@@ -18,7 +18,7 @@ import { PatientCard } from './SickBay/PatientCard';
 import { IncomingCriticalPanel } from './SickBay/IncomingCriticalPanel';
 import type { VitalsFormShape } from './SickBay/VitalsEntryForm';
 import type { MedFormShape } from './SickBay/MedicationPanel';
-import { formatPatientAge, GENDER_LABELS, statusLabels } from '../lib/constants';
+import { formatPatientAge, formatSickbayPlacement, GENDER_LABELS, statusLabels } from '../lib/constants';
 
 // In dev mode the monitoring timer fires after 1 min instead of the clinical interval.
 const DEV_INTERVALS = import.meta.env.DEV && import.meta.env.VITE_NEWS2_DEV_INTERVALS === 'true';
@@ -42,6 +42,8 @@ export function SickBayDashboard() {
     fullName: '',
     gender: '',
     birthDate: '',
+    placementType: '',
+    placementNumber: '',
     ageGroup: 'adult',
     presentingComplaint: '',
     assignedClinician: '',
@@ -116,17 +118,38 @@ export function SickBayDashboard() {
 
   const handleIntake = async () => {
     if (!eventId) return;
+    const placementType = intakeForm.placementType || undefined;
+    const placementNumber = intakeForm.placementNumber.trim();
+    if ((placementType && !placementNumber) || (!placementType && placementNumber)) {
+      addToast({
+        message: 'Velg både plasseringstype og plasseringsnummer, eller la begge stå tomme.',
+        level: 'warning',
+        autoDismissMs: 6_000,
+      });
+      return;
+    }
     await api.createPatient({
       eventId,
       fullName: intakeForm.fullName.trim() || undefined,
       gender: intakeForm.gender || undefined,
       birthDate: intakeForm.birthDate || undefined,
+      placementType,
+      placementNumber: placementType ? placementNumber : undefined,
       ageGroup: intakeForm.ageGroup,
       presentingComplaint: intakeForm.presentingComplaint.trim() || undefined,
       assignedClinician: intakeForm.assignedClinician.trim() || undefined,
     });
     setShowIntake(false);
-    setIntakeForm({ fullName: '', gender: '', birthDate: '', ageGroup: 'adult', presentingComplaint: '', assignedClinician: '' });
+    setIntakeForm({
+      fullName: '',
+      gender: '',
+      birthDate: '',
+      placementType: '',
+      placementNumber: '',
+      ageGroup: 'adult',
+      presentingComplaint: '',
+      assignedClinician: '',
+    });
     fetchPatients();
   };
 
@@ -268,6 +291,28 @@ export function SickBayDashboard() {
     fetchPatients();
   };
 
+  const handleUpdatePlacement = async (
+    patientId: string,
+    placementType: 'chair' | 'bed' | '',
+    placementNumber: string,
+  ) => {
+    const normalizedNumber = placementNumber.trim();
+    if ((placementType && !normalizedNumber) || (!placementType && normalizedNumber)) {
+      addToast({
+        message: 'Velg både plasseringstype og plasseringsnummer, eller tøm begge feltene.',
+        level: 'warning',
+        autoDismissMs: 6_000,
+      });
+      return;
+    }
+    await api.updatePatient(patientId, {
+      placementType: placementType || null,
+      placementNumber: normalizedNumber || null,
+    });
+    addToast({ message: 'Plassering oppdatert', level: 'info', autoDismissMs: 3_000 });
+    fetchPatients();
+  };
+
   const handleStartTreatment = async (patientId: string) => {
     const patient = patients.find((row) => row.id === patientId);
     await handleStatusChange(patientId, 'in_treatment', patient);
@@ -300,6 +345,8 @@ export function SickBayDashboard() {
       <IncomingCriticalPanel
         items={incomingItems}
         onStartTreatment={handleStartTreatment}
+        onAssignPlacement={(patientId, placementType, placementNumber) =>
+          handleUpdatePlacement(patientId, placementType, placementNumber)}
       />
 
       {showIntake && (
@@ -386,6 +433,8 @@ export function SickBayDashboard() {
                         onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
                         onLoadMedications={() => handleLoadMedications(patient.id)}
                         onOpenAmk={() => handleOpenAmk(patient)}
+                        onUpdatePlacement={(placementType, placementNumber) =>
+                          handleUpdatePlacement(patient.id, placementType, placementNumber)}
                       />
                     );
                   }
@@ -425,6 +474,18 @@ export function SickBayDashboard() {
                       >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <span style={{ fontWeight: 600 }}>{patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 700,
+                      color: patient.placementType && patient.placementNumber ? 'var(--color-status-info)' : 'var(--color-text-subtle)',
+                    }}
+                  >
+                    {patient.placementType && patient.placementNumber
+                      ? `Plassering: ${formatSickbayPlacement(patient.placementType, patient.placementNumber)}`
+                      : 'Plassering: Ikke satt'}
+                  </span>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
                     {patient.presentingComplaint ? `Problemstilling: ${patient.presentingComplaint}` : 'Problemstilling ikke registrert'}
                   </span>
@@ -454,6 +515,8 @@ export function SickBayDashboard() {
                             onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
                             onLoadMedications={() => handleLoadMedications(patient.id)}
                             onOpenAmk={() => handleOpenAmk(patient)}
+                            onUpdatePlacement={(placementType, placementNumber) =>
+                              handleUpdatePlacement(patient.id, placementType, placementNumber)}
                           />
                         </div>
                       )}

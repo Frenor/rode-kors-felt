@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import type { SickbayIncomingItem } from '../../lib/types';
 
 interface IncomingCriticalPanelProps {
   items: SickbayIncomingItem[];
   onStartTreatment: (patientId: string) => void;
+  onAssignPlacement: (patientId: string, placementType: 'chair' | 'bed' | '', placementNumber: string) => void;
 }
 
 const reasonLabels: Record<string, string> = {
@@ -26,7 +28,12 @@ const triageLabels: Record<string, string> = {
   expectant: 'Forventet',
 };
 
-export function IncomingCriticalPanel({ items, onStartTreatment }: IncomingCriticalPanelProps) {
+export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlacement }: IncomingCriticalPanelProps) {
+  const [expandedPlacementRows, setExpandedPlacementRows] = useState<Record<string, boolean>>({});
+  const [placementFormByIncident, setPlacementFormByIncident] = useState<Record<string, {
+    placementType: 'chair' | 'bed' | '';
+    placementNumber: string;
+  }>>({});
   if (items.length === 0) return null;
 
   const sortedItems = [...items].sort((a, b) => {
@@ -35,6 +42,24 @@ export function IncomingCriticalPanel({ items, onStartTreatment }: IncomingCriti
     if (aNews !== bNews) return aNews - bNews;
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
   });
+
+  const togglePlacementRow = (incidentId: string) => {
+    setExpandedPlacementRows((prev) => ({ ...prev, [incidentId]: !prev[incidentId] }));
+  };
+
+  const updatePlacementForm = (
+    incidentId: string,
+    patch: Partial<{ placementType: 'chair' | 'bed' | ''; placementNumber: string }>,
+  ) => {
+    setPlacementFormByIncident((prev) => ({
+      ...prev,
+      [incidentId]: {
+        placementType: prev[incidentId]?.placementType ?? '',
+        placementNumber: prev[incidentId]?.placementNumber ?? '',
+        ...patch,
+      },
+    }));
+  };
 
   return (
     <section
@@ -102,24 +127,116 @@ export function IncomingCriticalPanel({ items, onStartTreatment }: IncomingCriti
               </div>
             </div>
             {item.patientId ? (
-              <button
-                onClick={() => onStartTreatment(item.patientId!)}
-                className="touch-target"
-                style={{
-                  minHeight: 'var(--touch-min)',
-                  padding: '0 var(--space-3)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--color-status-critical)',
-                  background: 'var(--color-status-critical)',
-                  color: 'white',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Start behandling
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'stretch' }}>
+                <button
+                  onClick={() => onStartTreatment(item.patientId!)}
+                  className="touch-target"
+                  style={{
+                    minHeight: 'var(--touch-min)',
+                    padding: '0 var(--space-3)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--color-status-critical)',
+                    background: 'var(--color-status-critical)',
+                    color: 'white',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Start behandling
+                </button>
+
+                <button
+                  type="button"
+                  className="touch-target"
+                  data-testid={`assign-placement-toggle-${item.incidentId}`}
+                  onClick={() => togglePlacementRow(item.incidentId)}
+                  style={{
+                    minHeight: 'var(--touch-min)',
+                    padding: '0 var(--space-3)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--color-border)',
+                    background: 'transparent',
+                    color: 'var(--color-text)',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Tildel stol/seng
+                </button>
+
+                {expandedPlacementRows[item.incidentId] && (
+                  <div
+                    data-testid={`assign-placement-form-${item.incidentId}`}
+                    style={{
+                      display: 'grid',
+                      gap: 'var(--space-2)',
+                      minWidth: 220,
+                    }}
+                  >
+                    <select
+                      value={placementFormByIncident[item.incidentId]?.placementType ?? ''}
+                      onChange={(e) => updatePlacementForm(item.incidentId, {
+                        placementType: e.target.value as 'chair' | 'bed' | '',
+                      })}
+                      style={{
+                        height: 'var(--touch-min)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-input-border)',
+                        background: 'var(--color-input-bg)',
+                        color: 'var(--color-text)',
+                        padding: '0 var(--space-2)',
+                      }}
+                    >
+                      <option value="">Velg type</option>
+                      <option value="chair">Stol</option>
+                      <option value="bed">Seng</option>
+                    </select>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Nummer"
+                      value={placementFormByIncident[item.incidentId]?.placementNumber ?? ''}
+                      onChange={(e) => updatePlacementForm(item.incidentId, {
+                        placementNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 4),
+                      })}
+                      style={{
+                        height: 'var(--touch-min)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-input-border)',
+                        background: 'var(--color-input-bg)',
+                        color: 'var(--color-text)',
+                        padding: '0 var(--space-2)',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="touch-target"
+                      onClick={() => {
+                        const placementType = placementFormByIncident[item.incidentId]?.placementType ?? '';
+                        const placementNumber = placementFormByIncident[item.incidentId]?.placementNumber ?? '';
+                        onAssignPlacement(item.patientId!, placementType, placementNumber);
+                        setExpandedPlacementRows((prev) => ({ ...prev, [item.incidentId]: false }));
+                      }}
+                      style={{
+                        minHeight: 'var(--touch-min)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: 'none',
+                        background: 'var(--color-brand)',
+                        color: '#fff',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Lagre plassering
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : null}
           </article>
         ))}

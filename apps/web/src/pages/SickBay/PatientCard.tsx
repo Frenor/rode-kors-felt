@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   calculateNEWS2,
   calculateNEWS2Trend,
@@ -8,6 +8,7 @@ import {
 } from '@rkf/shared-types';
 import {
   formatPatientAge,
+  formatSickbayPlacement,
   GENDER_LABELS,
   news2Colors,
   statusColors,
@@ -42,6 +43,7 @@ interface PatientCardProps {
   onSubmitMedication: (form: MedFormShape) => void;
   onLoadMedications: () => void;
   onOpenAmk: () => void;
+  onUpdatePlacement: (placementType: 'chair' | 'bed' | '', placementNumber: string) => void;
 }
 
 export function PatientCard({
@@ -53,14 +55,18 @@ export function PatientCard({
   onSubmitMedication,
   onLoadMedications,
   onOpenAmk,
+  onUpdatePlacement,
 }: PatientCardProps) {
   const [showVitals, setShowVitals] = useState(false);
   const [showMeds, setShowMeds] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showPlacementEditor, setShowPlacementEditor] = useState(false);
   const [vitalsForm, setVitalsForm] = useState<VitalsFormShape>(EMPTY_VITALS_FORM);
   const [medForm, setMedForm] = useState<MedFormShape>(EMPTY_MED_FORM);
   const [noteForm, setNoteForm] = useState<NoteFormShape>(EMPTY_NOTE_FORM);
+  const [placementType, setPlacementType] = useState<'chair' | 'bed' | ''>(patient.placementType ?? '');
+  const [placementNumber, setPlacementNumber] = useState(patient.placementNumber ?? '');
 
   const news2 = patient.latestVitals ? calculateNEWS2(patient.latestVitals) : null;
   const n2colors = news2 ? news2Colors[news2.alertLevel] : null;
@@ -75,6 +81,7 @@ export function PatientCard({
   const patientGenderLabel = patient.gender ? GENDER_LABELS[patient.gender] : null;
   const patientDemographics = [patientAgeLabel, patientGenderLabel].filter(Boolean).join(' · ');
   const complaintText = patient.presentingComplaint ?? 'Problemstilling ikke registrert';
+  const placementLabel = formatSickbayPlacement(patient.placementType ?? null, patient.placementNumber ?? null);
   const news2MissingLabels: string[] = news2
     ? ([
         ['respiratoryRate', 'RF'],
@@ -141,6 +148,16 @@ export function PatientCard({
     setShowMeds(false);
   };
 
+  const handleSubmitPlacement = () => {
+    onUpdatePlacement(placementType, placementNumber);
+    setShowPlacementEditor(false);
+  };
+
+  useEffect(() => {
+    setPlacementType(patient.placementType ?? '');
+    setPlacementNumber(patient.placementNumber ?? '');
+  }, [patient.id, patient.placementNumber, patient.placementType]);
+
   return (
     <article
       aria-label={`Pasient ${patientName}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
@@ -154,6 +171,16 @@ export function PatientCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
           <span style={{ fontWeight: 600 }}>{patientName}</span>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>{complaintText}</span>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              color: placementLabel ? 'var(--color-status-info)' : 'var(--color-text-subtle)',
+            }}
+          >
+            {placementLabel ? `Plassering: ${placementLabel}` : 'Plassering: Ikke satt'}
+          </span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
             {patientDemographics}
           </span>
@@ -228,6 +255,99 @@ export function PatientCard({
         onOpenAmk={onOpenAmk}
         onStatusChange={onStatusChange}
       />
+
+      <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        <button
+          type="button"
+          className="touch-target"
+          onClick={() => setShowPlacementEditor((prev) => !prev)}
+          style={{
+            minHeight: 'var(--touch-min)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-border)',
+            background: 'transparent',
+            color: 'var(--color-text)',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          {showPlacementEditor ? 'Lukk plassering' : 'Oppdater plassering'}
+        </button>
+
+        {showPlacementEditor && (
+          <div
+            data-testid={`placement-editor-${patient.id}`}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr auto',
+              gap: 'var(--space-2)',
+              alignItems: 'end',
+              background: 'var(--color-surface-sunken)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              padding: 'var(--space-3)',
+            }}
+          >
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+              Type
+              <select
+                value={placementType}
+                onChange={(e) => setPlacementType(e.target.value as 'chair' | 'bed' | '')}
+                style={{
+                  height: 'var(--touch-min)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-input-border)',
+                  background: 'var(--color-input-bg)',
+                  color: 'var(--color-text)',
+                  padding: '0 var(--space-2)',
+                }}
+              >
+                <option value="">Ikke satt</option>
+                <option value="chair">Stol</option>
+                <option value="bed">Seng</option>
+              </select>
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+              Nummer
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={placementNumber}
+                onChange={(e) => setPlacementNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+                placeholder="F.eks. 12"
+                style={{
+                  height: 'var(--touch-min)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-input-border)',
+                  background: 'var(--color-input-bg)',
+                  color: 'var(--color-text)',
+                  padding: '0 var(--space-2)',
+                }}
+              />
+            </label>
+
+            <button
+              type="button"
+              className="touch-target"
+              onClick={handleSubmitPlacement}
+              style={{
+                minHeight: 'var(--touch-min)',
+                borderRadius: 'var(--radius-md)',
+                border: 'none',
+                background: 'var(--color-brand)',
+                color: '#fff',
+                fontWeight: 700,
+                padding: '0 var(--space-3)',
+                cursor: 'pointer',
+              }}
+            >
+              Lagre
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Medication panel */}
       {showMeds && (

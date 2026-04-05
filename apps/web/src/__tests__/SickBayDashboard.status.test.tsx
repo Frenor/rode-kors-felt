@@ -40,6 +40,7 @@ vi.mock('../stores/ws', () => ({
 }));
 
 const mockExecutePatientAction = vi.fn().mockResolvedValue({ patient: {}, action: { id: 'a1' } });
+const mockUpdatePatient = vi.fn().mockResolvedValue({ patient: {} });
 const mockAddPatientNote = vi.fn().mockResolvedValue({ patient: {} });
 const mockGetAmkCallLogs = vi.fn().mockResolvedValue({ callLogs: [] });
 const mockGenerateAmkAssistDraft = vi.fn();
@@ -62,6 +63,7 @@ vi.mock('../lib/api', () => ({
     executePatientAction: (...args: unknown[]) => mockExecutePatientAction(...args),
     addPatientNote: (...args: unknown[]) => mockAddPatientNote(...args),
     createPatient: vi.fn(),
+    updatePatient: (...args: unknown[]) => mockUpdatePatient(...args),
     recordVitals: vi.fn(),
     recordMedication: vi.fn(),
     getMedications: vi.fn().mockResolvedValue({ medications: [] }),
@@ -173,6 +175,20 @@ describe('Patient grouping and closed card visibility', () => {
     expect(screen.getByTestId('closed-panel-pat-closed-1')).toBeInTheDocument();
     expect(screen.getByTestId('patient-status-pat-closed-1')).toBeInTheDocument();
   });
+
+  it('shows placement label clearly in the patient overview card', async () => {
+    await renderWithPatients([
+      {
+        id: 'pat-placement',
+        status: 'incoming',
+        presentingComplaint: 'Placement case',
+        placementType: 'bed',
+        placementNumber: '9',
+      },
+    ]);
+
+    expect(screen.getByText('Plassering: Seng 9')).toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -282,6 +298,54 @@ describe('handleStatusChange — correct status argument', () => {
     fireEvent.click(within(container).getByTestId('status-btn-in_treatment'));
 
     expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'status.set', status: 'in_treatment' });
+  });
+});
+
+describe('Incoming panel placement assignment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('allows assigning chair/bed before treatment starts', async () => {
+    const patient = makePatient({
+      id: 'pat-incoming-placement',
+      status: 'incoming',
+      presentingComplaint: 'Incoming placement',
+    });
+    vi.mocked(api.getPatients).mockResolvedValue({ patients: [patient] });
+    vi.mocked(api.getSickbayIncoming).mockResolvedValue({
+      items: [
+        {
+          incidentId: 'inc-placement-1',
+          patientId: 'pat-incoming-placement',
+          teamId: 'team-a',
+          progressStage: 'transporting',
+          critical: true,
+          criticalReasons: ['open_escalation'],
+          latestVitals: null,
+          news2: null,
+          triageTag: null,
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    render(<SickBayDashboard />);
+    await screen.findByTestId('sickbay-critical-banner');
+
+    fireEvent.click(screen.getByTestId('assign-placement-toggle-inc-placement-1'));
+    const form = screen.getByTestId('assign-placement-form-inc-placement-1');
+
+    fireEvent.change(within(form).getByRole('combobox'), { target: { value: 'chair' } });
+    fireEvent.change(within(form).getByPlaceholderText('Nummer'), { target: { value: '14' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre plassering' }));
+
+    await waitFor(() => {
+      expect(mockUpdatePatient).toHaveBeenCalledWith('pat-incoming-placement', {
+        placementType: 'chair',
+        placementNumber: '14',
+      });
+    });
   });
 });
 

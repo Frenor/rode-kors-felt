@@ -5,6 +5,8 @@ export interface IntakeFormShape {
   fullName: string;
   gender: '' | 'male' | 'female' | 'other';
   birthDate: string;
+  placementType: '' | 'chair' | 'bed';
+  placementNumber: string;
   ageGroup: string;
   presentingComplaint: string;
   assignedClinician: string;
@@ -106,6 +108,46 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
               <option value="adult">Voksen</option>
               <option value="elderly">Eldre</option>
             </select>
+          </div>
+
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <label htmlFor="placementType" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+              Plasseringstype
+            </label>
+            <select
+              id="placementType"
+              value={form.placementType}
+              onChange={(e) => onChange({ ...form, placementType: e.target.value as IntakeFormShape['placementType'] })}
+              style={{
+                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
+              }}
+            >
+              <option value="">Ikke satt</option>
+              <option value="chair">Stol</option>
+              <option value="bed">Seng</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <label htmlFor="placementNumber" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+              Plasseringsnummer
+            </label>
+            <input
+              id="placementNumber"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={form.placementNumber}
+              onChange={(e) => onChange({ ...form, placementNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 4) })}
+              placeholder="F.eks. 12"
+              style={{
+                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
+              }}
+            />
           </div>
 
           <div style={{ marginBottom: 'var(--space-4)' }}>

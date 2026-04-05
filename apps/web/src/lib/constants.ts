@@ -126,6 +126,11 @@ export const TEAM_OPERATIONAL_STATUS_LABELS: Record<string, string> = {
   unavailable: 'Utilgjengelig',
 };
 
+export const SICKBAY_PLACEMENT_LABELS: Record<'chair' | 'bed', string> = {
+  chair: 'Stol',
+  bed: 'Seng',
+};
+
 export const PATH_LABELS: Record<string, string> = {
   path_a_rk_ambulance: 'Vei A — RK Ambulanse',
   path_b_113: 'Vei B — Ring 113',
@@ -170,4 +175,14 @@ export function formatPatientAge(options: { birthDate?: string | null; ageGroup?
     if (ageGroupLabel) return ageGroupLabel;
   }
   return 'Alder ukjent';
+}
+
+export function formatSickbayPlacement(
+  placementType?: 'chair' | 'bed' | null,
+  placementNumber?: string | null,
+): string | null {
+  if (!placementType || !placementNumber) return null;
+  const label = SICKBAY_PLACEMENT_LABELS[placementType];
+  if (!label) return null;
+  return `${label} ${placementNumber}`;
 }

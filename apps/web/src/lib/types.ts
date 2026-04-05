@@ -59,6 +59,8 @@ export type TeamOperationalStatus =
   | 'needs_assistance'
   | 'unavailable';
 
+export type SickBayPlacementType = 'chair' | 'bed';
+
 export interface AmkCallLog {
   id: string;
   eventId?: string;
@@ -127,6 +129,8 @@ export interface SickBayPatient {
   fullName?: string;
   birthDate?: string;
   gender?: 'male' | 'female' | 'other';
+  placementType?: SickBayPlacementType;
+  placementNumber?: string;
   ageYears?: number;
   status: string;
   presentingComplaint: string;
