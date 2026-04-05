@@ -4,6 +4,7 @@ import { buildApp, getCoordinatorToken, getEventId, getFirstAiderToken } from '.
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { events as eventsTable } from '../db/schema.js';
+import { createToken } from '../middleware/auth.js';
 
 let app: FastifyInstance;
 let eventId: string;
@@ -58,6 +59,17 @@ describe('GET /api/events/:id', () => {
     expect(body.event.id).toBe(eventId);
     expect(body).toHaveProperty('teams');
     expect(Array.isArray(body.teams)).toBe(true);
+  });
+
+  it('returns 403 for non-privileged token without event scope', async () => {
+    const token = createToken({ role: 'first_aider' });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(403);
   });
 });
 

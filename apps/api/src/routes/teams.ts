@@ -7,7 +7,7 @@ import {
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
 import { actionEvents, incidents, patients, teams } from '../db/schema.js';
-import { requireAuth } from '../middleware/auth.js';
+import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { mapAction } from './action-events.js';
 import { broadcast } from './ws.js';
 
@@ -18,18 +18,12 @@ type AuthUser = {
   email?: string;
 };
 
-function canAccessEvent(user: AuthUser, eventId: string): boolean {
-  if (user.role === 'admin') return true;
-  if (!user.eventId) return true;
-  return user.eventId === eventId;
-}
-
 function getActor(user: AuthUser): string {
   return user.sub ?? user.email ?? 'unknown';
 }
 
 export async function teamRoutes(app: FastifyInstance) {
-  app.post('/:teamId/actions', { preHandler: requireAuth }, async (request, reply) => {
+  app.post('/:teamId/actions', { preHandler: [requireAuth, requireRole(['first_aider', 'coordinator', 'admin'])] }, async (request, reply) => {
     const user = (request as any).user as AuthUser;
     const { teamId } = request.params as { teamId: string };
     const parsed = TeamActionRequest.safeParse(request.body);

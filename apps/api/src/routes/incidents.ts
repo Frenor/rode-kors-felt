@@ -2,15 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { escalations, incidents } from '../db/schema.js';
-import { requireAuth } from '../middleware/auth.js';
+import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { applyIncidentAction, getActionHistoryByEntityIds } from './action-events.js';
 import { broadcast } from './ws.js';
-
-function canAccessEvent(user: { role?: string; eventId?: string }, eventId: string): boolean {
-  if (user.role === 'admin') return true;
-  if (!user.eventId) return true;
-  return user.eventId === eventId;
-}
 
 export async function incidentRoutes(app: FastifyInstance) {
   // List incidents for an event
@@ -175,7 +169,7 @@ export async function incidentRoutes(app: FastifyInstance) {
   });
 
   // Reversible incident action API
-  app.post('/:id/actions', { preHandler: requireAuth }, async (request, reply) => {
+  app.post('/:id/actions', { preHandler: [requireAuth, requireRole(['first_aider', 'sickbay', 'coordinator', 'admin'])] }, async (request, reply) => {
     const user = (request as any).user as { role?: string; eventId?: string };
     const { id } = request.params as { id: string };
     const body = request.body as

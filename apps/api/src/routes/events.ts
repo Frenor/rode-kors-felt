@@ -3,16 +3,10 @@ import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { calculateNEWS2 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
 import { actionEvents, escalations, events, incidents, patients, teams, vitalReadings } from '../db/schema.js';
-import { requireAuth } from '../middleware/auth.js';
+import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 
 type AuthUser = { role?: string; eventId?: string };
-
-function canAccessEvent(user: AuthUser, eventId: string): boolean {
-  if (user.role === 'admin') return true;
-  if (!user.eventId) return true;
-  return user.eventId === eventId;
-}
 
 type IndoorLayout = {
   venueId: string;
@@ -283,12 +277,7 @@ export async function eventRoutes(app: FastifyInstance) {
   });
 
   // Create event (coordinator/admin only)
-  app.post('/', { preHandler: requireAuth }, async (request, reply) => {
-    const user = (request as any).user;
-    if (user.role !== 'coordinator' && user.role !== 'admin') {
-      return reply.code(403).send({ error: 'Kun admin kan opprette arrangement' });
-    }
-
+  app.post('/', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
     const body = request.body as { name: string; startDate: string; endDate: string };
 
     const [event] = await db
@@ -305,11 +294,8 @@ export async function eventRoutes(app: FastifyInstance) {
   });
 
   // MCI mode toggle (coordinator only)
-  app.patch('/:id/mci', { preHandler: requireAuth }, async (request, reply) => {
+  app.patch('/:id/mci', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
     const user = (request as any).user;
-    if (user.role !== 'coordinator' && user.role !== 'admin') {
-      return reply.code(403).send({ error: 'Kun koordinator kan aktivere MCI-modus' });
-    }
 
     const { id } = request.params as { id: string };
     const body = request.body as { mciActive: boolean; mciSectors?: string[] };
@@ -363,11 +349,8 @@ export async function eventRoutes(app: FastifyInstance) {
   });
 
   // Download latest MCI handover summary
-  app.get('/:id/mci-summary', { preHandler: requireAuth }, async (request, reply) => {
+  app.get('/:id/mci-summary', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
     const user = (request as any).user;
-    if (user.role !== 'coordinator' && user.role !== 'admin') {
-      return reply.code(403).send({ error: 'Kun koordinator kan laste ned MCI-overlevering' });
-    }
 
     const { id } = request.params as { id: string };
 
@@ -392,11 +375,8 @@ export async function eventRoutes(app: FastifyInstance) {
   });
 
   // Post-event debrief report
-  app.get('/:id/report', { preHandler: requireAuth }, async (request, reply) => {
+  app.get('/:id/report', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
     const user = (request as any).user;
-    if (user.role !== 'coordinator' && user.role !== 'admin') {
-      return reply.code(403).send({ error: 'Kun koordinator kan laste ned rapport' });
-    }
 
     const { id } = request.params as { id: string };
 

@@ -8,7 +8,7 @@ import {
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
 import { actionEvents, incidents, medicationRecords, patients, vitalReadings } from '../db/schema.js';
-import { requireAuth } from '../middleware/auth.js';
+import { canAccessEvent, requireAuth } from '../middleware/auth.js';
 import { applyPatientAction, getActionHistoryByEntityIds } from './action-events.js';
 import { broadcast } from './ws.js';
 import { generateAmkAssistDraft } from '../lib/ai-assist.js';
@@ -19,12 +19,6 @@ type AuthUser = {
   sub?: string;
   email?: string;
 };
-
-function canAccessEvent(user: AuthUser, eventId: string): boolean {
-  if (user.role === 'admin') return true;
-  if (!user.eventId) return true;
-  return user.eventId === eventId;
-}
 
 function getActor(user: AuthUser): string {
   return user.sub ?? user.email ?? 'ukjent';
