@@ -102,7 +102,7 @@ variable "min_instances" {
 variable "max_instances" {
   description = "Maximum Cloud Run instances."
   type        = number
-  default     = 10
+  default     = 3
 }
 
 locals {
@@ -180,8 +180,9 @@ resource "google_sql_database_instance" "postgres" {
   region           = var.gcp_region
 
   settings {
-    tier              = "db-custom-2-7680"
-    availability_type = "REGIONAL"
+    # Downscaled default: single-zone + smaller tier (cheaper than HA/regional).
+    tier              = "db-custom-1-3840"
+    availability_type = "ZONAL"
 
     backup_configuration {
       enabled                        = true
@@ -215,7 +216,8 @@ resource "google_sql_user" "rkf_admin" {
 
 resource "google_redis_instance" "redis" {
   name               = "rkf-${var.environment}-redis"
-  tier               = "STANDARD_HA"
+  # Downscaled default: non-HA tier.
+  tier               = "BASIC"
   memory_size_gb     = 1
   region             = var.gcp_region
   authorized_network = google_compute_network.vpc.id
@@ -448,4 +450,3 @@ output "redis_endpoint" {
   value       = google_redis_instance.redis.host
   sensitive   = true
 }
-
