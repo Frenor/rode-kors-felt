@@ -17,7 +17,7 @@ function relativeLuminance([r, g, b]: [number, number, number]): number {
     return normalized <= 0.03928
       ? normalized / 12.92
       : ((normalized + 0.055) / 1.055) ** 2.4;
-  });
+  }) as [number, number, number];
   return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
 }
 
@@ -40,7 +40,10 @@ function extractDarkVars(): Record<string, string> {
   const varRegex = /--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\s*;/g;
   let match = varRegex.exec(block);
   while (match) {
-    vars[match[1]] = match[2];
+    const [, key, value] = match;
+    if (key && value) {
+      vars[key] = value;
+    }
     match = varRegex.exec(block);
   }
   return vars;
