@@ -8,6 +8,7 @@
 
 import {
   boolean,
+  date,
   integer,
   jsonb,
   pgEnum,
@@ -160,6 +161,8 @@ export const patients = pgTable('patients', {
   eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
   incidentId: uuid('incident_id').references(() => incidents.id),
   status: patientStatusEnum('status').notNull().default('incoming'),
+  fullName: varchar('full_name', { length: 200 }),
+  birthDate: date('birth_date'),
   ageGroup: varchar('age_group', { length: 50 }),
   gender: varchar('gender', { length: 50 }),
   presentingComplaint: text('presenting_complaint'),

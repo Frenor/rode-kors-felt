@@ -227,6 +227,8 @@ export async function runMigrations(): Promise<void> {
 
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS triage_tag triage_tag;
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS location_context JSONB;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS full_name VARCHAR(200);
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS birth_date DATE;
     `);
 
     await client.query(`

@@ -30,6 +30,37 @@ function getActor(user: AuthUser): string {
   return user.sub ?? user.email ?? 'ukjent';
 }
 
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const ALLOWED_GENDERS = new Set(['male', 'female', 'other']);
+
+function normalizeGender(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  return ALLOWED_GENDERS.has(normalized) ? normalized : undefined;
+}
+
+function parseBirthDate(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (!ISO_DATE_REGEX.test(value)) return undefined;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return undefined;
+  if (date.toISOString().slice(0, 10) !== value) return undefined;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  if (value > todayIso) return undefined;
+  return value;
+}
+
+function calculateAgeYears(birthDate: string, reference: Date = new Date()): number {
+  const parsedBirthDate = new Date(`${birthDate}T00:00:00Z`);
+  let age = reference.getUTCFullYear() - parsedBirthDate.getUTCFullYear();
+  const monthDiff = reference.getUTCMonth() - parsedBirthDate.getUTCMonth();
+  const dayDiff = reference.getUTCDate() - parsedBirthDate.getUTCDate();
+  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    age -= 1;
+  }
+  return age >= 0 ? age : 0;
+}
+
 async function logPatientArtifactAction(params: {
   patientId: string;
   eventId: string;
@@ -148,6 +179,8 @@ export async function patientRoutes(app: FastifyInstance) {
       incidentId?: string;
       ageGroup?: string;
       gender?: string;
+      fullName?: string;
+      birthDate?: string;
       presentingComplaint?: string;
       assignedClinician?: string;
     };
@@ -160,13 +193,26 @@ export async function patientRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
+    const parsedBirthDate = body.birthDate ? parseBirthDate(body.birthDate) : undefined;
+    if (body.birthDate && !parsedBirthDate) {
+      return reply.code(400).send({ error: 'Ugyldig fødselsdato' });
+    }
+
+    const normalizedGender = body.gender ? normalizeGender(body.gender) : undefined;
+    if (body.gender && !normalizedGender) {
+      return reply.code(400).send({ error: 'Ugyldig kjønn' });
+    }
+
+    const fullName = body.fullName?.trim() || undefined;
     const [patient] = await db
       .insert(patients)
       .values({
         eventId,
         incidentId: body.incidentId,
         ageGroup: body.ageGroup,
-        gender: body.gender,
+        gender: normalizedGender,
+        fullName,
+        birthDate: parsedBirthDate,
         presentingComplaint: body.presentingComplaint,
         assignedClinician: body.assignedClinician,
         notes: [],
@@ -193,6 +239,9 @@ export async function patientRoutes(app: FastifyInstance) {
       status: string;
       assignedClinician: string;
       diagnosisFlags: string[];
+      fullName: string;
+      gender: string;
+      birthDate: string;
     }>;
 
     const [existing] = await db
@@ -206,6 +255,16 @@ export async function patientRoutes(app: FastifyInstance) {
     }
     if (!canAccessEvent(user, existing.eventId)) {
       return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
+
+    const normalizedGender = body.gender ? normalizeGender(body.gender) : undefined;
+    if (body.gender && !normalizedGender) {
+      return reply.code(400).send({ error: 'Ugyldig kjønn' });
+    }
+
+    const parsedBirthDate = body.birthDate ? parseBirthDate(body.birthDate) : undefined;
+    if (body.birthDate && !parsedBirthDate) {
+      return reply.code(400).send({ error: 'Ugyldig fødselsdato' });
     }
 
     if (body.status) {
@@ -225,6 +284,9 @@ export async function patientRoutes(app: FastifyInstance) {
       .set({
         ...(body.assignedClinician !== undefined && { assignedClinician: body.assignedClinician }),
         ...(body.diagnosisFlags && { diagnosisFlags: body.diagnosisFlags }),
+        ...(body.fullName !== undefined && { fullName: body.fullName.trim() }),
+        ...(normalizedGender !== undefined && { gender: normalizedGender }),
+        ...(parsedBirthDate && { birthDate: parsedBirthDate }),
         updatedAt: new Date(),
       })
       .where(eq(patients.id, id))
@@ -575,8 +637,14 @@ export async function patientRoutes(app: FastifyInstance) {
 }
 
 function mapPatient(row: typeof patients.$inferSelect, extras?: { actionHistory?: unknown[] }) {
+  const birthDateString = typeof row.birthDate === 'string' ? row.birthDate : undefined;
+  const ageYears = birthDateString ? calculateAgeYears(birthDateString) : undefined;
   return {
     ...row,
+    fullName: row.fullName ?? undefined,
+    gender: row.gender ?? undefined,
+    birthDate: birthDateString,
+    ageYears,
     arrivalTime: row.arrivalTime.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

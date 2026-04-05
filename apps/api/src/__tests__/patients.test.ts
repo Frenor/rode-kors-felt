@@ -17,6 +17,17 @@ afterAll(async () => {
   await app.close();
 });
 
+function calculateAgeYearsFromString(birthDate: string, reference = new Date()): number {
+  const date = new Date(`${birthDate}T00:00:00Z`);
+  let age = reference.getUTCFullYear() - date.getUTCFullYear();
+  const monthDiff = reference.getUTCMonth() - date.getUTCMonth();
+  const dayDiff = reference.getUTCDate() - date.getUTCDate();
+  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    age -= 1;
+  }
+  return age;
+}
+
 describe('GET /api/patients', () => {
   it('returns 200 with patients array for sickbay auth', async () => {
     const token = getSickbayToken(eventId);
@@ -55,6 +66,48 @@ describe('POST /api/patients', () => {
     expect(body).toHaveProperty('patient');
     expect(body.patient).toHaveProperty('id');
     expect(body.patient.eventId).toBe(eventId);
+  });
+
+  it('stores demographics and computes age years from birthDate', async () => {
+    const token = getSickbayToken(eventId);
+    const birthDate = '2000-04-06';
+    const expectedAge = calculateAgeYearsFromString(birthDate);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        fullName: 'Anna Hansen',
+        gender: 'female',
+        birthDate,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.patient.fullName).toBe('Anna Hansen');
+    expect(body.patient.gender).toBe('female');
+    expect(body.patient.birthDate).toBe(birthDate);
+    expect(body.patient.ageYears).toBe(expectedAge);
+  });
+
+  it('rejects invalid birthDate values', async () => {
+    const token = getSickbayToken(eventId);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        eventId,
+        birthDate: '2026-02-30',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toHaveProperty('error');
   });
 });
 
@@ -385,7 +438,7 @@ describe('AMK call workflows', () => {
       'sbarDraft',
       'spokenScript',
     ]);
-    expect(body.criticality).toMatch(/^(lav|middels|høy|kritisk)$/);
+    expect(body.criticality).toMatch(/^(low|medium|high|critical)$/);
     expect(Array.isArray(body.sayFirst)).toBe(true);
     expect(body.sbarDraft).toHaveProperty('situation');
 
@@ -470,7 +523,7 @@ describe('AMK call workflows', () => {
       url: `/api/patients/${patientId}/amk-assist/confirm`,
       headers: { authorization: `Bearer ${token}` },
       payload: {
-        criticality: 'høy',
+        criticality: 'high',
         spokenScript: 'Dette er sykestue. Vi trenger hjelp nå.',
         rationale: 'Høy puls og redusert allmenntilstand.',
         sayFirst: ['Pasient med synkope', 'Puls 124'],
@@ -486,7 +539,7 @@ describe('AMK call workflows', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.ok).toBe(true);
-    expect(body.confirmed.criticality).toBe('høy');
+    expect(body.confirmed.criticality).toBe('high');
     expect(body.action.actionType).toBe('patient.amk_ai_script_confirmed');
 
     const rows = await db

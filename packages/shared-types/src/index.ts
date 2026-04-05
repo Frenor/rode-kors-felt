@@ -191,8 +191,10 @@ export const Patient = z.object({
   incidentId: z.string().uuid().optional(),
   status: PatientStatus,
   ageGroup: z.enum(['child', 'adolescent', 'adult', 'elderly']).optional(),
-  gender: z.enum(['male', 'female', 'other']).optional(),
   presentingComplaint: z.string().max(500).optional(),
+  fullName: z.string().max(200).optional(),
+  gender: z.enum(['male', 'female', 'other']).optional(),
+  birthDate: z.string().optional(),
   arrivalTime: z.string().datetime(),
   assignedClinician: z.string().max(100).optional(),
   notes: z.array(z.object({
@@ -201,6 +203,7 @@ export const Patient = z.object({
     author: z.string().max(100),
   })),
   diagnosisFlags: z.array(z.string()),
+  ageYears: z.number().int().nonnegative().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
