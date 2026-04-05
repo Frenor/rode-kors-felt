@@ -22,7 +22,7 @@ type MessageHandler = (msg: Record<string, unknown>) => void;
 
 interface WsStore {
   status: WsStatus;
-  connect: (token: string) => void;
+  connect: (token: string, eventId?: string | null) => void;
   disconnect: () => void;
   send: (msg: Record<string, unknown>) => void;
   onMessage: (handler: MessageHandler) => () => void;
@@ -41,15 +41,21 @@ function nextDelay(): number {
   return attempt < BACKOFF_DELAYS.length ? BACKOFF_DELAYS[attempt++]! : MAX_DELAY_MS;
 }
 
-function getWsUrl(token: string) {
+function getWsUrl(eventId?: string | null) {
   const explicitWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
   if (explicitWsUrl) {
-    const hasQuery = explicitWsUrl.includes('?');
-    const sep = hasQuery ? '&' : '?';
-    return `${explicitWsUrl}${sep}token=${encodeURIComponent(token)}`;
+    if (!eventId) return explicitWsUrl;
+    const separator = explicitWsUrl.includes('?') ? '&' : '?';
+    return `${explicitWsUrl}${separator}eventId=${encodeURIComponent(eventId)}`;
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+  const base = `${protocol}//${window.location.host}/ws`;
+  if (!eventId) return base;
+  return `${base}?eventId=${encodeURIComponent(eventId)}`;
+}
+
+function getWsProtocols(token: string): string[] {
+  return ['rkf.v1', `rkf-auth.${token}`];
 }
 
 async function tryRefreshToken(): Promise<string | null> {
@@ -77,13 +83,13 @@ async function tryRefreshToken(): Promise<string | null> {
 export const useWsStore = create<WsStore>((set) => ({
   status: 'disconnected',
 
-  connect(token: string) {
+  connect(token: string, eventId?: string | null) {
     if (socket && socket.readyState === WebSocket.OPEN) return;
     if (reconnectTimer) clearTimeout(reconnectTimer);
 
     const isReconnect = attempt > 0;
     set({ status: isReconnect ? 'reconnecting' : 'connecting' });
-    socket = new WebSocket(getWsUrl(token));
+    socket = new WebSocket(getWsUrl(eventId), getWsProtocols(token));
 
     socket.onopen = () => {
       attempt = 0;
@@ -115,15 +121,15 @@ export const useWsStore = create<WsStore>((set) => ({
         set({ status: 'reconnecting' });
         const delay = nextDelay();
         reconnectTimer = setTimeout(
-          () => useWsStore.getState().connect(newToken ?? token),
-          delay,
-        );
-        return;
+              () => useWsStore.getState().connect(newToken ?? token, eventId),
+              delay,
+            );
+            return;
       }
 
       set({ status: 'reconnecting' });
       const delay = nextDelay();
-      reconnectTimer = setTimeout(() => useWsStore.getState().connect(token), delay);
+      reconnectTimer = setTimeout(() => useWsStore.getState().connect(token, eventId), delay);
     };
   },
 

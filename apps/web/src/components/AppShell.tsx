@@ -22,7 +22,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { role, eventName, logout, accessToken } = useAuthStore();
+  const { role, eventName, logout, accessToken, eventId } = useAuthStore();
   const { connect, disconnect, status: wsStatus } = useWsStore();
   const navigate = useNavigate();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -60,9 +60,9 @@ export function AppShell({ children }: AppShellProps) {
 
   // Connect WebSocket for all authenticated roles
   useEffect(() => {
-    if (accessToken) connect(accessToken);
+    if (accessToken) connect(accessToken, eventId);
     return () => disconnect();
-  }, [accessToken, connect, disconnect]);
+  }, [accessToken, eventId, connect, disconnect]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
