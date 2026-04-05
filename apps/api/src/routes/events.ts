@@ -157,14 +157,14 @@ export async function eventRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
-    const incomingIncidentStatuses = ['dispatched', 'on_scene', 'transporting', 'at_sickbay'] as const;
+    const incomingIncidentStatuses = new Set<string>(['dispatched', 'on_scene', 'transporting', 'at_sickbay']);
     const incidentRows = await db
       .select()
       .from(incidents)
       .where(eq(incidents.eventId, id))
       .orderBy(desc(incidents.updatedAt));
 
-    const incomingIncidents = incidentRows.filter((row) => incomingIncidentStatuses.includes(row.status));
+    const incomingIncidents = incidentRows.filter((row) => incomingIncidentStatuses.has(row.status));
     if (incomingIncidents.length === 0) {
       return { items: [] };
     }

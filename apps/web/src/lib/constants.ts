@@ -67,10 +67,55 @@ export const typeLabels: Record<string, string> = {
 };
 
 export const TRIAGE_COLORS: Record<string, { color: string; bg: string; label: string }> = {
-  lav: { color: 'var(--color-status-ok)', bg: 'var(--color-status-ok-bg)', label: 'Lav' },
-  middels: { color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', label: 'Middels' },
-  høy: { color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)', label: 'Høy' },
-  kritisk: { color: 'var(--color-status-critical)', bg: 'var(--color-status-critical-bg)', label: 'KRITISK' },
+  low: { color: 'var(--color-status-ok)', bg: 'var(--color-status-ok-bg)', label: 'Lav' },
+  medium: { color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', label: 'Middels' },
+  high: { color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)', label: 'Høy' },
+  critical: { color: 'var(--color-status-critical)', bg: 'var(--color-status-critical-bg)', label: 'KRITISK' },
+};
+
+export const AMK_CRITICALITY_LABELS: Record<'low' | 'medium' | 'high' | 'critical', string> = {
+  low: 'Lav',
+  medium: 'Middels',
+  high: 'Høy',
+  critical: 'Kritisk',
+};
+
+const AMK_CRITICALITY_NORMALIZATION: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
+  low: 'low',
+  lav: 'low',
+  medium: 'medium',
+  middels: 'medium',
+  high: 'high',
+  hoy: 'high',
+  'høy': 'high',
+  critical: 'critical',
+  kritisk: 'critical',
+};
+
+export function normalizeAmkCriticality(value: string | null | undefined): 'low' | 'medium' | 'high' | 'critical' {
+  if (!value) return 'low';
+  return AMK_CRITICALITY_NORMALIZATION[value.trim().toLowerCase()] ?? 'low';
+}
+
+export function amkCriticalityLabel(value: string | null | undefined): string {
+  return AMK_CRITICALITY_LABELS[normalizeAmkCriticality(value)];
+}
+
+const LLM_TRIAGE_LEVEL_NORMALIZATION: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
+  ...AMK_CRITICALITY_NORMALIZATION,
+};
+
+export function normalizeLlmTriageLevel(value: string | null | undefined): 'low' | 'medium' | 'high' | 'critical' {
+  if (!value) return 'medium';
+  return LLM_TRIAGE_LEVEL_NORMALIZATION[value.trim().toLowerCase()] ?? 'medium';
+}
+
+export const TEAM_OPERATIONAL_STATUS_LABELS: Record<string, string> = {
+  available: 'Ledig',
+  en_route: 'På vei',
+  on_scene: 'Fremme på stedet',
+  needs_assistance: 'Trenger bistand',
+  unavailable: 'Utilgjengelig',
 };
 
 export const PATH_LABELS: Record<string, string> = {

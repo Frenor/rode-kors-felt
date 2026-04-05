@@ -1,5 +1,12 @@
 import { calculateNEWS2 } from '@rkf/shared-types';
-import type { AmkAssistDraft, AmkCallLog, AmkCriticality } from './types';
+import type {
+  AmkAssistDraft,
+  AmkCallLog,
+  AmkCriticality,
+  TeamOperationalStatus,
+  TeamWorkspaceResponse,
+} from './types';
+import { normalizeAmkCriticality } from './constants';
 
 /**
  * Demo mode — in-memory store
@@ -302,6 +309,17 @@ const DEMO_TEAMS = [
   { id: 'team-foxtrot', name: 'Foxtrot', transport: 'foot',    currentPosition: null },
 ];
 
+const teamWorkspaceState: Record<string, {
+  latestStatus: TeamOperationalStatus;
+  monitoredPatientIds: string[];
+  activePatientId: string | null;
+}> = Object.fromEntries(
+  DEMO_TEAMS.map((team) => [
+    team.id,
+    { latestStatus: 'available' as TeamOperationalStatus, monitoredPatientIds: [], activePatientId: null },
+  ]),
+);
+
 let demoEvent: any = {
   id: 'demo-event',
   name: 'Holmenkollen Skimaraton 2026',
@@ -315,7 +333,7 @@ let actionEvents: any[] = [];
 
 const createAction = (params: {
   eventId: string;
-  entityType: 'incident' | 'patient' | 'event';
+  entityType: 'incident' | 'patient' | 'event' | 'team';
   entityId: string;
   actionType: string;
   payload: Record<string, unknown>;
@@ -336,16 +354,27 @@ const createAction = (params: {
   return action;
 };
 
+const ensureTeamState = (teamId: string) => {
+  if (!teamWorkspaceState[teamId]) {
+    teamWorkspaceState[teamId] = {
+      latestStatus: 'available',
+      monitoredPatientIds: [],
+      activePatientId: null,
+    };
+  }
+  return teamWorkspaceState[teamId]!;
+};
+
 const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({
   ...entity,
   actionHistory: actionEvents.filter((a) => a.entityType === entityType && a.entityId === entity.id),
 });
 
 const mapCriticality = (score: number): AmkCriticality => {
-  if (score >= 7) return 'kritisk';
-  if (score >= 5) return 'høy';
-  if (score >= 3) return 'middels';
-  return 'lav';
+  if (score >= 7) return 'critical';
+  if (score >= 5) return 'high';
+  if (score >= 3) return 'medium';
+  return 'low';
 };
 
 const getLatestVitalsSummary = (patient: any) => {
@@ -354,7 +383,7 @@ const getLatestVitalsSummary = (patient: any) => {
     return {
       news2Text: 'NEWS2 ikke tilgjengelig',
       vitalsSummary: 'Ingen vitale tegn registrert ennå',
-      criticality: 'lav' as AmkCriticality,
+      criticality: 'low' as AmkCriticality,
     };
   }
 
@@ -390,6 +419,111 @@ export const demoStore = {
   getIncidents: (_eventId: string) => ({
     incidents: incidents.map((i) => mapWithHistory('incident', i)),
   }),
+
+  postTeamAction: (
+    teamId: string,
+    data:
+      | { type: 'team.status_set'; status: TeamOperationalStatus; incidentId?: string; note?: string; clientActionId: string }
+      | { type: 'team.monitor_started'; patientId: string; clientActionId: string }
+      | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string },
+  ) => {
+    const teamState = ensureTeamState(teamId);
+    if (data.type === 'team.status_set') {
+      teamState.latestStatus = data.status;
+    } else if (data.type === 'team.monitor_started') {
+      if (!teamState.monitoredPatientIds.includes(data.patientId)) {
+        teamState.monitoredPatientIds.push(data.patientId);
+      }
+      teamState.activePatientId = data.patientId;
+    } else if (data.type === 'team.monitor_stopped') {
+      teamState.monitoredPatientIds = teamState.monitoredPatientIds.filter((id) => id !== data.patientId);
+      if (teamState.activePatientId === data.patientId) {
+        teamState.activePatientId = null;
+      }
+    }
+
+    const action = createAction({
+      eventId: 'demo-event',
+      entityType: 'team',
+      entityId: teamId,
+      actionType: data.type,
+      payload: { ...data },
+    });
+    return { action };
+  },
+
+  getTeamWorkspace: (teamId: string): TeamWorkspaceResponse => {
+    const teamState = ensureTeamState(teamId);
+    const teamIncidentIds = incidents.filter((incident) => incident.teamId === teamId).map((incident) => incident.id);
+    const assignedPatients = patients.filter((patient) => patient.incidentId && teamIncidentIds.includes(patient.incidentId));
+    const assignedSet = new Set(assignedPatients.map((patient) => patient.id));
+    const monitoredPatients = patients.filter(
+      (patient) => teamState.monitoredPatientIds.includes(patient.id) && !assignedSet.has(patient.id),
+    );
+    const monitoredSet = new Set(monitoredPatients.map((patient) => patient.id));
+    const unassignedPatients = patients.filter((patient) => !assignedSet.has(patient.id) && !monitoredSet.has(patient.id));
+
+    return {
+      teamId,
+      eventId: 'demo-event',
+      latestStatus: teamState.latestStatus,
+      activePatientId: teamState.activePatientId,
+      assignedPatients: assignedPatients.map((patient) => ({
+        id: patient.id,
+        incidentId: patient.incidentId ?? null,
+        status: patient.status,
+        presentingComplaint: patient.presentingComplaint ?? null,
+        updatedAt: patient.updatedAt,
+      })),
+      monitoredPatients: monitoredPatients.map((patient) => ({
+        id: patient.id,
+        incidentId: patient.incidentId ?? null,
+        status: patient.status,
+        presentingComplaint: patient.presentingComplaint ?? null,
+        updatedAt: patient.updatedAt,
+      })),
+      unassignedPatients: unassignedPatients.map((patient) => ({
+        id: patient.id,
+        incidentId: patient.incidentId ?? null,
+        status: patient.status,
+        presentingComplaint: patient.presentingComplaint ?? null,
+        updatedAt: patient.updatedAt,
+      })),
+      updatedAt: new Date().toISOString(),
+    };
+  },
+
+  getSickbayIncoming: (_eventId: string) => {
+    const incomingStatuses = new Set(['dispatched', 'on_scene', 'transporting', 'at_sickbay']);
+    const items = incidents
+      .filter((incident) => incomingStatuses.has(incident.status))
+      .map((incident) => {
+        const patient = patients.find((row) => row.incidentId === incident.id) ?? null;
+        const latestVitals = patient?.latestVitals ?? null;
+        const news2 = latestVitals ? calculateNEWS2(latestVitals) : null;
+        const teamState = incident.teamId ? ensureTeamState(incident.teamId) : null;
+        const criticalReasons: Array<'needs_assistance' | 'open_escalation' | 'triage_immediate' | 'news2_high'> = [];
+        if (teamState?.latestStatus === 'needs_assistance') criticalReasons.push('needs_assistance');
+        if (incident.activeEscalation) criticalReasons.push('open_escalation');
+        if (incident.triageTag === 'immediate') criticalReasons.push('triage_immediate');
+        if (news2?.alertLevel === 'high') criticalReasons.push('news2_high');
+
+        return {
+          incidentId: incident.id,
+          patientId: patient?.id ?? null,
+          teamId: incident.teamId ?? null,
+          progressStage: incident.status,
+          critical: criticalReasons.length > 0,
+          criticalReasons,
+          latestVitals,
+          news2: news2 ? { total: news2.total, alertLevel: news2.alertLevel } : null,
+          triageTag: incident.triageTag ?? null,
+          updatedAt: incident.updatedAt,
+        };
+      })
+      .sort((a, b) => Number(b.critical) - Number(a.critical) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return { items };
+  },
 
   createIncident: (data: Record<string, unknown>) => {
     const incident = {
@@ -717,7 +851,7 @@ export const demoStore = {
     const patient = patients.find((p) => p.id === patientId);
     if (!patient) throw new Error('Pasient ikke funnet');
     const confirmed = {
-      criticality: draft.criticality,
+      criticality: normalizeAmkCriticality(draft.criticality),
       spokenScript: spokenScript.trim(),
       rationale: draft.rationale,
       sayFirst: draft.sayFirst,

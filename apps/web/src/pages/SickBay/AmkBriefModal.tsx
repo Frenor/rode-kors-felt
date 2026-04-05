@@ -3,6 +3,7 @@ import { calculateNEWS2, calculateNEWS2Trend, news2BadgeLabel, news2MonitoringLa
 import { FocusTrap } from '../../components/FocusTrap';
 import { api } from '../../lib/api';
 import type { AmkAssistDraft, AmkCallLog, AmkCriticality, MedicationRecord, SickBayPatient } from '../../lib/types';
+import { AMK_CRITICALITY_LABELS, normalizeAmkCriticality } from '../../lib/constants';
 
 interface AmkBriefModalProps {
   patient: SickBayPatient;
@@ -40,24 +41,11 @@ function describeMedication(medication: MedicationRecord) {
   return `${medication.drug}${dose}${route}${givenBy}`;
 }
 
-function describeCriticality(criticality: AmkCriticality) {
-  switch (criticality) {
-    case 'kritisk':
-      return 'Kritisk';
-    case 'høy':
-      return 'Høy';
-    case 'middels':
-      return 'Middels';
-    default:
-      return 'Lav';
-  }
-}
-
 export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBriefModalProps) {
   const [callLogs, setCallLogs] = useState<AmkCallLog[]>([]);
   const [form, setForm] = useState<AmkCallFormShape>(() => EMPTY_FORM());
   const [draft, setDraft] = useState<AmkAssistDraft | null>(null);
-  const [criticality, setCriticality] = useState<AmkCriticality>('lav');
+  const [criticality, setCriticality] = useState<AmkCriticality>('low');
   const [spokenScript, setSpokenScript] = useState('');
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [loadingDraft, setLoadingDraft] = useState(false);
@@ -98,7 +86,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
     setError(null);
     setSuccess(null);
     setDraft(null);
-    setCriticality('lav');
+    setCriticality('low');
     setSpokenScript('');
     setForm(EMPTY_FORM());
 
@@ -138,7 +126,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
     try {
       const nextDraft = await api.generateAmkAssistDraft(patient.id);
       setDraft(nextDraft);
-      setCriticality(nextDraft.criticality);
+      setCriticality(normalizeAmkCriticality(nextDraft.criticality));
       setSpokenScript(nextDraft.spokenScript);
       setForm((current) => ({
         summaryGiven: current.summaryGiven || nextDraft.sayFirst.join(' '),
@@ -470,7 +458,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                       Kritikalitet
                       <select
                         value={criticality}
-                        onChange={(e) => setCriticality(e.target.value as AmkCriticality)}
+                        onChange={(e) => setCriticality(normalizeAmkCriticality(e.target.value))}
                         style={{
                           minHeight: 40,
                           borderRadius: 'var(--radius-md)',
@@ -480,13 +468,13 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                           padding: '0 var(--space-2)',
                         }}
                       >
-                        <option value="lav">Lav</option>
-                        <option value="middels">Middels</option>
-                          <option value="høy">Høy</option>
-                          <option value="kritisk">Kritisk</option>
+                        <option value="low">Lav</option>
+                        <option value="medium">Middels</option>
+                        <option value="high">Høy</option>
+                        <option value="critical">Kritisk</option>
                       </select>
                       <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                        Valgt: {describeCriticality(criticality)}
+                        Valgt: {AMK_CRITICALITY_LABELS[normalizeAmkCriticality(criticality)] ?? 'Lav'}
                       </span>
                     </label>
 

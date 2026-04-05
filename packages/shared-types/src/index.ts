@@ -446,8 +446,41 @@ export const CreateMedicationRequest = MedicationRecord.pick({
 });
 export type CreateMedicationRequest = z.infer<typeof CreateMedicationRequest>;
 
-export const AmkCriticality = z.enum(['lav', 'middels', 'høy', 'kritisk']);
+const AMK_CRITICALITY_NORMALIZATION: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
+  low: 'low',
+  lav: 'low',
+  medium: 'medium',
+  middels: 'medium',
+  high: 'high',
+  hoy: 'high',
+  'høy': 'high',
+  critical: 'critical',
+  kritisk: 'critical',
+};
+
+export function normalizeAmkCriticalityInput(value: string | null | undefined): 'low' | 'medium' | 'high' | 'critical' | null {
+  if (!value) return null;
+  return AMK_CRITICALITY_NORMALIZATION[value.trim().toLowerCase()] ?? null;
+}
+
+export const AmkCriticality = z.enum(['low', 'medium', 'high', 'critical']);
 export type AmkCriticality = z.infer<typeof AmkCriticality>;
+
+export const AmkCriticalityInput = z
+  .string()
+  .trim()
+  .transform((value, ctx) => {
+    const normalized = normalizeAmkCriticalityInput(value);
+    if (!normalized) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Ugyldig kritikalitet',
+      });
+      return z.NEVER;
+    }
+    return normalized;
+  });
+export type AmkCriticalityInput = z.infer<typeof AmkCriticalityInput>;
 
 export const AmkCallLog = z.object({
   id: z.string(),
@@ -484,7 +517,7 @@ export const AmkAssistDraft = z.object({
 export type AmkAssistDraft = z.infer<typeof AmkAssistDraft>;
 
 export const ConfirmAmkAssistRequest = z.object({
-  criticality: AmkCriticality,
+  criticality: AmkCriticalityInput,
   spokenScript: z.string().min(1),
   rationale: z.string().optional(),
   sayFirst: z.array(z.string().min(1)).optional(),

@@ -1,4 +1,4 @@
-import { AmkAssistDraft, calculateNEWS2 } from '@rkf/shared-types';
+import { AmkAssistDraft, calculateNEWS2, normalizeAmkCriticalityInput } from '@rkf/shared-types';
 
 type LatestVitalsInput = {
   pulse?: number | null;
@@ -32,10 +32,17 @@ type ProviderConfig = {
   apiKey: string;
 };
 
-function mapNewsToCriticality(score: number): 'lav' | 'middels' | 'høy' | 'kritisk' {
-  if (score >= 7) return 'kritisk';
-  if (score >= 5) return 'høy';
-  if (score >= 3) return 'middels';
+function mapNewsToCriticality(score: number): 'low' | 'medium' | 'high' | 'critical' {
+  if (score >= 7) return 'critical';
+  if (score >= 5) return 'high';
+  if (score >= 3) return 'medium';
+  return 'low';
+}
+
+function criticalityLabel(level: 'low' | 'medium' | 'high' | 'critical') {
+  if (level === 'critical') return 'kritisk';
+  if (level === 'high') return 'høy';
+  if (level === 'medium') return 'middels';
   return 'lav';
 }
 
@@ -67,19 +74,20 @@ function buildDeterministicDraft(input: AmkAssistInput) {
   const condition = input.presentingComplaint ?? 'Uavklart problemstilling';
   const newsText = news ? `NEWS2 ${news.total}` : 'NEWS2 ikke tilgjengelig';
   const latestNote = input.sbar?.latestNote ?? 'Ingen kjente tilleggsopplysninger.';
+  const criticalityText = criticalityLabel(criticality);
 
   return AmkAssistDraft.parse({
     criticality,
-    rationale: `${newsText}. Kliniske funn tilsier ${criticality} prioritet.`,
+    rationale: `${newsText}. Kliniske funn tilsier ${criticalityText} prioritet.`,
     sayFirst: [
       `Dette er sykestue på arrangement, pasient med ${condition}.`,
-      `Kritikalitet vurderes som ${criticality.toUpperCase()} basert på ${newsText}.`,
+      `Kritikalitet vurderes som ${criticalityText.toUpperCase()} basert på ${newsText}.`,
       `Siste vitale tegn: ${vitalsSummary}.`,
     ],
     spokenScript: [
       'Hei, dette er Røde Kors sykestue.',
       `Vi ringer om en pasient med ${condition}.`,
-      `Vi vurderer kritikalitet som ${criticality} (${newsText}).`,
+      `Vi vurderer kritikalitet som ${criticalityText} (${newsText}).`,
       `Siste observasjoner: ${vitalsSummary}.`,
       'Vi trenger AMK-råd for videre håndtering og transport.',
     ].join(' '),
@@ -99,6 +107,14 @@ async function generateViaProvider(config: ProviderConfig, input: AmkAssistInput
     return buildDeterministicDraft(input);
   }
   throw new Error(`Provider ${config.provider} is not configured in this build`);
+}
+
+function normalizeAssistDraftCriticality<T extends { criticality?: unknown }>(draft: T): T {
+  const normalized = normalizeAmkCriticalityInput(
+    typeof draft.criticality === 'string' ? draft.criticality : null,
+  );
+  if (!normalized) return draft;
+  return { ...draft, criticality: normalized };
 }
 
 export async function generateAmkAssistDraft(input: AmkAssistInput): Promise<{
@@ -123,7 +139,9 @@ export async function generateAmkAssistDraft(input: AmkAssistInput): Promise<{
   }
 
   try {
-    const providerDraft = await generateViaProvider({ provider, model, apiKey }, input);
+    const providerDraft = normalizeAssistDraftCriticality(
+      await generateViaProvider({ provider, model, apiKey }, input),
+    );
     return {
       draft: providerDraft,
       provenance: {

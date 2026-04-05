@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { normalizeLlmTriageLevel } from './constants';
 
-export type TriageLevel = 'lav' | 'middels' | 'høy' | 'kritisk';
+export type TriageLevel = 'low' | 'medium' | 'high' | 'critical';
 
 export interface TriageAssessment {
   level: TriageLevel;
@@ -13,37 +14,37 @@ Du får hendelsesdata fra en førstehjelper og skal gi en kortfattet vurdering.
 
 Svar ALLTID med dette JSON-formatet (ingen annen tekst):
 {
-  "level": "lav" | "middels" | "høy" | "kritisk",
+  "level": "low" | "medium" | "high" | "critical",
   "summary": "1–2 setninger om tilstanden",
   "recommendation": "Konkret anbefaling til koordinator (maks 1 setning)"
 }
 
 Kriterier:
-- lav: Stabil, ingen umiddelbar fare, kan vente
-- middels: Bør følges opp, potensiell forverring
-- høy: Krever rask handling, vurder eskalering til RK Ambulanse
-- kritisk: Livstruende — ring 113 umiddelbart
+- low: Stabil, ingen umiddelbar fare, kan vente
+- medium: Bør følges opp, potensiell forverring
+- high: Krever rask handling, vurder eskalering til RK Ambulanse
+- critical: Livstruende — ring 113 umiddelbart
 
 Svar på norsk bokmål. Vær konkret og handlingsorientert.`;
 
 const DEMO_RESPONSES: Record<string, TriageAssessment> = {
   medical: {
-    level: 'høy',
+    level: 'high',
     summary: 'Medisinsk hendelse med redusert bevissthet (ACVPU). Potensiell kardiovaskulær eller nevrologisk årsak.',
     recommendation: 'Eskalér til RK Ambulanse — pasienten bør til sykestue umiddelbart.',
   },
   trauma: {
-    level: 'middels',
+    level: 'medium',
     summary: 'Traumehendelse registrert. Mekanisme og omfang krever klinisk vurdering.',
     recommendation: 'Send lag til sykestue for nærmere undersøkelse.',
   },
   psychiatric: {
-    level: 'middels',
+    level: 'medium',
     summary: 'Psykiatrisk hendelse. Pasienten kan utgjøre risiko for seg selv eller andre.',
     recommendation: 'Sikre trygge omgivelser og kontakt lege ved behov.',
   },
   other: {
-    level: 'lav',
+    level: 'low',
     summary: 'Hendelse av ukjent type. Ingen umiddelbar livstruende indikasjon.',
     recommendation: 'Monitorer og oppdater status ved endring.',
   },
@@ -86,12 +87,18 @@ export async function assessTriage(
   const text = block?.type === 'text' ? block.text : '';
 
   try {
-    const parsed = JSON.parse(text);
-    return parsed as TriageAssessment;
+    const parsed = JSON.parse(text) as Partial<TriageAssessment> & { level?: string };
+    return {
+      level: normalizeLlmTriageLevel(parsed.level),
+      summary: typeof parsed.summary === 'string' && parsed.summary.trim() ? parsed.summary : text.slice(0, 150),
+      recommendation: typeof parsed.recommendation === 'string' && parsed.recommendation.trim()
+        ? parsed.recommendation
+        : 'Se råtekst ovenfor.',
+    };
   } catch {
     // Fallback if model doesn't return pure JSON
     return {
-      level: 'middels',
+      level: 'medium',
       summary: text.slice(0, 150),
       recommendation: 'Se råtekst ovenfor.',
     };

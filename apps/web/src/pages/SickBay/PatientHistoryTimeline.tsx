@@ -1,5 +1,5 @@
 import { calculateNEWS2 } from '@rkf/shared-types';
-import { news2Colors, routeLabels } from '../../lib/constants';
+import { amkCriticalityLabel, news2Colors, routeLabels } from '../../lib/constants';
 import type { ActionHistoryEntry, SickBayPatient, MedicationRecord } from '../../lib/types';
 
 interface PatientHistoryTimelineProps {
@@ -137,11 +137,15 @@ export function PatientHistoryTimeline({ patient, medications }: PatientHistoryT
               ].filter(Boolean).join(' · ')
             : action.actionType === 'patient.amk_ai_draft_generated'
               ? [
-                  draft?.criticality ? `Kritikalitet ${String(draft.criticality)}` : null,
+                  typeof draft?.criticality === 'string'
+                    ? `Kritikalitet ${amkCriticalityLabel(draft.criticality)}`
+                    : null,
                   draft?.rationale ? String(draft.rationale) : null,
                 ].filter(Boolean).join(' · ')
               : [
-                  confirmed?.criticality ? `Kritikalitet ${String(confirmed.criticality)}` : null,
+                  typeof confirmed?.criticality === 'string'
+                    ? `Kritikalitet ${amkCriticalityLabel(confirmed.criticality)}`
+                    : null,
                   confirmed?.spokenScript ? String(confirmed.spokenScript) : null,
                 ].filter(Boolean).join(' · ');
 
