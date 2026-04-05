@@ -31,11 +31,12 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await loginAsFirstAider(page);
   await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
   await selectTeamIfNeeded(page);
-  await expect(page.getByTestId('firstaid-patient-workspace')).toBeVisible();
-  await expect(page.getByText('Aktiv pasient')).toBeVisible();
-  await expect(page.getByText('Overvåkede pasienter')).toBeVisible();
-  await expect(page.getByText('Utildelte pasienter')).toBeVisible();
-  await expect(page.getByTestId('firstaid-field-status-controls')).toBeVisible();
+  const workspace = page.getByTestId('firstaid-patient-workspace');
+  await expect(workspace).toBeVisible();
+  await expect(workspace.getByText('Aktiv pasient', { exact: true })).toBeVisible();
+  await expect(workspace.getByText('Overvåkede pasienter', { exact: true })).toBeVisible();
+  await expect(workspace.getByText('Utildelte pasienter', { exact: true })).toBeVisible();
+  await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
 
   await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
   await page.waitForURL('**/firstaid/incident');
