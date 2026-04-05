@@ -43,6 +43,18 @@ export const ageLabels: Record<string, string> = {
   elderly: 'Eldre',
 };
 
+export const GENDER_OPTIONS: Array<{ value: 'male' | 'female' | 'other'; label: string }> = [
+  { value: 'male', label: 'Mann' },
+  { value: 'female', label: 'Kvinne' },
+  { value: 'other', label: 'Annet' },
+];
+
+export const GENDER_LABELS: Record<'male' | 'female' | 'other', string> = {
+  male: 'Mann',
+  female: 'Kvinne',
+  other: 'Annet',
+};
+
 export const STATUS_TRANSITIONS: Record<string, string[]> = {
   incoming: ['in_treatment', 'observation'],
   in_treatment: ['incoming', 'observation', 'discharged', 'transferred'],
@@ -122,3 +134,44 @@ export const PATH_LABELS: Record<string, string> = {
   path_a_rk_ambulance: 'Vei A — RK Ambulanse',
   path_b_113: 'Vei B — Ring 113',
 };
+
+export function calculateAgeYears(birthDate?: string | null): number | null {
+  if (!birthDate) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
+  if (!match) return null;
+  const yearPart = Number(match[1] ?? '');
+  const monthPart = Number(match[2] ?? '');
+  const dayPart = Number(match[3] ?? '');
+  if (!Number.isFinite(yearPart) || !Number.isFinite(monthPart) || !Number.isFinite(dayPart)) return null;
+  const birth = new Date(Date.UTC(yearPart, monthPart - 1, dayPart));
+  if (
+    Number.isNaN(birth.getTime())
+    || birth.getUTCFullYear() !== yearPart
+    || birth.getUTCMonth() !== monthPart - 1
+    || birth.getUTCDate() !== dayPart
+  ) return null;
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth() + 1;
+  const todayDay = today.getDate();
+  let age = todayYear - yearPart;
+  const monthDiff = todayMonth - monthPart;
+  const dayDiff = todayDay - dayPart;
+  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
+}
+
+export function formatPatientAge(options: { birthDate?: string | null; ageGroup?: string | null; ageYears?: number | null }): string {
+  if (options.ageYears != null && Number.isFinite(options.ageYears) && options.ageYears >= 0) {
+    return `${Math.floor(options.ageYears)} år`;
+  }
+  const age = calculateAgeYears(options.birthDate ?? null);
+  if (age !== null) return `${age} år`;
+  if (options.ageGroup) {
+    const ageGroupLabel = ageLabels[options.ageGroup];
+    if (ageGroupLabel) return ageGroupLabel;
+  }
+  return 'Alder ukjent';
+}

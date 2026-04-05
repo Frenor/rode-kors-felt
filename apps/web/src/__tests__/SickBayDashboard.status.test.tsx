@@ -94,12 +94,19 @@ import { enqueue } from '../lib/offline-queue';
 // ---------------------------------------------------------------------------
 
 function makePatient(overrides: Record<string, unknown> = {}) {
+  const overrideName = (overrides.fullName as string | undefined) ?? (overrides.name as string | undefined);
+  const presenting = overrides.presentingComplaint as string | undefined;
+  const defaultName = overrideName ?? (presenting ? `Pasient ${presenting}` : 'Pasient uten navn');
+  const birthDate = overrides.birthDate as string | undefined;
+  const gender = overrides.gender as 'male' | 'female' | 'other' | undefined;
   return {
     id: 'pat-1',
     eventId: 'evt-test',
+    fullName: defaultName,
+    birthDate: birthDate ?? '1988-02-17',
+    gender: gender ?? 'female',
     status: 'incoming',
     ageGroup: 'adult',
-    gender: null,
     presentingComplaint: 'Ankel-skade',
     assignedClinician: null,
     notes: [],
@@ -125,8 +132,8 @@ async function renderWithPatient(status: string, patientOverrides: Record<string
 
   const utils = render(<SickBayDashboard />);
 
-  // Wait for the patient list to populate (getPatients is async)
-  await screen.findByText(patient.presentingComplaint as string);
+  // Wait for the patient section to populate (getPatients is async)
+  await screen.findByTestId(`patient-section-${status}`);
 
   return { ...utils, patient };
 }
@@ -136,7 +143,7 @@ async function renderWithPatients(patients: Array<Record<string, unknown>>) {
   vi.mocked(api.getPatients).mockResolvedValue({ patients: payload });
   vi.mocked(api.getSickbayIncoming).mockResolvedValue({ items: [] });
   const utils = render(<SickBayDashboard />);
-  await screen.findByText(payload[0]?.presentingComplaint as string);
+  await screen.findByTestId(`patient-section-${payload[0]?.status ?? 'incoming'}`);
   return { ...utils, patients: payload };
 }
 
@@ -507,5 +514,54 @@ describe('Offline behaviour — status update queuing', () => {
         status: 'in_treatment',
       }),
     );
+  });
+});
+
+describe('Demographics — intake and display', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.getPatients).mockResolvedValue({ patients: [] });
+    vi.mocked(api.getSickbayIncoming).mockResolvedValue({ items: [] });
+    vi.mocked(api.createPatient).mockResolvedValue({ patient: makePatient() });
+  });
+
+  it('submits name, gender, and birth date through the intake modal', async () => {
+    render(<SickBayDashboard />);
+    await screen.findByText('Sykestue');
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Ny pasient' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Registrer ny pasient' });
+
+    fireEvent.change(within(dialog).getByLabelText('Fullt navn'), { target: { value: 'Kari Nordmann' } });
+    fireEvent.change(within(dialog).getByLabelText('Kjønn'), { target: { value: 'female' } });
+    fireEvent.change(within(dialog).getByLabelText('Fødselsdato'), { target: { value: '1992-02-02' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Registrer' }));
+
+    await waitFor(() => {
+      expect(api.createPatient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fullName: 'Kari Nordmann',
+          gender: 'female',
+          birthDate: '1992-02-02',
+        }),
+      );
+    });
+  });
+
+  it('renders patient name and age on cards and collapsed closed rows', async () => {
+    const fullName = 'Kari Nordmann';
+    const ageYears = 31;
+    await renderWithPatient('in_treatment', { fullName, ageYears });
+
+    expect(screen.getByText(fullName)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`^${ageYears} år`))).toBeInTheDocument();
+
+    const closedPatient = { id: 'closed-1', status: 'discharged', fullName, ageYears, presentingComplaint: 'Avsluttet' };
+    const { patients } = await renderWithPatients([closedPatient]);
+    const closedId = patients[0]?.id ?? 'closed-1';
+    fireEvent.click(screen.getByTestId(`toggle-closed-${closedId}`));
+    const container = screen.getByTestId(`closed-panel-${closedId}`);
+    expect(within(container).getByText(fullName)).toBeInTheDocument();
+    expect(within(container).getByText(new RegExp(`^${ageYears} år`))).toBeInTheDocument();
   });
 });

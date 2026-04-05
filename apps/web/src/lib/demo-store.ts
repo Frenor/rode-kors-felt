@@ -6,7 +6,7 @@ import type {
   TeamOperationalStatus,
   TeamWorkspaceResponse,
 } from './types';
-import { normalizeAmkCriticality } from './constants';
+import { calculateAgeYears, normalizeAmkCriticality } from './constants';
 
 /**
  * Demo mode — in-memory store
@@ -92,6 +92,10 @@ let patients: any[] = [
   {
     id: 'demo-pat-1',
     eventId: 'demo-event',
+    fullName: 'Lea Hansen',
+    gender: 'female',
+    birthDate: '1993-09-14',
+    ageYears: 32,
     ageGroup: 'adult',
     status: 'in_treatment',
     presentingComplaint: 'Brystsmerter, tungpust',
@@ -162,6 +166,10 @@ let patients: any[] = [
   {
     id: 'demo-pat-2',
     eventId: 'demo-event',
+    fullName: 'Karianne Strøm',
+    gender: 'female',
+    birthDate: '1957-04-21',
+    ageYears: 66,
     ageGroup: 'elderly',
     status: 'in_treatment',
     presentingComplaint: 'Hypoglykemi, svimmelhet',
@@ -215,6 +223,10 @@ let patients: any[] = [
   {
     id: 'demo-pat-3',
     eventId: 'demo-event',
+    fullName: 'Aksel Berg',
+    gender: 'male',
+    birthDate: '2007-02-14',
+    ageYears: 19,
     ageGroup: 'adolescent',
     status: 'observation',
     presentingComplaint: 'Hypotermi, lett forfrysning',
@@ -257,6 +269,10 @@ let patients: any[] = [
   {
     id: 'demo-pat-4',
     eventId: 'demo-event',
+    fullName: 'Sofia Nilsen',
+    gender: 'female',
+    birthDate: '1988-11-05',
+    ageYears: 37,
     ageGroup: 'adult',
     status: 'incoming',
     presentingComplaint: 'Bruddmistanke ankel',
@@ -556,9 +572,23 @@ export const demoStore = {
   }),
 
   createPatient: (data: Record<string, unknown>) => {
+    const fullName = typeof data.fullName === 'string'
+      ? data.fullName
+      : (typeof data.name === 'string' ? data.name : '');
+    const birthDate = typeof data.birthDate === 'string' && data.birthDate ? data.birthDate : undefined;
+    const ageYears = typeof data.ageYears === 'number'
+      ? data.ageYears
+      : (calculateAgeYears(birthDate) ?? undefined);
+    const gender = data.gender === 'male' || data.gender === 'female' || data.gender === 'other'
+      ? data.gender
+      : undefined;
     const patient = {
       id: `demo-pat-${Date.now()}`,
       status: 'incoming',
+      fullName,
+      birthDate,
+      ageYears,
+      gender,
       vitalsHistory: [],
       latestVitals: null,
       notes: [],

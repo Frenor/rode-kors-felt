@@ -6,7 +6,13 @@ import {
   news2MonitoringLabel,
   type News2Result,
 } from '@rkf/shared-types';
-import { ageLabels, news2Colors, statusColors, statusLabels } from '../../lib/constants';
+import {
+  formatPatientAge,
+  GENDER_LABELS,
+  news2Colors,
+  statusColors,
+  statusLabels,
+} from '../../lib/constants';
 import type { SickBayPatient, MedicationRecord } from '../../lib/types';
 import { PatientVitalsDisplay } from './PatientVitalsDisplay';
 import { PatientActionButtons } from './PatientActionButtons';
@@ -60,6 +66,15 @@ export function PatientCard({
   const n2colors = news2 ? news2Colors[news2.alertLevel] : null;
   const sc = statusColors[patient.status] ?? { color: 'var(--color-text-subtle)', bg: 'var(--color-surface-sunken)' };
 
+  const patientName = patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient';
+  const patientAgeLabel = formatPatientAge({
+    birthDate: patient.birthDate ?? null,
+    ageGroup: patient.ageGroup ?? null,
+    ageYears: patient.ageYears ?? null,
+  });
+  const patientGenderLabel = patient.gender ? GENDER_LABELS[patient.gender] : null;
+  const patientDemographics = [patientAgeLabel, patientGenderLabel].filter(Boolean).join(' · ');
+  const complaintText = patient.presentingComplaint ?? 'Problemstilling ikke registrert';
   const news2MissingLabels: string[] = news2
     ? ([
         ['respiratoryRate', 'RF'],
@@ -128,7 +143,7 @@ export function PatientCard({
 
   return (
     <article
-      aria-label={`Pasient ${patient.ageGroup ? ageLabels[patient.ageGroup] : ''}`}
+      aria-label={`Pasient ${patientName}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
       style={{
         padding: 'var(--space-4)', borderRadius: 'var(--radius-md)',
         border: '1px solid var(--color-border)', background: 'var(--color-surface)',
@@ -136,10 +151,11 @@ export function PatientCard({
     >
       {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-        <div>
-          <span style={{ fontWeight: 600 }}>{patient.presentingComplaint || 'Ukjent problemstilling'}</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginLeft: 'var(--space-2)' }}>
-            {ageLabels[patient.ageGroup] || ''}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+          <span style={{ fontWeight: 600 }}>{patientName}</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>{complaintText}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+            {patientDemographics}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>

@@ -1,6 +1,10 @@
 import { FocusTrap } from '../../components/FocusTrap';
+import { calculateAgeYears, GENDER_OPTIONS } from '../../lib/constants';
 
 export interface IntakeFormShape {
+  fullName: string;
+  gender: '' | 'male' | 'female' | 'other';
+  birthDate: string;
   ageGroup: string;
   presentingComplaint: string;
   assignedClinician: string;
@@ -14,6 +18,7 @@ interface PatientIntakeModalProps {
 }
 
 export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: PatientIntakeModalProps) {
+  const previewAge = calculateAgeYears(form.birthDate);
   return (
     <div
       role="dialog"
@@ -33,6 +38,57 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
           <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
             Ny pasient
           </h2>
+
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <label htmlFor="fullName" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+              Fullt navn
+            </label>
+            <input id="fullName" type="text" value={form.fullName}
+              onChange={(e) => onChange({ ...form, fullName: e.target.value })}
+              placeholder="Fornavn Etternavn"
+              style={{
+                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
+              }} />
+          </div>
+
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <label htmlFor="gender" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+              Kjønn
+            </label>
+            <select id="gender" value={form.gender}
+              onChange={(e) => onChange({ ...form, gender: e.target.value as IntakeFormShape['gender'] })}
+              style={{
+                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
+              }}>
+              <option value="">Ikke oppgitt</option>
+              {GENDER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <label htmlFor="birthDate" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+              Fødselsdato
+            </label>
+            <input id="birthDate" type="date" value={form.birthDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => onChange({ ...form, birthDate: e.target.value })}
+              style={{
+                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
+              }} />
+            {form.birthDate && (
+              <p style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                Alder: {previewAge != null ? `${previewAge} år` : 'Ukjent'}
+              </p>
+            )}
+          </div>
 
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <label htmlFor="ageGroup" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>

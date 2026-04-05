@@ -18,7 +18,7 @@ import { PatientCard } from './SickBay/PatientCard';
 import { IncomingCriticalPanel } from './SickBay/IncomingCriticalPanel';
 import type { VitalsFormShape } from './SickBay/VitalsEntryForm';
 import type { MedFormShape } from './SickBay/MedicationPanel';
-import { ageLabels, statusLabels } from '../lib/constants';
+import { formatPatientAge, GENDER_LABELS, statusLabels } from '../lib/constants';
 
 // In dev mode the monitoring timer fires after 1 min instead of the clinical interval.
 const DEV_INTERVALS = import.meta.env.DEV && import.meta.env.VITE_NEWS2_DEV_INTERVALS === 'true';
@@ -39,7 +39,12 @@ export function SickBayDashboard() {
   const [loading, setLoading] = useState(true);
   const [showIntake, setShowIntake] = useState(false);
   const [intakeForm, setIntakeForm] = useState<IntakeFormShape>({
-    ageGroup: 'adult', presentingComplaint: '', assignedClinician: '',
+    fullName: '',
+    gender: '',
+    birthDate: '',
+    ageGroup: 'adult',
+    presentingComplaint: '',
+    assignedClinician: '',
   });
 
   const [sbarPatient, setSbarPatient] = useState<SickBayPatient | null>(null);
@@ -111,9 +116,17 @@ export function SickBayDashboard() {
 
   const handleIntake = async () => {
     if (!eventId) return;
-    await api.createPatient({ eventId, ...intakeForm });
+    await api.createPatient({
+      eventId,
+      fullName: intakeForm.fullName.trim() || undefined,
+      gender: intakeForm.gender || undefined,
+      birthDate: intakeForm.birthDate || undefined,
+      ageGroup: intakeForm.ageGroup,
+      presentingComplaint: intakeForm.presentingComplaint.trim() || undefined,
+      assignedClinician: intakeForm.assignedClinician.trim() || undefined,
+    });
     setShowIntake(false);
-    setIntakeForm({ ageGroup: 'adult', presentingComplaint: '', assignedClinician: '' });
+    setIntakeForm({ fullName: '', gender: '', birthDate: '', ageGroup: 'adult', presentingComplaint: '', assignedClinician: '' });
     fetchPatients();
   };
 
@@ -410,12 +423,21 @@ export function SickBayDashboard() {
                           textAlign: 'left',
                         }}
                       >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 600 }}>{patient.presentingComplaint || 'Ukjent problemstilling'}</span>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                            {ageLabels[patient.ageGroup] || ''} · {statusLabels[patient.status] || patient.status}
-                          </span>
-                        </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontWeight: 600 }}>{patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                    {patient.presentingComplaint ? `Problemstilling: ${patient.presentingComplaint}` : 'Problemstilling ikke registrert'}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                    {formatPatientAge({
+                      birthDate: patient.birthDate ?? null,
+                      ageGroup: patient.ageGroup ?? null,
+                      ageYears: patient.ageYears ?? null,
+                    })}
+                    {patient.gender ? ` · ${GENDER_LABELS[patient.gender]}` : ''}
+                    {' · '}{statusLabels[patient.status] || patient.status}
+                  </span>
+                </div>
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
                           {expanded ? 'Skjul detaljer ▲' : 'Vis detaljer ▼'}
                         </span>

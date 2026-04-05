@@ -3,7 +3,12 @@ import { calculateNEWS2, calculateNEWS2Trend, news2BadgeLabel, news2MonitoringLa
 import { FocusTrap } from '../../components/FocusTrap';
 import { api } from '../../lib/api';
 import type { AmkAssistDraft, AmkCallLog, AmkCriticality, MedicationRecord, SickBayPatient } from '../../lib/types';
-import { AMK_CRITICALITY_LABELS, normalizeAmkCriticality } from '../../lib/constants';
+import {
+  AMK_CRITICALITY_LABELS,
+  formatPatientAge,
+  GENDER_LABELS,
+  normalizeAmkCriticality,
+} from '../../lib/constants';
 
 interface AmkBriefModalProps {
   patient: SickBayPatient;
@@ -58,6 +63,13 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
   const latestVitals = patient.latestVitals ?? patient.vitalsHistory?.[0] ?? null;
   const news2 = latestVitals ? calculateNEWS2(latestVitals) : null;
   const trend = (patient.vitalsHistory?.length ?? 0) >= 2 ? calculateNEWS2Trend(patient.vitalsHistory) : null;
+  const patientName = patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient';
+  const patientAgeLabel = formatPatientAge({
+    birthDate: patient.birthDate ?? null,
+    ageGroup: patient.ageGroup ?? null,
+    ageYears: patient.ageYears ?? null,
+  });
+  const patientGenderLabel = patient.gender ? GENDER_LABELS[patient.gender] : 'Kjønn ikke oppgitt';
 
   const latestInterventions = useMemo(() => {
     if (medications.length === 0) {
@@ -230,6 +242,9 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
               </h2>
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
                 Ordnet pasientopplysninger, ring 113 direkte og logg samtalen strukturert.
+              </p>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginTop: 'var(--space-1)' }}>
+                Pasient: {patientName} · {patientAgeLabel} · {patientGenderLabel}
               </p>
             </div>
             <button

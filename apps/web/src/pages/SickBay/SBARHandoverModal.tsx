@@ -1,4 +1,5 @@
 import { FocusTrap } from '../../components/FocusTrap';
+import { formatPatientAge, GENDER_LABELS } from '../../lib/constants';
 import type { SickBayPatient } from '../../lib/types';
 
 export interface SbarFormShape {
@@ -29,8 +30,15 @@ const SBAR_FIELDS = [
 
 type SbarFieldKey = (typeof SBAR_FIELDS)[number]['key'];
 
-export function SBARHandoverModal({ form, onChange, onSubmit, onClose }: SBARHandoverModalProps) {
+export function SBARHandoverModal({ patient, form, onChange, onSubmit, onClose }: SBARHandoverModalProps) {
   const isDisabled = !form.situation || !form.background || !form.assessment || !form.recommendation;
+  const patientName = patient?.fullName ?? patient?.presentingComplaint ?? 'Ukjent pasient';
+  const patientAgeLabel = formatPatientAge({
+    birthDate: patient?.birthDate ?? null,
+    ageGroup: patient?.ageGroup ?? null,
+    ageYears: patient?.ageYears ?? null,
+  });
+  const patientGenderLabel = patient?.gender ? GENDER_LABELS[patient.gender] : 'Kjønn ikke oppgitt';
 
   return (
     <div
@@ -53,6 +61,9 @@ export function SBARHandoverModal({ form, onChange, onSubmit, onClose }: SBARHan
           </h2>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-4)' }}>
             Alle felt må fylles ut før pasienten kan overføres.
+          </p>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-4)' }}>
+            Pasient: {patientName} · {patientAgeLabel} · {patientGenderLabel}
           </p>
 
           {SBAR_FIELDS.map(({ key, label }) => (

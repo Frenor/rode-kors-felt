@@ -125,6 +125,10 @@ export interface SickBayPatient {
   id: string;
   eventId: string;
   ageGroup: string;
+  fullName?: string;
+  birthDate?: string;
+  gender?: 'male' | 'female' | 'other';
+  ageYears?: number;
   status: string;
   presentingComplaint: string;
   assignedClinician: string;
