@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { and, desc, eq } from 'drizzle-orm';
+import { z } from 'zod';
 import {
   TeamActionRequest,
   TeamWorkspaceResponse,
@@ -22,7 +23,83 @@ function getActor(user: AuthUser): string {
   return user.sub ?? user.email ?? 'unknown';
 }
 
+const TransportUpdateBody = z.object({
+  transport: z.enum(['foot', 'bike', 'vehicle', 'atv']),
+});
+
+const TeamProfileBody = z.object({
+  gear: z.array(z.string().max(50)).max(30).optional(),
+  contactPhone: z.string().max(50).nullable().optional(),
+  contactRadio: z.string().max(50).nullable().optional(),
+});
+
 export async function teamRoutes(app: FastifyInstance) {
+  app.get('/:teamId', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { teamId } = request.params as { teamId: string };
+    const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1);
+    if (!team) return reply.code(404).send({ error: 'Lag ikke funnet' });
+    if (!canAccessEvent(user, team.eventId)) return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    return { team: { ...team, lastPositionUpdate: team.lastPositionUpdate?.toISOString() ?? null } };
+  });
+
+  app.patch('/:teamId/transport', { preHandler: [requireAuth, requireRole(['first_aider', 'coordinator', 'admin'])] }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { teamId } = request.params as { teamId: string };
+    const parsed = TransportUpdateBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Ugyldig transporttype', details: parsed.error.flatten() });
+    }
+
+    const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1);
+    if (!team) return reply.code(404).send({ error: 'Lag ikke funnet' });
+    if (!canAccessEvent(user, team.eventId)) return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+
+    const [updated] = await db
+      .update(teams)
+      .set({ transport: parsed.data.transport })
+      .where(eq(teams.id, teamId))
+      .returning();
+
+    broadcast({
+      type: 'team.transport_changed',
+      eventId: team.eventId,
+      payload: { teamId, transport: parsed.data.transport },
+      timestamp: new Date().toISOString(),
+    });
+
+    return { team: { id: updated!.id, transport: updated!.transport } };
+  });
+
+  app.patch('/:teamId/profile', { preHandler: [requireAuth, requireRole(['first_aider', 'coordinator', 'admin'])] }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { teamId } = request.params as { teamId: string };
+    const parsed = TeamProfileBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Ugyldig profildata', details: parsed.error.flatten() });
+    }
+
+    const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1);
+    if (!team) return reply.code(404).send({ error: 'Lag ikke funnet' });
+    if (!canAccessEvent(user, team.eventId)) return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+
+    const updates: Partial<typeof teams.$inferInsert> = {};
+    if (parsed.data.gear !== undefined) updates.gear = parsed.data.gear;
+    if (parsed.data.contactPhone !== undefined) updates.contactPhone = parsed.data.contactPhone;
+    if (parsed.data.contactRadio !== undefined) updates.contactRadio = parsed.data.contactRadio;
+
+    const [updated] = await db.update(teams).set(updates).where(eq(teams.id, teamId)).returning();
+
+    broadcast({
+      type: 'team.profile_updated',
+      eventId: team.eventId,
+      payload: { teamId, contactPhone: updated!.contactPhone, contactRadio: updated!.contactRadio },
+      timestamp: new Date().toISOString(),
+    });
+
+    return { team: { id: updated!.id, gear: updated!.gear, contactPhone: updated!.contactPhone, contactRadio: updated!.contactRadio } };
+  });
+
   app.post('/:teamId/actions', { preHandler: [requireAuth, requireRole(['first_aider', 'coordinator', 'admin'])] }, async (request, reply) => {
     const user = (request as any).user as AuthUser;
     const { teamId } = request.params as { teamId: string };

@@ -1,13 +1,15 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+export type TeamTransport = 'foot' | 'bike' | 'vehicle' | 'atv';
+
 interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   role: string | null;
   eventId: string | null;
   eventName: string | null;
-  teams: Array<{ id: string; name: string }>;
+  teams: Array<{ id: string; name: string; transport?: TeamTransport }>;
   isAuthenticated: boolean;
 
   login: (data: {
@@ -16,8 +18,9 @@ interface AuthState {
     role: string;
     eventId?: string;
     eventName?: string;
-    teams?: Array<{ id: string; name: string }>;
+    teams?: Array<{ id: string; name: string; transport?: TeamTransport }>;
   }) => void;
+  updateTeamTransport: (teamId: string, transport: TeamTransport) => void;
   logout: () => void;
 }
 
@@ -42,6 +45,11 @@ export const useAuthStore = create<AuthState>()(
           teams: data.teams || [],
           isAuthenticated: true,
         }),
+
+      updateTeamTransport: (teamId, transport) =>
+        set((state) => ({
+          teams: state.teams.map((t) => t.id === teamId ? { ...t, transport } : t),
+        })),
 
       logout: () =>
         set({
