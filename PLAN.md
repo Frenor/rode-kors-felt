@@ -71,6 +71,21 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `8615e04` `refactor(web): remove unused legacy incident api methods`
+  - Removed legacy incident methods from web API client and demo store (`updateIncident`, `escalateIncident`, `resolveEscalation`).
+  - Web now uses action endpoints as the single incident mutation path.
+- `ed627fb` `refactor(api): remove legacy incident compatibility endpoints`
+  - Removed `PATCH /api/incidents/:id` and legacy `/api/incidents/:id/escalate` routes.
+  - Incident mutations now go through `POST /api/incidents/:id/actions` only.
+  - Updated API tests to target action-based escalation/status flow.
+- `225ef82` `chore(cleanup): drop legacy enum normalizations`
+  - Removed legacy enum acceptance tests and helper behavior from web enum handling.
+- `5aafcc8` `refactor(types): drop legacy amk normalization`
+  - Shared types now enforce canonical AMK criticality values only.
+- `8891f01` `refactor(api): remove legacy compatibility layers`
+  - API AMK pipeline no longer normalizes legacy criticality aliases.
+- `601e8ee` `chore(docs): drop enum compatibility language`
+  - v3.1 docs and plan language updated to canonical-only enum policy.
 - `057d999` `feat(web): capture patient demographics and show derived age`
   - Sick Bay intake now supports `fullName`, `gender`, and `birthDate`.
   - Derived age is shown in patient cards, collapsed closed rows, and SBAR/AMK headers.
