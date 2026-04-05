@@ -11,14 +11,6 @@ All user-visible labels must be translated in view-layer mapping.
 - WebSocket payload contracts
 - Demo fixtures and tests
 
-## Migration Table
-| Domain | Legacy Value | Canonical Value |
-|---|---|---|
-| AMK Criticality | lav | low |
-| AMK Criticality | middels | medium |
-| AMK Criticality | hoy/hoy-like variants | high |
-| AMK Criticality | kritisk | critical |
-
 ## Team Status Labels (NB)
 | Enum | Label |
 |---|---|
@@ -28,12 +20,13 @@ All user-visible labels must be translated in view-layer mapping.
 | needs_assistance | Trenger bistand |
 | unavailable | Utilgjengelig |
 
-## Compatibility Window
-- API accepts Norwegian AMK criticality aliases temporarily.
-- API persists normalized English value.
-- UI rendering normalizes legacy values before label mapping.
+## Canonical Values
+| Domain | Allowed Values |
+|---|---|
+| AMK Criticality | `low`, `medium`, `high`, `critical` |
+| LLM Triage Level | `low`, `medium`, `high`, `critical` |
 
 ## Verification Checklist
 - No raw enum string rendered directly in UI.
-- Shared types expose English unions only.
-- API tests cover legacy input normalization.
+- Shared types, validators, and fixtures expose English unions only.
+- API tests ensure only canonical values are accepted and labeled.

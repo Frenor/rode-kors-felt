@@ -1,7 +1,7 @@
-# Agent Pack E — Enum Migration and Compatibility
+# Agent Pack E — Enum Canonicalization
 
 ## Scope
-Migrate mixed-language enums to English canonical values with safe compatibility behavior.
+Ensure all enums are defined, stored, and rendered using English canonical values and mapped Bokmål labels.
 
 ## Files
 - `packages/shared-types/src/index.ts`
@@ -14,22 +14,20 @@ Migrate mixed-language enums to English canonical values with safe compatibility
 - tests in API and web
 
 ## Required Work
-1. `AmkCriticality`: `low|medium|high|critical` in shared types.
-2. API accepts legacy Norwegian aliases and normalizes to English.
-3. Persist English value in new artifacts.
-4. UI maps English enums to NB labels.
-5. Timeline renderer handles legacy stored values gracefully.
+1. `AmkCriticality`: define and use only `low|medium|high|critical` across shared types, API, and DB enums.
+2. Persist the canonical English value in every action/event artifact.
+3. Provide Bokmål labels in the view layer without rendering raw enums.
+4. Renderer/test coverage ensures canonical inputs surface expected labels.
 
 ## Translation Mapping
-- low -> Lav
-- medium -> Middels
-- high -> Hoy
-- critical -> Kritisk
+# low -> Lav
+# medium -> Middels
+# high -> Høy
+# critical -> Kritisk
 
 ## Tests Required
-- Parser normalization tests.
-- Backward compatibility for old payload inputs.
-- UI rendering tests for both legacy and canonical values.
+- Parser tests that send canonical values and assert English enums.
+- UI rendering tests that verify Bokmål labels, without needing legacy inputs.
 
 ## Commit
-`refactor(types): standardize enums to english with legacy normalization`
+`refactor(types): keep enums english-only and mapped in the UI`

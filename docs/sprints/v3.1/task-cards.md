@@ -26,9 +26,9 @@
 - Tests: panel behavior + action control coverage.
 
 ## Card 4 — Enum Migration
-- Scope: English canonical enums + compatibility normalization.
-- Commit: `refactor(types): standardize enums to english with legacy normalization`.
-- Tests: migration and compatibility coverage.
+- Scope: English canonical enums and NB label mapping.
+- Commit: `refactor(types): continue standardizing enums to english`.
+- Tests: canonical parser and UI rendering coverage.
 
 ## Card 5 — QA + Pages Verification
 - Scope: test matrix including pages-demo visibility checks.

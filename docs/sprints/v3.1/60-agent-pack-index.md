@@ -8,7 +8,7 @@ Assign each pack to one low-skill agent. One pack per branch.
 - `B-backend-team-workspace.md`: backend endpoints and event stream logic.
 - `C-web-firstaider-workspace.md`: first aider UI/state/offline workspace behavior.
 - `D-web-sickbay-clarity.md`: sick bay critical panel and action UX.
-- `E-enum-migration.md`: enum migration + legacy normalization.
+- `E-enum-migration.md`: enum canonicalization (English-only values and Bokmål labels).
 - `F-qa-matrix.md`: tests across unit/integration/e2e/pages verification.
 
 ## Required Hand-off

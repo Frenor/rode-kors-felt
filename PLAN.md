@@ -43,13 +43,12 @@
 ## 4. Enum Policy
 - Shared types, DB enums, API payloads, WebSocket payloads, and fixtures use English enums only.
 - View layer translates enum values to Norwegian Bokmal labels.
-- Legacy compatibility window accepts old Norwegian AMK criticality values and normalizes to English.
 
 ## 5. Execution Order
 1. Lane 0 docs commit (required gate)
 2. Lane 1 backend contracts and endpoints
 3. Lanes 2 and 3 in parallel (web)
-4. Lane 4 enum migration and compatibility normalization
+4. Lane 4 english-only enum standardization and label mapping
 5. Lane 5 tests, pages verification, and acceptance checks
 
 ## 6. Acceptance Gates

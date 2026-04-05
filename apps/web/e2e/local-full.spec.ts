@@ -70,7 +70,6 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   if (expectedMode === 'indoor_zone') {
     expect(locationContext?.mode).toBe('indoor_zone');
   } else {
-    // Backward-compatible GPS submissions may omit locationContext.
     expect(locationContext?.mode === undefined || locationContext.mode === 'gps').toBe(true);
   }
   await page.waitForURL('**/firstaid');
