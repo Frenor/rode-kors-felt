@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   calculateNEWS2,
   calculateNEWS2Trend,
@@ -11,6 +11,7 @@ import {
   formatSickbayPlacement,
   GENDER_LABELS,
   news2Colors,
+  STATUS_TRANSITIONS,
   statusColors,
   statusLabels,
 } from '../../lib/constants';
@@ -62,11 +63,43 @@ export function PatientCard({
   const [showNote, setShowNote] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showPlacementEditor, setShowPlacementEditor] = useState(false);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showStatusMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
+        setShowStatusMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showStatusMenu]);
   const [vitalsForm, setVitalsForm] = useState<VitalsFormShape>(EMPTY_VITALS_FORM);
   const [medForm, setMedForm] = useState<MedFormShape>(EMPTY_MED_FORM);
   const [noteForm, setNoteForm] = useState<NoteFormShape>(EMPTY_NOTE_FORM);
   const [placementType, setPlacementType] = useState<'chair' | 'bed' | ''>(patient.placementType ?? '');
   const [placementNumber, setPlacementNumber] = useState(patient.placementNumber ?? '');
+
+  const currentStatus = patient.status as keyof typeof STATUS_TRANSITIONS;
+  const nextStatuses = STATUS_TRANSITIONS[currentStatus] ?? [];
+  const actionCopy: Record<string, { label: string; icon: string }> = {
+    'incoming:in_treatment': { label: 'Start behandling', icon: '▶' },
+    'incoming:observation': { label: 'Observasjon', icon: '⊕' },
+    'in_treatment:observation': { label: 'Observasjon', icon: '→' },
+    'observation:in_treatment': { label: 'Start behandling', icon: '▶' },
+    'in_treatment:discharged': { label: 'Skriv ut', icon: '✓' },
+    'observation:discharged': { label: 'Skriv ut', icon: '✓' },
+    'in_treatment:transferred': { label: 'Overfør (SBAR)', icon: '⇢' },
+    'observation:transferred': { label: 'Overfør (SBAR)', icon: '⇢' },
+    'discharged:observation': { label: 'Observasjon', icon: '↺' },
+    'transferred:observation': { label: 'Observasjon', icon: '↺' },
+    'discharged:in_treatment': { label: 'Start behandling', icon: '↺' },
+    'transferred:in_treatment': { label: 'Start behandling', icon: '↺' },
+    'in_treatment:incoming': { label: 'Innkommende', icon: '↩' },
+    'observation:incoming': { label: 'Innkommende', icon: '↩' },
+  };
 
   const news2 = patient.latestVitals ? calculateNEWS2(patient.latestVitals) : null;
   const n2colors = news2 ? news2Colors[news2.alertLevel] : null;
@@ -226,13 +259,80 @@ export function PatientCard({
               </span>
             </span>
           )}
-          <span style={{
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-            padding: '2px 8px', borderRadius: 'var(--radius-full)',
-            background: sc.bg, color: sc.color,
-          }}>
-            {statusLabels[patient.status] || patient.status}
-          </span>
+          <div ref={statusMenuRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              data-testid={`patient-status-badge-${patient.id}`}
+              aria-label={`Status: ${statusLabels[patient.status] ?? patient.status}. Trykk for å endre`}
+              aria-expanded={showStatusMenu}
+              aria-haspopup="listbox"
+              onClick={() => setShowStatusMenu((prev) => !prev)}
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+                padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                background: sc.bg, color: sc.color,
+                border: 'none', cursor: nextStatuses.length > 0 ? 'pointer' : 'default',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}
+            >
+              {statusLabels[patient.status] || patient.status}
+              {nextStatuses.length > 0 && (
+                <span aria-hidden="true" style={{ fontSize: '0.6em', opacity: 0.7 }}>▾</span>
+              )}
+            </button>
+
+            {showStatusMenu && nextStatuses.length > 0 && (
+              <div
+                role="listbox"
+                aria-label="Mulige statusendringer"
+                data-testid={`patient-status-menu-${patient.id}`}
+                style={{
+                  position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 50,
+                  background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  minWidth: 180, overflow: 'hidden',
+                }}
+              >
+                {nextStatuses.map((nextStatus) => {
+                  const nsc = statusColors[nextStatus] ?? { color: 'var(--color-text-subtle)', bg: 'transparent' };
+                  const isTransfer = nextStatus === 'transferred';
+                  const copy = actionCopy[`${currentStatus}:${nextStatus}`];
+                  return (
+                    <button
+                      key={nextStatus}
+                      role="option"
+                      data-testid={`status-btn-${nextStatus}`}
+                      aria-selected={false}
+                      aria-label={`${copy?.label ?? statusLabels[nextStatus]}${isTransfer ? ' (krever SBAR)' : ''}`}
+                      onClick={() => { onStatusChange(nextStatus); setShowStatusMenu(false); }}
+                      style={{
+                        display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                        padding: 'var(--space-2) var(--space-3)',
+                        minHeight: 'var(--touch-min)',
+                        border: 'none', borderBottom: '1px solid var(--color-border)',
+                        background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                        fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
+                        color: nsc.color,
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          display: 'inline-block', width: 8, height: 8,
+                          borderRadius: '50%', flexShrink: 0,
+                          background: isTransfer ? 'transparent' : nsc.color,
+                          outline: isTransfer ? `2px dashed ${nsc.color}` : 'none',
+                          outlineOffset: 2,
+                        }}
+                      />
+                      <span style={{ fontWeight: 600, fontSize: '0.9em' }}>{copy?.icon}</span>
+                      <span>{copy?.label ?? statusLabels[nextStatus]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -243,7 +343,6 @@ export function PatientCard({
 
       {/* Action buttons + status transitions */}
       <PatientActionButtons
-        patient={patient}
         showVitals={showVitals}
         showMeds={showMeds}
         showNote={showNote}
@@ -253,7 +352,6 @@ export function PatientCard({
         onToggleNote={handleToggleNote}
         onToggleHistory={handleToggleHistory}
         onOpenAmk={onOpenAmk}
-        onStatusChange={onStatusChange}
       />
 
       <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
