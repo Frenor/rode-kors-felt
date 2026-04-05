@@ -438,109 +438,119 @@ export function SickBayDashboard() {
                   </span>
                 </div>
 
-                {group.patients.map((patient) => {
-                  if (!isClosedGroup) {
-                    return (
-                      <PatientCard
-                        key={patient.id}
-                        patient={patient}
-                        medications={medications[patient.id] ?? []}
-                        onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
-                        onSubmitVitals={(form) => handleRecordVitals(patient, form)}
-                        onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
-                        onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
-                        onLoadMedications={() => handleLoadMedications(patient.id)}
-                        onOpenAmk={() => handleOpenAmk(patient)}
-                        onUpdatePlacement={(placementType, placementNumber) =>
-                          handleUpdatePlacement(patient.id, placementType, placementNumber)}
-                      />
-                    );
-                  }
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 25rem), 1fr))',
+                    gap: 'var(--space-3)',
+                    alignItems: 'start',
+                  }}
+                >
+                  {group.patients.map((patient) => {
+                    if (!isClosedGroup) {
+                      return (
+                        <PatientCard
+                          key={patient.id}
+                          patient={patient}
+                          medications={medications[patient.id] ?? []}
+                          onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
+                          onSubmitVitals={(form) => handleRecordVitals(patient, form)}
+                          onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
+                          onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
+                          onLoadMedications={() => handleLoadMedications(patient.id)}
+                          onOpenAmk={() => handleOpenAmk(patient)}
+                          onUpdatePlacement={(placementType, placementNumber) =>
+                            handleUpdatePlacement(patient.id, placementType, placementNumber)}
+                        />
+                      );
+                    }
 
-                  const expanded = !!expandedClosedCards[patient.id];
-                  return (
-                    <div
-                      key={patient.id}
-                      data-testid={`closed-patient-${patient.id}`}
-                      style={{
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-md)',
-                        background: 'var(--color-surface-sunken)',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        data-testid={`toggle-closed-${patient.id}`}
-                        aria-expanded={expanded}
-                        aria-controls={`closed-panel-${patient.id}`}
-                        onClick={() => toggleClosedCard(patient.id)}
+                    const expanded = !!expandedClosedCards[patient.id];
+                    return (
+                      <div
+                        key={patient.id}
+                        data-testid={`closed-patient-${patient.id}`}
                         style={{
-                          width: '100%',
-                          minHeight: 56,
-                          padding: 'var(--space-3)',
-                          border: 'none',
-                          background: 'transparent',
-                          color: 'var(--color-text)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 'var(--space-3)',
-                          cursor: 'pointer',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-md)',
+                          background: 'var(--color-surface-sunken)',
+                          overflow: 'hidden',
+                          height: 'fit-content',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          data-testid={`toggle-closed-${patient.id}`}
+                          aria-expanded={expanded}
+                          aria-controls={`closed-panel-${patient.id}`}
+                          onClick={() => toggleClosedCard(patient.id)}
+                          style={{
+                            width: '100%',
+                            minHeight: 56,
+                            padding: 'var(--space-3)',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--color-text)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 'var(--space-3)',
+                            cursor: 'pointer',
                           textAlign: 'left',
                         }}
                       >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontWeight: 600 }}>{patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 700,
-                      color: patient.placementType && patient.placementNumber ? 'var(--color-status-info)' : 'var(--color-text-subtle)',
-                    }}
-                  >
-                    {patient.placementType && patient.placementNumber
-                      ? `Plassering: ${formatSickbayPlacement(patient.placementType, patient.placementNumber)}`
-                      : 'Plassering: Ikke satt'}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                    {patient.presentingComplaint ? `Problemstilling: ${patient.presentingComplaint}` : 'Problemstilling ikke registrert'}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                    {formatPatientAge({
-                      birthDate: patient.birthDate ?? null,
-                      ageGroup: patient.ageGroup ?? null,
-                      ageYears: patient.ageYears ?? null,
-                    })}
-                    {patient.gender ? ` · ${GENDER_LABELS[patient.gender]}` : ''}
-                    {' · '}{statusLabels[patient.status] || patient.status}
-                  </span>
-                </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontWeight: 600 }}>{patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
+                          <span
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: 'var(--text-xs)',
+                              fontWeight: 700,
+                              color: patient.placementType && patient.placementNumber ? 'var(--color-status-info)' : 'var(--color-text-subtle)',
+                            }}
+                          >
+                            {patient.placementType && patient.placementNumber
+                              ? `Plassering: ${formatSickbayPlacement(patient.placementType, patient.placementNumber)}`
+                              : 'Plassering: Ikke satt'}
+                          </span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                            {patient.presentingComplaint ? `Problemstilling: ${patient.presentingComplaint}` : 'Problemstilling ikke registrert'}
+                          </span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                            {formatPatientAge({
+                              birthDate: patient.birthDate ?? null,
+                              ageGroup: patient.ageGroup ?? null,
+                              ageYears: patient.ageYears ?? null,
+                            })}
+                            {patient.gender ? ` · ${GENDER_LABELS[patient.gender]}` : ''}
+                            {' · '}{statusLabels[patient.status] || patient.status}
+                          </span>
+                        </div>
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
                           {expanded ? 'Skjul detaljer ▲' : 'Vis detaljer ▼'}
                         </span>
                       </button>
 
-                      {expanded && (
-                        <div id={`closed-panel-${patient.id}`} data-testid={`closed-panel-${patient.id}`} style={{ padding: 'var(--space-3)' }}>
-                          <PatientCard
-                            patient={patient}
-                            medications={medications[patient.id] ?? []}
-                            onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
-                            onSubmitVitals={(form) => handleRecordVitals(patient, form)}
-                            onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
-                            onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
-                            onLoadMedications={() => handleLoadMedications(patient.id)}
-                            onOpenAmk={() => handleOpenAmk(patient)}
-                            onUpdatePlacement={(placementType, placementNumber) =>
-                              handleUpdatePlacement(patient.id, placementType, placementNumber)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        {expanded && (
+                          <div id={`closed-panel-${patient.id}`} data-testid={`closed-panel-${patient.id}`} style={{ padding: 'var(--space-3)' }}>
+                            <PatientCard
+                              patient={patient}
+                              medications={medications[patient.id] ?? []}
+                              onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
+                              onSubmitVitals={(form) => handleRecordVitals(patient, form)}
+                              onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
+                              onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
+                              onLoadMedications={() => handleLoadMedications(patient.id)}
+                              onOpenAmk={() => handleOpenAmk(patient)}
+                              onUpdatePlacement={(placementType, placementNumber) =>
+                                handleUpdatePlacement(patient.id, placementType, placementNumber)}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </section>
             );
           })}

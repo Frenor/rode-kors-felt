@@ -11,8 +11,6 @@ import {
   formatSickbayPlacement,
   GENDER_LABELS,
   news2Colors,
-  statusColors,
-  statusLabels,
 } from '../../lib/constants';
 import type { SickBayPatient, MedicationRecord } from '../../lib/types';
 import { PatientVitalsDisplay } from './PatientVitalsDisplay';
@@ -70,7 +68,6 @@ export function PatientCard({
 
   const news2 = patient.latestVitals ? calculateNEWS2(patient.latestVitals) : null;
   const n2colors = news2 ? news2Colors[news2.alertLevel] : null;
-  const sc = statusColors[patient.status] ?? { color: 'var(--color-text-subtle)', bg: 'var(--color-surface-sunken)' };
 
   const patientName = patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient';
   const patientAgeLabel = formatPatientAge({
@@ -164,10 +161,10 @@ export function PatientCard({
       style={{
         padding: 'var(--space-4)', borderRadius: 'var(--radius-md)',
         border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+        display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', height: '100%',
       }}
     >
-      {/* Header row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
           <span style={{ fontWeight: 600 }}>{patientName}</span>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>{complaintText}</span>
@@ -226,22 +223,13 @@ export function PatientCard({
               </span>
             </span>
           )}
-          <span style={{
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-            padding: '2px 8px', borderRadius: 'var(--radius-full)',
-            background: sc.bg, color: sc.color,
-          }}>
-            {statusLabels[patient.status] || patient.status}
-          </span>
         </div>
       </div>
 
-      {/* Latest vitals display */}
       {patient.latestVitals && (
         <PatientVitalsDisplay vitals={patient.latestVitals} />
       )}
 
-      {/* Action buttons + status transitions */}
       <PatientActionButtons
         patient={patient}
         showVitals={showVitals}
@@ -256,19 +244,23 @@ export function PatientCard({
         onStatusChange={onStatusChange}
       />
 
-      <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         <button
           type="button"
           className="touch-target"
           onClick={() => setShowPlacementEditor((prev) => !prev)}
           style={{
-            minHeight: 'var(--touch-min)',
-            borderRadius: 'var(--radius-md)',
+            minHeight: 36,
+            borderRadius: 'var(--radius-full)',
             border: '1px solid var(--color-border)',
             background: 'transparent',
             color: 'var(--color-text)',
             fontWeight: 600,
+            fontSize: 'var(--text-xs)',
+            fontFamily: 'var(--font-mono)',
             cursor: 'pointer',
+            alignSelf: 'flex-start',
+            padding: '0 var(--space-3)',
           }}
         >
           {showPlacementEditor ? 'Lukk plassering' : 'Oppdater plassering'}
@@ -349,7 +341,6 @@ export function PatientCard({
         )}
       </div>
 
-      {/* Medication panel */}
       {showMeds && (
         <MedicationPanel
           patientId={patient.id}
@@ -360,7 +351,6 @@ export function PatientCard({
         />
       )}
 
-      {/* Note panel */}
       {showNote && (
         <NotePanel
           patientId={patient.id}
@@ -370,7 +360,6 @@ export function PatientCard({
         />
       )}
 
-      {/* Vitals entry form */}
       {showVitals && (
         <VitalsEntryForm
           patientId={patient.id}
@@ -380,7 +369,6 @@ export function PatientCard({
         />
       )}
 
-      {/* Patient history timeline */}
       {showHistory && (
         <PatientHistoryTimeline patient={patient} medications={medications} />
       )}

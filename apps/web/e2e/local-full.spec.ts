@@ -4,6 +4,7 @@ import { isProject, loginAsCoordinator, loginAsFirstAider, resetBrowserState } f
 async function loginAsSickBay(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => sessionStorage.clear());
   await page.context().clearCookies();
   await page.goto('/');
   for (const digit of ['6', '5', '4', '3', '2', '1']) {
@@ -97,8 +98,8 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await expect(amkDialog.getByText('Pasient med brystsmerter', { exact: true }).first()).toBeVisible();
   await amkDialog.getByRole('button', { name: 'Lukk' }).click();
   await expect(amkDialog).not.toBeVisible();
-  await expect(page.getByRole('button', { name: 'Start behandling' }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Legg til observasjon' }).first()).toBeVisible();
+  await expect(page.getByTestId('status-btn-in_treatment').first()).toBeVisible();
+  await expect(page.getByTestId('status-btn-observation').first()).toBeVisible();
 
   await loginAsCoordinator(page);
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
