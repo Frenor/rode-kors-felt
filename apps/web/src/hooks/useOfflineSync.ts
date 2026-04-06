@@ -7,7 +7,7 @@
 
 import { useEffect } from 'react';
 import { api } from '../lib/api';
-import { getPendingItems, markSyncing, markFailed, removeItem } from '../lib/offline-queue';
+import { getRetryableItems, markSyncing, markFailed, removeItem } from '../lib/offline-queue';
 import { useNotificationStore } from '../stores/notifications';
 
 export function useOfflineSync() {
@@ -15,7 +15,7 @@ export function useOfflineSync() {
 
   useEffect(() => {
     async function flush() {
-      const items = await getPendingItems();
+      const items = await getRetryableItems();
       if (items.length === 0) return;
 
       let synced = 0;
