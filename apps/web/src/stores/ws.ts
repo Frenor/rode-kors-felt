@@ -71,11 +71,15 @@ async function tryRefreshToken(): Promise<string | null> {
       body: JSON.stringify({ refreshToken }),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn('[ws] Token refresh failed — server returned', res.status);
+      return null;
+    }
     const { accessToken } = (await res.json()) as { accessToken: string };
     useAuthStore.setState({ accessToken });
     return accessToken;
-  } catch {
+  } catch (err) {
+    console.warn('[ws] Token refresh threw unexpectedly', err);
     return null;
   }
 }
@@ -103,8 +107,8 @@ export const useWsStore = create<WsStore>((set) => ({
       try {
         const msg = JSON.parse(event.data) as Record<string, unknown>;
         for (const handler of handlers) handler(msg);
-      } catch {
-        // ignore malformed
+      } catch (err) {
+        console.error('[ws] Failed to parse incoming message', err, event.data);
       }
     };
 

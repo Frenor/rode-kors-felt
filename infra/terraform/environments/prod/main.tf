@@ -1,6 +1,10 @@
 # ═══════════════════════════════════════════════
 # RKF Infrastructure — Google Cloud Production
-# Region: Europe (GDPR requirement)
+# Deployment model: Cloud Run (single public URL)
+#
+# - web (nginx) is the ingress container on port 8080
+# - api is a sidecar container on port 4000
+# - Cloud SQL + Memorystore use private IPs; Cloud Run reaches them via VPC Access connector
 # ═══════════════════════════════════════════════
 
 terraform {
@@ -10,10 +14,6 @@ terraform {
     google = {
       source  = "hashicorp/google"
       version = "~> 6.30"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
     }
   }
 
@@ -26,7 +26,6 @@ terraform {
 provider "google" {
   project = var.project_id
   region  = var.gcp_region
-  zone    = var.gcp_zone
 
   default_labels = {
     project     = "rkf"
@@ -48,12 +47,6 @@ variable "gcp_region" {
   default     = "europe-north1"
 }
 
-variable "gcp_zone" {
-  description = "Google Cloud zone for compute resources."
-  type        = string
-  default     = "europe-north1-a"
-}
-
 variable "environment" {
   description = "Environment name."
   type        = string
@@ -66,14 +59,10 @@ variable "vpc_cidr_block" {
   default     = "10.20.0.0/16"
 }
 
-variable "domain_name" {
-  description = "Primary production domain for RKF."
+variable "run_connector_cidr" {
+  description = "CIDR range reserved for the Serverless VPC Access connector."
   type        = string
-}
-
-variable "dns_managed_zone" {
-  description = "Cloud DNS managed zone name for RKF domain."
-  type        = string
+  default     = "10.20.250.0/28"
 }
 
 variable "db_password" {
@@ -89,44 +78,56 @@ variable "jwt_secret" {
 }
 
 variable "web_container_image" {
-  description = "Container image URI for the web service."
+  description = "Container image URI for the web (nginx) container."
   type        = string
 }
 
 variable "api_container_image" {
-  description = "Container image URI for the API service."
+  description = "Container image URI for the API container."
   type        = string
 }
 
 variable "cors_origin" {
-  description = "Browser origin allowed by the API."
+  description = "Optional explicit CORS origin for the API (comma-separated)."
   type        = string
   default     = null
 }
 
+variable "min_instances" {
+  description = "Minimum Cloud Run instances (0 is cheapest; >0 reduces cold starts)."
+  type        = number
+  default     = 0
+}
+
+variable "max_instances" {
+  description = "Maximum Cloud Run instances."
+  type        = number
+  default     = 3
+}
+
 locals {
-  app_origin   = coalesce(var.cors_origin, "https://${var.domain_name}")
   network_name = "rkf-${var.environment}-vpc"
   subnet_name  = "rkf-${var.environment}-subnet"
-  instance_tag = "rkf-${var.environment}-web"
 
   db_name     = "rkf"
   db_username = "rkf_admin"
 
   api_port = 4000
-  web_port = 80
+  web_port = 8080
 }
 
 # ─── Project Services ───────────────────────
 
 resource "google_project_service" "services" {
   for_each = toset([
+    "artifactregistry.googleapis.com",
     "compute.googleapis.com",
-    "secretmanager.googleapis.com",
-    "dns.googleapis.com",
     "redis.googleapis.com",
+    "run.googleapis.com",
+    "secretmanager.googleapis.com",
     "servicenetworking.googleapis.com",
     "sqladmin.googleapis.com",
+    "vpcaccess.googleapis.com",
   ])
 
   project            = var.project_id
@@ -149,37 +150,6 @@ resource "google_compute_subnetwork" "primary" {
   region                   = var.gcp_region
   network                  = google_compute_network.vpc.id
   private_ip_google_access = true
-}
-
-resource "google_compute_router" "nat" {
-  name    = "rkf-${var.environment}-router"
-  region  = var.gcp_region
-  network = google_compute_network.vpc.id
-}
-
-resource "google_compute_router_nat" "nat" {
-  name                               = "rkf-${var.environment}-nat"
-  region                             = var.gcp_region
-  router                             = google_compute_router.nat.name
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-}
-
-resource "google_compute_firewall" "allow_lb_health_checks" {
-  name    = "rkf-${var.environment}-allow-lb-health"
-  network = google_compute_network.vpc.name
-
-  source_ranges = [
-    "35.191.0.0/16",
-    "130.211.0.0/22",
-  ]
-
-  allow {
-    protocol = "tcp"
-    ports    = [tostring(local.web_port)]
-  }
-
-  target_tags = [local.instance_tag]
 }
 
 # ─── Private Service Networking ─────────────
@@ -210,8 +180,9 @@ resource "google_sql_database_instance" "postgres" {
   region           = var.gcp_region
 
   settings {
-    tier              = "db-custom-2-7680"
-    availability_type = "REGIONAL"
+    # Downscaled default: single-zone + smaller tier (cheaper than HA/regional).
+    tier              = "db-custom-1-3840"
+    availability_type = "ZONAL"
 
     backup_configuration {
       enabled                        = true
@@ -245,7 +216,8 @@ resource "google_sql_user" "rkf_admin" {
 
 resource "google_redis_instance" "redis" {
   name               = "rkf-${var.environment}-redis"
-  tier               = "STANDARD_HA"
+  # Downscaled default: non-HA tier.
+  tier               = "BASIC"
   memory_size_gb     = 1
   region             = var.gcp_region
   authorized_network = google_compute_network.vpc.id
@@ -256,11 +228,7 @@ resource "google_redis_instance" "redis" {
   depends_on = [google_service_networking_connection.private_vpc_connection]
 }
 
-# ─── Compute Engine + Managed Instance Group ─
-
-resource "random_id" "deploy_nonce" {
-  byte_length = 4
-}
+# ─── Service Account + IAM ──────────────────
 
 resource "google_service_account" "app" {
   account_id   = "rkf-${var.environment}-app"
@@ -290,6 +258,8 @@ resource "google_project_iam_member" "app_secret_accessor" {
   role    = "roles/secretmanager.secretAccessor"
   member  = "serviceAccount:${google_service_account.app.email}"
 }
+
+# ─── Secrets ────────────────────────────────
 
 resource "google_secret_manager_secret" "db_password" {
   secret_id = "rkf-${var.environment}-db-password"
@@ -342,98 +312,99 @@ resource "google_secret_manager_secret_version" "redis_auth" {
   secret_data = google_redis_instance.redis.auth_string
 }
 
-locals {
-  startup_script = <<-EOT
-    #!/bin/bash
-    set -euo pipefail
+# ─── Serverless VPC Access (for private IP DB/Redis) ───────────────
 
-    WEB_IMAGE="${var.web_container_image}"
-    API_IMAGE="${var.api_container_image}"
-    DB_PASSWORD_SECRET="${google_secret_manager_secret.db_password.secret_id}"
-    JWT_SECRET_SECRET="${google_secret_manager_secret.jwt_secret.secret_id}"
-    REDIS_AUTH_SECRET="${google_secret_manager_secret.redis_auth.secret_id}"
+resource "google_vpc_access_connector" "run" {
+  name          = "rkf-${var.environment}-run-conn"
+  region        = var.gcp_region
+  network       = google_compute_network.vpc.name
+  ip_cidr_range = var.run_connector_cidr
 
-    # Configure Docker auth when Artifact Registry images are used.
-    if [[ "$API_IMAGE" == *".pkg.dev/"* || "$WEB_IMAGE" == *".pkg.dev/"* ]]; then
-      gcloud auth configure-docker --quiet
-    fi
-
-    docker rm -f rkf-web rkf-api || true
-
-    docker pull "$API_IMAGE"
-    docker pull "$WEB_IMAGE"
-
-    DB_PASSWORD="$(gcloud secrets versions access latest --secret="$DB_PASSWORD_SECRET")"
-    JWT_SECRET="$(gcloud secrets versions access latest --secret="$JWT_SECRET_SECRET")"
-    REDIS_AUTH="$(gcloud secrets versions access latest --secret="$REDIS_AUTH_SECRET")"
-
-    DATABASE_URL="postgresql://${google_sql_user.rkf_admin.name}:$DB_PASSWORD@${google_sql_database_instance.postgres.private_ip_address}:5432/${google_sql_database.rkf.name}"
-    REDIS_URL="redis://:$REDIS_AUTH@${google_redis_instance.redis.host}:${google_redis_instance.redis.port}"
-
-    docker run -d \
-      --name rkf-api \
-      --restart always \
-      -p ${local.api_port}:${local.api_port} \
-      -e NODE_ENV=production \
-      -e HOST=0.0.0.0 \
-      -e PORT=${local.api_port} \
-      -e LOG_LEVEL=info \
-      -e DATABASE_URL="$DATABASE_URL" \
-      -e REDIS_URL="$REDIS_URL" \
-      -e JWT_SECRET="$JWT_SECRET" \
-      -e CORS_ORIGIN='${local.app_origin}' \
-      "$API_IMAGE"
-
-    until wget -qO- "http://127.0.0.1:${local.api_port}/health" >/dev/null; do
-      sleep 2
-    done
-
-    docker run -d \
-      --name rkf-web \
-      --restart always \
-      -p ${local.web_port}:${local.web_port} \
-      "$WEB_IMAGE"
-  EOT
+  depends_on = [google_project_service.services]
 }
 
-resource "google_compute_instance_template" "app" {
-  name_prefix    = "rkf-${var.environment}-tpl-"
-  machine_type   = "e2-standard-2"
-  can_ip_forward = false
+# ─── Cloud Run (multi-container, single public URL) ────────────────
 
-  tags = [local.instance_tag]
+resource "google_cloud_run_v2_service" "app" {
+  name     = "rkf-${var.environment}"
+  location = var.gcp_region
+  ingress  = "INGRESS_TRAFFIC_ALL"
 
-  disk {
-    source_image = "projects/cos-cloud/global/images/family/cos-stable"
-    auto_delete  = true
-    boot         = true
-  }
+  template {
+    service_account = google_service_account.app.email
 
-  network_interface {
-    subnetwork = google_compute_subnetwork.primary.id
-  }
+    vpc_access {
+      connector = google_vpc_access_connector.run.id
+      egress    = "PRIVATE_RANGES_ONLY"
+    }
 
-  metadata = {
-    enable-oslogin         = "TRUE"
-    block-project-ssh-keys = "TRUE"
-  }
+    scaling {
+      min_instance_count = var.min_instances
+      max_instance_count = var.max_instances
+    }
 
-  metadata_startup_script = local.startup_script
+    # Ingress container
+    containers {
+      name  = "web"
+      image = var.web_container_image
 
-  service_account {
-    email  = google_service_account.app.email
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-  }
+      ports {
+        container_port = local.web_port
+      }
+    }
 
-  scheduling {
-    automatic_restart   = true
-    on_host_maintenance = "MIGRATE"
-  }
+    # Sidecar API container (reachable via localhost from nginx)
+    containers {
+      name  = "api"
+      image = var.api_container_image
 
-  shielded_instance_config {
-    enable_secure_boot          = true
-    enable_vtpm                 = true
-    enable_integrity_monitoring = true
+      ports {
+        container_port = local.api_port
+      }
+
+      env {
+        name  = "NODE_ENV"
+        value = "production"
+      }
+
+      env {
+        name  = "HOST"
+        value = "0.0.0.0"
+      }
+
+      env {
+        name  = "PORT"
+        value = tostring(local.api_port)
+      }
+
+      env {
+        name  = "LOG_LEVEL"
+        value = "info"
+      }
+
+      env {
+        name  = "DATABASE_URL"
+        value = "postgresql://${google_sql_user.rkf_admin.name}:${var.db_password}@${google_sql_database_instance.postgres.private_ip_address}:5432/${google_sql_database.rkf.name}"
+      }
+
+      env {
+        name  = "REDIS_URL"
+        value = "redis://:${google_redis_instance.redis.auth_string}@${google_redis_instance.redis.host}:${google_redis_instance.redis.port}"
+      }
+
+      env {
+        name  = "JWT_SECRET"
+        value = var.jwt_secret
+      }
+
+      dynamic "env" {
+        for_each = var.cors_origin == null ? [] : [var.cors_origin]
+        content {
+          name  = "CORS_ORIGIN"
+          value = env.value
+        }
+      }
+    }
   }
 
   depends_on = [
@@ -444,158 +415,23 @@ resource "google_compute_instance_template" "app" {
     google_secret_manager_secret_version.db_password,
     google_secret_manager_secret_version.jwt_secret,
     google_secret_manager_secret_version.redis_auth,
-    google_compute_router_nat.nat,
   ]
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
-resource "google_compute_health_check" "web" {
-  name = "rkf-${var.environment}-web-health"
+resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
+  project  = var.project_id
+  location = var.gcp_region
+  name     = google_cloud_run_v2_service.app.name
 
-  http_health_check {
-    port         = local.web_port
-    request_path = "/health"
-  }
-}
-
-resource "google_compute_region_instance_group_manager" "app" {
-  name               = "rkf-${var.environment}-mig"
-  base_instance_name = "rkf-${var.environment}-app"
-  region             = var.gcp_region
-
-  version {
-    instance_template = google_compute_instance_template.app.id
-    name              = "v${random_id.deploy_nonce.hex}"
-  }
-
-  target_size = 2
-
-  named_port {
-    name = "http"
-    port = local.web_port
-  }
-
-  auto_healing_policies {
-    health_check      = google_compute_health_check.web.id
-    initial_delay_sec = 180
-  }
-}
-
-resource "google_compute_region_autoscaler" "app" {
-  name   = "rkf-${var.environment}-autoscaler"
-  target = google_compute_region_instance_group_manager.app.id
-  region = var.gcp_region
-
-  autoscaling_policy {
-    min_replicas    = 2
-    max_replicas    = 6
-    cooldown_period = 90
-
-    cpu_utilization {
-      target = 0.65
-    }
-  }
-}
-
-# ─── HTTPS Load Balancer + Managed TLS ──────
-
-resource "google_compute_backend_service" "web" {
-  name                  = "rkf-${var.environment}-web-backend"
-  protocol              = "HTTP"
-  port_name             = "http"
-  timeout_sec           = 30
-  load_balancing_scheme = "EXTERNAL_MANAGED"
-  health_checks         = [google_compute_health_check.web.id]
-
-  backend {
-    group           = google_compute_region_instance_group_manager.app.instance_group
-    balancing_mode  = "UTILIZATION"
-    capacity_scaler = 1.0
-  }
-}
-
-resource "google_compute_managed_ssl_certificate" "web" {
-  name = "rkf-${var.environment}-cert"
-
-  managed {
-    domains = [var.domain_name]
-  }
-}
-
-resource "google_compute_url_map" "https" {
-  name            = "rkf-${var.environment}-https-map"
-  default_service = google_compute_backend_service.web.id
-}
-
-resource "google_compute_target_https_proxy" "web" {
-  name             = "rkf-${var.environment}-https-proxy"
-  url_map          = google_compute_url_map.https.id
-  ssl_certificates = [google_compute_managed_ssl_certificate.web.id]
-}
-
-resource "google_compute_global_address" "app" {
-  name = "rkf-${var.environment}-lb-ip"
-}
-
-resource "google_compute_global_forwarding_rule" "https" {
-  name                  = "rkf-${var.environment}-https-fr"
-  load_balancing_scheme = "EXTERNAL_MANAGED"
-  ip_address            = google_compute_global_address.app.id
-  port_range            = "443"
-  target                = google_compute_target_https_proxy.web.id
-}
-
-resource "google_compute_url_map" "http_redirect" {
-  name = "rkf-${var.environment}-http-redirect"
-
-  default_url_redirect {
-    https_redirect = true
-    strip_query    = false
-  }
-}
-
-resource "google_compute_target_http_proxy" "redirect" {
-  name    = "rkf-${var.environment}-http-proxy"
-  url_map = google_compute_url_map.http_redirect.id
-}
-
-resource "google_compute_global_forwarding_rule" "http" {
-  name                  = "rkf-${var.environment}-http-fr"
-  load_balancing_scheme = "EXTERNAL_MANAGED"
-  ip_address            = google_compute_global_address.app.id
-  port_range            = "80"
-  target                = google_compute_target_http_proxy.redirect.id
-}
-
-# ─── DNS ────────────────────────────────────
-
-resource "google_dns_record_set" "app" {
-  name         = "${var.domain_name}."
-  managed_zone = var.dns_managed_zone
-  type         = "A"
-  ttl          = 300
-
-  rrdatas = [google_compute_global_address.app.address]
+  role   = "roles/run.invoker"
+  member = "allUsers"
 }
 
 # ─── Outputs ───────────────────────────────
 
-output "app_url" {
-  description = "Primary application URL."
-  value       = "https://${var.domain_name}"
-}
-
-output "load_balancer_ip" {
-  description = "Global load balancer public IP."
-  value       = google_compute_global_address.app.address
-}
-
-output "instance_group" {
-  description = "Managed instance group name."
-  value       = google_compute_region_instance_group_manager.app.name
+output "service_url" {
+  description = "Public Cloud Run URL (built-in GCP domain)."
+  value       = google_cloud_run_v2_service.app.uri
 }
 
 output "sql_instance_connection_name" {
@@ -603,8 +439,8 @@ output "sql_instance_connection_name" {
   value       = google_sql_database_instance.postgres.connection_name
 }
 
-output "rds_endpoint" {
-  description = "PostgreSQL endpoint (Cloud SQL private IP)."
+output "postgres_private_ip" {
+  description = "PostgreSQL private IP."
   value       = google_sql_database_instance.postgres.private_ip_address
   sensitive   = true
 }

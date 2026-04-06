@@ -191,6 +191,9 @@ export interface Team {
   id: string;
   name: string;
   transport?: string;
+  gear?: string[];
+  contactPhone?: string | null;
+  contactRadio?: string | null;
   currentPosition?: GeoPoint | null;
 }
 

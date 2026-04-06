@@ -122,6 +122,9 @@ export async function incidentRoutes(app: FastifyInstance) {
     if (!canAccessEvent(user, eventId)) {
       return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
+    if (!body.location) {
+      return reply.code(400).send({ error: 'Mangler lokasjon' });
+    }
 
     // Deduplicate by clientId
     if (body.clientId) {
@@ -145,7 +148,7 @@ export async function incidentRoutes(app: FastifyInstance) {
         type: body.type as typeof incidents.$inferInsert['type'],
         source,
         status: source === 'coordinator' ? 'dispatched' : 'on_scene',
-        location: body.location ?? { lat: 59.9139, lng: 10.7522 },
+        location: body.location,
         locationContext: body.locationContext,
         acvpu: body.acvpu as typeof incidents.$inferInsert['acvpu'],
         vitals: body.vitals,

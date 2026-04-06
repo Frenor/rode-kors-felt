@@ -111,7 +111,7 @@ class ApiClient {
       role: string;
       eventId: string;
       eventName: string;
-      teams: Array<{ id: string; name: string }>;
+      teams: Array<{ id: string; name: string; transport?: string }>;
     }>('/auth/code', {
       method: 'POST',
       body: JSON.stringify({ code }),
@@ -243,6 +243,32 @@ class ApiClient {
     });
   }
 
+  async getTeamProfile(teamId: string) {
+    if (DEMO) {
+      // In demo mode return the team from the demo store if available
+      const event = await demoStore.getEvent('demo-event').catch(() => null);
+      const team = (event?.teams ?? []).find((t: any) => t.id === teamId);
+      return { team: { id: teamId, gear: team?.gear ?? [], contactPhone: null, contactRadio: null } };
+    }
+    return this.request<{ team: { id: string; gear: string[]; contactPhone: string | null; contactRadio: string | null } }>(`/teams/${teamId}`);
+  }
+
+  async patchTeamProfile(teamId: string, data: { gear?: string[]; contactPhone?: string | null; contactRadio?: string | null }) {
+    if (DEMO) return { team: { id: teamId, ...data } };
+    return this.request<{ team: { id: string; gear: string[]; contactPhone: string | null; contactRadio: string | null } }>(`/teams/${teamId}/profile`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async patchTeamTransport(teamId: string, transport: string) {
+    if (DEMO) return { team: { id: teamId, transport } };
+    return this.request<{ team: { id: string; transport: string } }>(`/teams/${teamId}/transport`, {
+      method: 'PATCH',
+      body: JSON.stringify({ transport }),
+    });
+  }
+
   async getTeamWorkspace(teamId: string) {
     if (DEMO) return demoStore.getTeamWorkspace(teamId);
     return this.request<TeamWorkspaceResponse>(`/teams/${teamId}/workspace`);
@@ -270,14 +296,32 @@ class ApiClient {
   }
 
   // Patients
-  async getPatients(eventId: string) {
+  async getPatients(eventId: string, opts?: { assignedTeamId?: string }) {
     if (DEMO) return demoStore.getPatients(eventId);
-    return this.request<{ patients: any[] }>(`/patients?eventId=${eventId}`);
+    const params = new URLSearchParams({ eventId });
+    if (opts?.assignedTeamId) params.set('assignedTeamId', opts.assignedTeamId);
+    return this.request<{ patients: any[] }>(`/patients?${params}`);
   }
 
   async createPatient(data: Record<string, unknown>) {
     if (DEMO) return demoStore.createPatient(data);
     return this.request<{ patient: any }>('/patients', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async createFieldPatient(eventId: string, data: {
+    label: string;
+    triageStatus?: string | null;
+    description?: string | null;
+    positionText?: string | null;
+    lat?: number | null;
+    lon?: number | null;
+    assignedTeamId?: string | null;
+  }) {
+    if (DEMO) return demoStore.createPatient({ ...data, eventId });
+    return this.request<{ patient: any }>(`/events/${eventId}/patients`, {
       method: 'POST',
       body: JSON.stringify(data),
     });

@@ -64,6 +64,10 @@ export async function runMigrations(): Promise<void> {
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
       DO $$ BEGIN
+        CREATE TYPE field_triage_status AS ENUM ('green', 'yellow', 'red', 'black');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$ BEGIN
         CREATE TYPE triage_tag AS ENUM ('immediate', 'delayed', 'minor', 'expectant');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
@@ -233,6 +237,17 @@ export async function runMigrations(): Promise<void> {
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS birth_date DATE;
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS placement_type VARCHAR(16);
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS placement_number VARCHAR(20);
+
+      ALTER TABLE teams ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(50);
+      ALTER TABLE teams ADD COLUMN IF NOT EXISTS contact_radio VARCHAR(50);
+
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS label VARCHAR(200);
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS triage_status field_triage_status;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS description TEXT;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS position_text TEXT;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS lat REAL;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS lon REAL;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS assigned_team_id UUID REFERENCES teams(id) ON DELETE SET NULL;
     `);
 
     await client.query(`

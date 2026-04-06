@@ -12,7 +12,7 @@ import {
 import type { SickBayPatient, MedicationRecord, SickbayIncomingItem } from '../lib/types';
 import { SickBayHeader } from './SickBay/SickBayHeader';
 import { PatientIntakeModal, type IntakeFormShape } from './SickBay/PatientIntakeModal';
-import { SBARHandoverModal, type SbarFormShape } from './SickBay/SBARHandoverModal';
+import { PatientDischargeModal, type DischargeFormShape, EMPTY_DISCHARGE_FORM, buildDischargeNote } from './SickBay/PatientDischargeModal';
 import { AmkBriefModal } from './SickBay/AmkBriefModal';
 import { PatientCard } from './SickBay/PatientCard';
 import { IncomingCriticalPanel } from './SickBay/IncomingCriticalPanel';
@@ -49,18 +49,10 @@ export function SickBayDashboard() {
     assignedClinician: '',
   });
 
-  const [sbarPatient, setSbarPatient] = useState<SickBayPatient | null>(null);
+  const [dischargeTarget, setDischargeTarget] = useState<{ patient: SickBayPatient; targetStatus: 'discharged' | 'transferred' } | null>(null);
+  const [dischargeForm, setDischargeForm] = useState<DischargeFormShape>(EMPTY_DISCHARGE_FORM);
+  const [dischargeSubmitting, setDischargeSubmitting] = useState(false);
   const [amkPatient, setAmkPatient] = useState<SickBayPatient | null>(null);
-  const [sbarForm, setSbarForm] = useState<SbarFormShape>({
-    situation: '',
-    background: '',
-    assessment: '',
-    recommendation: '',
-    amkTidspunkt: '',
-    amkReferanse: '',
-    amkEta: '',
-    amkFølger: '',
-  });
 
   const [medications, setMedications] = useState<Record<string, MedicationRecord[]>>({});
   const [incomingItems, setIncomingItems] = useState<SickbayIncomingItem[]>([]);
@@ -85,12 +77,19 @@ export function SickBayDashboard() {
     if (!eventId) return;
     Promise.all([
       api.getPatients(eventId),
-      api.getSickbayIncoming(eventId).catch(() => ({ items: [] as SickbayIncomingItem[] })),
+      api.getSickbayIncoming(eventId).catch((err) => {
+        console.error('[sickbay] Failed to load incoming items', err);
+        addToast({ message: 'Kunne ikke laste innkommende pasienter.', level: 'error', autoDismissMs: 8_000 });
+        return { items: [] as SickbayIncomingItem[] };
+      }),
     ]).then(([patientRes, incomingRes]) => {
       setPatients(patientRes.patients);
       setIncomingItems(incomingRes.items.filter((item) => item.critical));
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch((err) => {
+      console.error('[sickbay] Failed to load patients', err);
+      setLoading(false);
+    });
   };
 
   useEffect(() => {
@@ -177,21 +176,10 @@ export function SickBayDashboard() {
   };
 
   const handleStatusChange = async (patientId: string, status: string, patient?: SickBayPatient) => {
-    if (status === 'transferred' && patient) {
+    if ((status === 'discharged' || status === 'transferred') && patient) {
       setAmkPatient(null);
-      setSbarPatient(patient);
-      setSbarForm({
-        situation: patient.presentingComplaint || '',
-        background: '',
-        assessment: patient.latestVitals
-          ? `NEWS2 ${calculateNEWS2(patient.latestVitals).total}`
-          : '',
-        recommendation: '',
-        amkTidspunkt: new Date().toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }),
-        amkReferanse: '',
-        amkEta: '',
-        amkFølger: '',
-      });
+      setDischargeTarget({ patient, targetStatus: status });
+      setDischargeForm(EMPTY_DISCHARGE_FORM);
       return;
     }
     const res = await api.executePatientAction(patientId, { type: 'status.set', status });
@@ -200,32 +188,32 @@ export function SickBayDashboard() {
   };
 
   const handleOpenAmk = async (patient: SickBayPatient) => {
-    setSbarPatient(null);
+    setDischargeTarget(null);
     setAmkPatient(patient);
     await handleLoadMedications(patient.id);
   };
 
-  const handleSbarSubmit = async () => {
-    if (!sbarPatient) return;
-    const amkLines = [
-      sbarForm.amkTidspunkt ? `AMK-samtale: ${sbarForm.amkTidspunkt}` : null,
-      sbarForm.amkReferanse ? `Ambulansenummer/AMK-ref: ${sbarForm.amkReferanse}` : null,
-      sbarForm.amkEta ? `Forventet ankomst (ETA): ${sbarForm.amkEta}` : null,
-      sbarForm.amkFølger ? `Følger pasienten: ${sbarForm.amkFølger}` : null,
-    ].filter(Boolean);
-    const sbarNote = [
-      `S: ${sbarForm.situation}`,
-      `B: ${sbarForm.background}`,
-      `A: ${sbarForm.assessment}`,
-      `R: ${sbarForm.recommendation}`,
-      ...(amkLines.length > 0 ? ['', '--- AMK ---', ...amkLines] : []),
-    ].join('\n');
-    await api.addPatientNote(sbarPatient.id, sbarNote, 'SBAR-overlevering');
-    const statusAction = await api.executePatientAction(sbarPatient.id, { type: 'status.set', status: 'transferred' });
-    pushUndoToast('Pasienten er markert som overført. Du kan angre i 10 sekunder.', statusAction.action?.id);
-    setSbarPatient(null);
-    setSbarForm({ situation: '', background: '', assessment: '', recommendation: '', amkTidspunkt: '', amkReferanse: '', amkEta: '', amkFølger: '' });
-    fetchPatients();
+  const handleDischargeSubmit = async () => {
+    if (!dischargeTarget) return;
+    const { patient, targetStatus } = dischargeTarget;
+    setDischargeSubmitting(true);
+    try {
+      const noteText = buildDischargeNote(dischargeForm);
+      const noteAuthor = targetStatus === 'transferred' ? 'Overføring' : 'Utskrivelse';
+      await api.addPatientNote(patient.id, noteText, noteAuthor);
+      const statusAction = await api.executePatientAction(patient.id, { type: 'status.set', status: targetStatus });
+      const msg = targetStatus === 'transferred'
+        ? 'Pasienten er markert som overført. Du kan angre i 10 sekunder.'
+        : 'Pasienten er skrevet ut. Du kan angre i 10 sekunder.';
+      pushUndoToast(msg, statusAction.action?.id);
+      setDischargeTarget(null);
+      setDischargeForm(EMPTY_DISCHARGE_FORM);
+      fetchPatients();
+    } catch (err) {
+      console.error('[sickbay] Discharge/transfer submit failed', err);
+    } finally {
+      setDischargeSubmitting(false);
+    }
   };
 
   const handleLoadMedications = async (patientId: string) => {
@@ -376,13 +364,15 @@ export function SickBayDashboard() {
         />
       )}
 
-      {sbarPatient && (
-        <SBARHandoverModal
-          patient={sbarPatient}
-          form={sbarForm}
-          onChange={setSbarForm}
-          onSubmit={handleSbarSubmit}
-          onClose={() => setSbarPatient(null)}
+      {dischargeTarget && (
+        <PatientDischargeModal
+          patient={dischargeTarget.patient}
+          targetStatus={dischargeTarget.targetStatus}
+          form={dischargeForm}
+          onChange={setDischargeForm}
+          onSubmit={handleDischargeSubmit}
+          onClose={() => setDischargeTarget(null)}
+          submitting={dischargeSubmitting}
         />
       )}
 
