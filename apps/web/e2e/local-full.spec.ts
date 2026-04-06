@@ -34,8 +34,7 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await selectTeamIfNeeded(page);
   const workspace = page.getByTestId('firstaid-patient-workspace');
   await expect(workspace).toBeVisible();
-  await expect(workspace.getByText('Aktiv pasient', { exact: true })).toBeVisible();
-  await expect(workspace.getByText('Overvåkede pasienter', { exact: true })).toBeVisible();
+  await expect(workspace.getByText('Egne pasienter', { exact: true })).toBeVisible();
   await expect(workspace.getByText('Utildelte pasienter', { exact: true })).toBeVisible();
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
 
@@ -98,8 +97,12 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await expect(amkDialog.getByText('Pasient med brystsmerter', { exact: true }).first()).toBeVisible();
   await amkDialog.getByRole('button', { name: 'Lukk' }).click();
   await expect(amkDialog).not.toBeVisible();
+  // Open the patient status dropdown to verify status-change options are available
+  await page.getByRole('button', { name: /Innkommende|I behandling|Observasjon/i }).first().click();
   await expect(page.getByTestId('status-btn-in_treatment').first()).toBeVisible();
   await expect(page.getByTestId('status-btn-observation').first()).toBeVisible();
+  // Close the status dropdown by pressing Escape
+  await page.keyboard.press('Escape');
 
   await loginAsCoordinator(page);
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
