@@ -21,7 +21,13 @@ type AuthUser = {
 };
 
 function getActor(user: AuthUser): string {
-  return user.sub ?? user.email ?? 'ukjent';
+  const actor = user.sub ?? user.email;
+  if (!actor) {
+    const err = new Error('Token mangler identitet') as Error & { statusCode: number };
+    err.statusCode = 401;
+    throw err;
+  }
+  return actor;
 }
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;

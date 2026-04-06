@@ -35,7 +35,13 @@ export function mapAction(row: typeof actionEvents.$inferSelect) {
 }
 
 function getActor(user: AuthUser): string {
-  return user.sub ?? user.email ?? 'unknown';
+  const actor = user.sub ?? user.email;
+  if (!actor) {
+    const err = new Error('Token mangler identitet') as Error & { statusCode: number };
+    err.statusCode = 401;
+    throw err;
+  }
+  return actor;
 }
 
 async function logAction(params: {
