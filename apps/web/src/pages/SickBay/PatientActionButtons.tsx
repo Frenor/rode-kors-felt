@@ -21,70 +21,57 @@ export function PatientActionButtons({
   onToggleHistory,
   onOpenAmk,
 }: PatientActionButtonsProps) {
+  const quickActionStyle = (active = false) => ({
+    minHeight: 36,
+    padding: '0 var(--space-3)',
+    borderRadius: 'var(--radius-full)',
+    border: `1px solid ${active ? 'var(--color-brand)' : 'var(--color-border)'}`,
+    background: active ? 'var(--color-brand-dim)' : 'transparent',
+    fontSize: 'var(--text-xs)',
+    fontFamily: 'var(--font-mono)',
+    color: active ? 'var(--color-text)' : 'var(--color-text-muted)',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  });
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-      <button
-        onClick={onOpenAmk}
-        data-testid="patient-ring-113"
-        className="touch-target"
-        style={{
-          minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-          border: '1px solid var(--color-status-critical)', background: 'var(--color-status-critical)',
-          fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'white', cursor: 'pointer',
-        }}
-      >
-        Ring 113
-      </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <button
+          onClick={onOpenAmk}
+          data-testid="patient-ring-113"
+          className="touch-target"
+          style={{
+            minHeight: 36,
+            padding: '0 var(--space-3)',
+            borderRadius: 'var(--radius-full)',
+            border: '1px solid var(--color-status-critical)',
+            background: 'var(--color-status-critical)',
+            fontSize: 'var(--text-xs)',
+            fontFamily: 'var(--font-mono)',
+            color: 'white',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Ring 113
+        </button>
 
-      <button
-        onClick={onToggleVitals}
-        className="touch-target"
-        style={{
-          minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-          border: '1px solid var(--color-border)', background: 'transparent',
-          fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', cursor: 'pointer',
-        }}
-      >
-        {showVitals ? '✕ Lukk' : '+ Vitale tegn'}
-      </button>
+        <button onClick={onToggleVitals} className="touch-target" style={quickActionStyle(showVitals)}>
+          {showVitals ? 'Lukk vitale' : 'Vitale tegn'}
+        </button>
 
-      <button
-        onClick={onToggleMedication}
-        className="touch-target"
-        style={{
-          minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-          border: '1px solid var(--color-border)', background: 'transparent',
-          fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', cursor: 'pointer',
-        }}
-      >
-        {showMeds ? '✕ Lukk' : '+ Medikament'}
-      </button>
+        <button onClick={onToggleMedication} className="touch-target" style={quickActionStyle(showMeds)}>
+          {showMeds ? 'Lukk medik.' : 'Medikament'}
+        </button>
 
-      <button
-        onClick={onToggleNote}
-        className="touch-target"
-        style={{
-          minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-          border: '1px solid var(--color-border)', background: 'transparent',
-          fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', cursor: 'pointer',
-        }}
-      >
-        {showNote ? '✕ Lukk' : '+ Notat'}
-      </button>
+        <button onClick={onToggleNote} className="touch-target" style={quickActionStyle(showNote)}>
+          {showNote ? 'Lukk notat' : 'Notat'}
+        </button>
 
-      <button
-        onClick={onToggleHistory}
-        className="touch-target"
-        style={{
-          minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-          border: `1px solid ${showHistory ? 'var(--color-brand)' : 'var(--color-border)'}`,
-          background: showHistory ? 'var(--color-brand-dim)' : 'transparent',
-          fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', cursor: 'pointer',
-        }}
-      >
-        Logg
-      </button>
-
+        <button onClick={onToggleHistory} className="touch-target" style={quickActionStyle(showHistory)}>
+          Logg
+        </button>
+      </div>
     </div>
   );
 }

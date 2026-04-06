@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react-swc';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
 
+const apiProxyTarget = process.env.VITE_API_PROXY_URL ?? process.env.VITE_API_URL ?? 'http://localhost:4000';
+const wsProxyTarget = process.env.VITE_WS_PROXY_URL
+  ?? apiProxyTarget.replace(/^http/i, 'ws');
+
 export default defineConfig({
   base: process.env.VITE_BASE_PATH ?? '/',
   plugins: [
@@ -55,11 +59,11 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: apiProxyTarget,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:4000',
+        target: wsProxyTarget,
         ws: true,
       },
     },

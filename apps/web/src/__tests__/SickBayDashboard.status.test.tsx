@@ -223,6 +223,7 @@ describe('Status transition buttons — valid next states', () => {
     const { patient } = await renderWithPatient('incoming');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
 
+    expect(within(container).getByText('Aktiv: Innkommende')).toBeInTheDocument();
     expect(within(container).getByTestId('status-btn-in_treatment')).toBeInTheDocument();
     expect(within(container).getByTestId('status-btn-observation')).toBeInTheDocument();
     expect(within(container).queryByTestId('status-btn-discharged')).not.toBeInTheDocument();

@@ -36,6 +36,7 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
         <div style={{
           background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
           padding: 'var(--space-6)', maxWidth: 480, width: '100%',
+          maxHeight: 'calc(100dvh - var(--space-8))', overflowY: 'auto',
         }}>
           <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
             Ny pasient
