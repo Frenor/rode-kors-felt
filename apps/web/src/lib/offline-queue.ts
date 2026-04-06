@@ -38,6 +38,14 @@ export async function getPendingItems(): Promise<QueuedIncident[]> {
   return offlineQueueDb.queue.where('status').equals('pending').toArray();
 }
 
+export async function getRetryableItems(): Promise<QueuedIncident[]> {
+  const [pending, failed] = await Promise.all([
+    offlineQueueDb.queue.where('status').equals('pending').toArray(),
+    offlineQueueDb.queue.where('status').equals('failed').toArray(),
+  ]);
+  return [...pending, ...failed].sort((a, b) => a.queuedAt.localeCompare(b.queuedAt));
+}
+
 export async function markSyncing(clientId: string) {
   await offlineQueueDb.queue.update(clientId, { status: 'syncing' });
 }
