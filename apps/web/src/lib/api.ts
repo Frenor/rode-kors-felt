@@ -246,9 +246,9 @@ class ApiClient {
   async getTeamProfile(teamId: string) {
     if (DEMO) {
       // In demo mode return the team from the demo store if available
-      const event = await demoStore.getEvent('demo-event').catch(() => null);
-      const team = (event?.teams ?? []).find((t: any) => t.id === teamId);
-      return { team: { id: teamId, gear: team?.gear ?? [], contactPhone: null, contactRadio: null } };
+      const event = demoStore.getEvent('demo-event');
+      const team = (event.teams as any[]).find((t) => t.id === teamId);
+      return { team: { id: teamId, gear: (team?.gear as string[] | undefined) ?? [], contactPhone: null, contactRadio: null } };
     }
     return this.request<{ team: { id: string; gear: string[]; contactPhone: string | null; contactRadio: string | null } }>(`/teams/${teamId}`);
   }

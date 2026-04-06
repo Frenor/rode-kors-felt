@@ -8,7 +8,6 @@ import {
   markSyncing,
   offlineQueueDb,
   removeItem,
-  useLiveQueueCount,
 } from '../lib/offline-queue';
 
 describe('offline incident queue', () => {
@@ -72,7 +71,7 @@ describe('offline incident queue', () => {
     await enqueue({ clientId: 'inc-2', type: 'medical' });
     await markFailed('inc-2');
 
-    const count = await useLiveQueueCount();
+    const count = (await getPendingItems()).length;
     expect(count).toBe(1);
   });
 });

@@ -330,7 +330,7 @@ export function CoordinatorDashboard() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      addToast({ message: 'Nedlasting av rapport feilet.', level: 'error', autoDismissMs: 6_000 });
+      addToast({ message: 'Nedlasting av rapport feilet.', level: 'urgent', autoDismissMs: 6_000 });
       console.error('[coordinator] Report download failed', err);
     }
   };

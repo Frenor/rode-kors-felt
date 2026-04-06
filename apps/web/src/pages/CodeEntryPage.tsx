@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
+import type { TeamTransport } from '../stores/auth';
 import { api } from '../lib/api';
 
 export function CodeEntryPage() {
@@ -25,7 +26,7 @@ export function CodeEntryPage() {
         role: res.role,
         eventId: res.eventId,
         eventName: res.eventName,
-        teams: res.teams,
+        teams: res.teams as Array<{ id: string; name: string; transport?: TeamTransport }>,
       });
       const dest =
         res.role === 'sickbay' ? '/sickbay' :

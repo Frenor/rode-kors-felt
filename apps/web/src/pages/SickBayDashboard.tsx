@@ -79,7 +79,7 @@ export function SickBayDashboard() {
       api.getPatients(eventId),
       api.getSickbayIncoming(eventId).catch((err) => {
         console.error('[sickbay] Failed to load incoming items', err);
-        addToast({ message: 'Kunne ikke laste innkommende pasienter.', level: 'error', autoDismissMs: 8_000 });
+        addToast({ message: 'Kunne ikke laste innkommende pasienter.', level: 'urgent', autoDismissMs: 8_000 });
         return { items: [] as SickbayIncomingItem[] };
       }),
     ]).then(([patientRes, incomingRes]) => {
