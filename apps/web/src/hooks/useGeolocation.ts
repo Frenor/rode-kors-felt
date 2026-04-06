@@ -4,12 +4,12 @@
 
 import { useState, useEffect } from 'react';
 
-export interface GeoPosition {
+interface GeoPosition {
   lat: number;
   lng: number;
 }
 
-export type GeolocationStatus = 'idle' | 'acquiring' | 'ok' | 'denied' | 'unavailable';
+type GeolocationStatus = 'idle' | 'acquiring' | 'ok' | 'denied' | 'unavailable';
 
 export function useGeolocation(): { position: GeoPosition | null; status: GeolocationStatus } {
   const [position, setPosition] = useState<GeoPosition | null>(null);

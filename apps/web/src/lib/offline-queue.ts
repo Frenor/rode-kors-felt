@@ -49,8 +49,3 @@ export async function markFailed(clientId: string) {
 export async function removeItem(clientId: string) {
   await offlineQueueDb.queue.delete(clientId);
 }
-
-export function useLiveQueueCount() {
-  // Returns a reactive count via Dexie liveQuery — use with useLiveQuery from dexie-react-hooks
-  return offlineQueueDb.queue.where('status').equals('pending').count();
-}

@@ -14,13 +14,13 @@ type SbarInput = {
   latestNote?: string;
 };
 
-export type AmkAssistInput = {
+type AmkAssistInput = {
   presentingComplaint?: string | null;
   latestVitals?: LatestVitalsInput | null;
   sbar?: SbarInput;
 };
 
-export type AmkAssistProvenance = {
+type AmkAssistProvenance = {
   source: 'provider' | 'fallback_template';
   model: string;
   fallbackUsed: boolean;
