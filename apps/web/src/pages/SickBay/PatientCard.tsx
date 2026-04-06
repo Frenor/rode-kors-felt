@@ -91,8 +91,8 @@ export function PatientCard({
     'observation:in_treatment': { label: 'Start behandling', icon: '▶' },
     'in_treatment:discharged': { label: 'Skriv ut', icon: '✓' },
     'observation:discharged': { label: 'Skriv ut', icon: '✓' },
-    'in_treatment:transferred': { label: 'Overfør (SBAR)', icon: '⇢' },
-    'observation:transferred': { label: 'Overfør (SBAR)', icon: '⇢' },
+    'in_treatment:transferred': { label: 'Overfør', icon: '⇢' },
+    'observation:transferred': { label: 'Overfør', icon: '⇢' },
     'discharged:observation': { label: 'Observasjon', icon: '↺' },
     'transferred:observation': { label: 'Observasjon', icon: '↺' },
     'discharged:in_treatment': { label: 'Start behandling', icon: '↺' },
@@ -303,7 +303,7 @@ export function PatientCard({
                       role="option"
                       data-testid={`status-btn-${nextStatus}`}
                       aria-selected={false}
-                      aria-label={`${copy?.label ?? statusLabels[nextStatus]}${isTransfer ? ' (krever SBAR)' : ''}`}
+                      aria-label={copy?.label ?? statusLabels[nextStatus]}
                       onClick={() => { onStatusChange(nextStatus); setShowStatusMenu(false); }}
                       style={{
                         display: 'flex', width: '100%', alignItems: 'center', gap: 8,
