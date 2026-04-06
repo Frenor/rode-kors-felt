@@ -18,6 +18,7 @@ import {
 import { api } from '../lib/api';
 import type { TeamOperationalStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
 import type { TeamTransport } from '../stores/auth';
+import { VitalsEntryForm, type VitalsFormShape } from './SickBay/VitalsEntryForm';
 
 export function FirstAiderDashboard() {
   const { eventId, teams, updateTeamTransport } = useAuthStore();
@@ -27,6 +28,7 @@ export function FirstAiderDashboard() {
   const latestStatusByTeam = useFirstAidWorkspaceStore((s) => s.latestStatusByTeam);
   const lastSyncedAtByTeam = useFirstAidWorkspaceStore((s) => s.lastSyncedAtByTeam);
   const setActivePatient = useFirstAidWorkspaceStore((s) => s.setActivePatient);
+  const clearActivePatient = useFirstAidWorkspaceStore((s) => s.clearActivePatient);
   const setTeamStatus = useFirstAidWorkspaceStore((s) => s.setTeamStatus);
   const setTeamSyncedAt = useFirstAidWorkspaceStore((s) => s.setTeamSyncedAt);
   const [incidents, setIncidents] = useState<any[]>([]);
@@ -53,6 +55,7 @@ export function FirstAiderDashboard() {
   const [showChat, setShowChat] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [sectorAssignments, setSectorAssignments] = useState<Record<string, { sector: string; assignedAt: string }>>({});
+  const [vitalsForm, setVitalsForm] = useState<VitalsFormShape>({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
 
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
@@ -327,7 +330,14 @@ export function FirstAiderDashboard() {
     ...(workspace?.monitoredPatients ?? []),
     ...(workspace?.unassignedPatients ?? []),
   ];
-  const monitoredPatients = [...(workspace?.assignedPatients ?? []), ...(workspace?.monitoredPatients ?? [])];
+  const monitoredPatients = (workspace?.monitoredPatients ?? []).filter(
+    (p) => !assignedPatients.some((a) => a.id === p.id),
+  );
+
+  // Reset vitals form whenever the active patient changes
+  useEffect(() => {
+    setVitalsForm({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
+  }, [activePatientId]);
 
   const queueAndSyncTeamAction = async (teamId: string, payload: QueuedTeamActionPayload) => {
     await enqueueTeamAction(teamId, payload);
@@ -367,6 +377,46 @@ export function FirstAiderDashboard() {
         clientActionId: crypto.randomUUID(),
       });
     }
+  };
+
+  const handleDeactivatePatient = async () => {
+    if (!eventId || !selectedTeam || !activePatientId) return;
+    const patientId = activePatientId;
+    clearActivePatient(eventId, selectedTeam);
+    await queueAndSyncTeamAction(selectedTeam, {
+      type: 'team.monitor_stopped',
+      patientId,
+      clientActionId: crypto.randomUUID(),
+    });
+  };
+
+  const handleRecordVitals = async () => {
+    if (!activePatientId) return;
+    const payload = {
+      pulse: vitalsForm.pulse ? parseInt(vitalsForm.pulse) : undefined,
+      spo2: vitalsForm.spo2 ? parseInt(vitalsForm.spo2) : undefined,
+      respiratoryRate: vitalsForm.rr ? parseInt(vitalsForm.rr) : undefined,
+      painScore: vitalsForm.pain ? parseInt(vitalsForm.pain) : undefined,
+      systolicBP: vitalsForm.bp ? parseInt(vitalsForm.bp) : undefined,
+      temperature: vitalsForm.temp ? parseFloat(vitalsForm.temp) : undefined,
+      acvpu: vitalsForm.acvpu || undefined,
+    };
+    await api.recordVitals(activePatientId, payload as Record<string, number | undefined>);
+    setVitalsForm({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
+  };
+
+  const handleReportToCoordinator = () => {
+    if (!activePatientId || !eventId) return;
+    const fullPatient = assignedPatients.find((p) => p.id === activePatientId);
+    const workspacePatient = allVisiblePatients.find((p) => p.id === activePatientId);
+    const patientLabel = (fullPatient as any)?.label || workspacePatient?.presentingComplaint || `Pasient ${activePatientId.slice(0, 8)}`;
+    const teamName = teams.find((t) => t.id === selectedTeam)?.name ?? 'Ukjent lag';
+    wsSend({
+      type: 'team.message',
+      eventId,
+      payload: { fromTeamId: selectedTeam ?? undefined, text: `${teamName} behandler: ${patientLabel}` },
+      timestamp: new Date().toISOString(),
+    });
   };
 
   const transportLabels: Record<TeamTransport, string> = {
@@ -536,23 +586,39 @@ export function FirstAiderDashboard() {
                       {p.description}
                     </div>
                   )}
-                  {p.lat != null && p.lon != null && (
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                    {p.lat != null && p.lon != null && (
+                      <button
+                        onClick={() => {
+                          const mode = TRANSPORT_TRAVEL_MODE[(teams.find((t) => t.id === selectedTeam)?.transport ?? 'foot') as TeamTransport];
+                          window.open(`https://maps.google.com/maps?daddr=${p.lat},${p.lon}&travelmode=${mode}`, '_blank', 'noopener');
+                        }}
+                        className="touch-target"
+                        style={{
+                          minHeight: 36, padding: '0 var(--space-3)',
+                          borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-brand)',
+                          background: 'transparent', color: 'var(--color-brand)',
+                          fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
+                        }}
+                      >
+                        Naviger hit
+                      </button>
+                    )}
                     <button
-                      onClick={() => {
-                        const mode = TRANSPORT_TRAVEL_MODE[(teams.find((t) => t.id === selectedTeam)?.transport ?? 'foot') as TeamTransport];
-                        window.open(`https://maps.google.com/maps?daddr=${p.lat},${p.lon}&travelmode=${mode}`, '_blank', 'noopener');
-                      }}
+                      onClick={() => handleSetActivePatient(p.id)}
                       className="touch-target"
                       style={{
-                        alignSelf: 'flex-start', minHeight: 36, padding: '0 var(--space-3)',
-                        borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-brand)',
-                        background: 'transparent', color: 'var(--color-brand)',
-                        fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
+                        minHeight: 36, padding: '0 var(--space-3)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: `1px solid ${activePatientId === p.id ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                        background: activePatientId === p.id ? 'var(--color-brand)' : 'transparent',
+                        color: activePatientId === p.id ? 'white' : 'var(--color-text)',
+                        fontSize: 'var(--text-xs)', fontWeight: 700, cursor: 'pointer',
                       }}
                     >
-                      Naviger hit
+                      {activePatientId === p.id ? 'Aktiv' : 'Sett aktiv'}
                     </button>
-                  )}
+                  </div>
                 </div>
               );
             })}
@@ -788,20 +854,65 @@ export function FirstAiderDashboard() {
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>Laster pasientarbeidsflate...</p>
           ) : (
             <>
-              <div style={{ padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-sunken)' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Aktiv pasient</div>
-                <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
-                  {activePatientId
-                    ? allVisiblePatients.find((patient) => patient.id === activePatientId)?.presentingComplaint ?? `Pasient ${activePatientId.slice(0, 8)}`
-                    : 'Ingen aktiv pasient'}
+              {activePatientId ? (
+                <section aria-labelledby="active-patient-heading" style={{
+                  borderRadius: 'var(--radius-md)',
+                  border: '2px solid var(--color-brand)',
+                  background: 'var(--color-brand-dim)',
+                  padding: 'var(--space-3)',
+                  display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+                    <div>
+                      <div style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)' }}>
+                        Aktiv pasient
+                      </div>
+                      <div id="active-patient-heading" style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
+                        {(assignedPatients.find((p) => p.id === activePatientId) as any)?.label
+                          || allVisiblePatients.find((p) => p.id === activePatientId)?.presentingComplaint
+                          || `Pasient ${activePatientId.slice(0, 8)}`}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleDeactivatePatient}
+                      style={{
+                        flexShrink: 0, padding: '4px var(--space-2)', borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-border)', background: 'transparent',
+                        color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)', cursor: 'pointer',
+                      }}
+                    >
+                      Lukk
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleReportToCoordinator}
+                    className="touch-target"
+                    style={{
+                      width: '100%', minHeight: 40, borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-brand)', background: 'transparent',
+                      color: 'var(--color-brand)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    Rapporter til koordinator
+                  </button>
+                  <VitalsEntryForm
+                    patientId={activePatientId}
+                    form={vitalsForm}
+                    onChange={setVitalsForm}
+                    onSubmit={handleRecordVitals}
+                  />
+                </section>
+              ) : (
+                <div style={{ padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-sunken)', fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+                  Ingen aktiv pasient – velg en fra listen over
                 </div>
-              </div>
+              )}
 
               <div data-testid="firstaid-patient-list" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Overvåkede pasienter</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Egne pasienter</div>
                 {monitoredPatients.length === 0 ? (
                   <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
-                    Ingen overvåkede pasienter ennå.
+                    Ingen egne pasienter ennå.
                   </p>
                 ) : (
                   monitoredPatients.map((patient) => (
