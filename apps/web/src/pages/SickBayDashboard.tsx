@@ -85,12 +85,19 @@ export function SickBayDashboard() {
     if (!eventId) return;
     Promise.all([
       api.getPatients(eventId),
-      api.getSickbayIncoming(eventId).catch(() => ({ items: [] as SickbayIncomingItem[] })),
+      api.getSickbayIncoming(eventId).catch((err) => {
+        console.error('[sickbay] Failed to load incoming items', err);
+        addToast({ message: 'Kunne ikke laste innkommende pasienter.', level: 'error', autoDismissMs: 8_000 });
+        return { items: [] as SickbayIncomingItem[] };
+      }),
     ]).then(([patientRes, incomingRes]) => {
       setPatients(patientRes.patients);
       setIncomingItems(incomingRes.items.filter((item) => item.critical));
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch((err) => {
+      console.error('[sickbay] Failed to load patients', err);
+      setLoading(false);
+    });
   };
 
   useEffect(() => {

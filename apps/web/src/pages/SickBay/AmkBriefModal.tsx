@@ -107,8 +107,10 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
         if (!active) return;
         setCallLogs(res.callLogs ?? []);
       })
-      .catch(() => {
+      .catch((err) => {
         if (!active) return;
+        console.error('[amk] Failed to load call logs', err);
+        setError('Kunne ikke laste AMK-logger.');
         setCallLogs([]);
       })
       .finally(() => {

@@ -155,7 +155,7 @@ export function CoordinatorDashboard() {
 
     api.getPatients(eventId).then((res) => {
       setFieldPatients(res.patients as FieldPatient[]);
-    }).catch(() => {});
+    }).catch((err) => console.error('[coordinator] Failed to load field patients', err));
   }, [eventId]);
 
   useEffect(() => {
@@ -329,8 +329,9 @@ export function CoordinatorDashboard() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      // silently fail — user will see nothing
+    } catch (err) {
+      addToast({ message: 'Nedlasting av rapport feilet.', level: 'error', autoDismissMs: 6_000 });
+      console.error('[coordinator] Report download failed', err);
     }
   };
 

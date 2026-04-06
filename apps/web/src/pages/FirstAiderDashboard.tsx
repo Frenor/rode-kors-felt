@@ -94,7 +94,7 @@ export function FirstAiderDashboard() {
     if (!eventId || !selectedTeam) { setAssignedPatients([]); return; }
     api.getPatients(eventId, { assignedTeamId: selectedTeam }).then((res) => {
       setAssignedPatients(res.patients ?? []);
-    }).catch(() => {});
+    }).catch((err) => console.error('[firstaid] Failed to load assigned patients', err));
   }, [eventId, selectedTeam]);
 
   useEffect(() => {
@@ -150,7 +150,7 @@ export function FirstAiderDashboard() {
       setTeamGear(res.team.gear ?? []);
       setContactPhone(res.team.contactPhone ?? '');
       setContactRadio(res.team.contactRadio ?? '');
-    }).catch(() => { /* ignore — fields start empty */ });
+    }).catch((err) => console.error('[firstaid] Failed to load team profile', err));
   }, [selectedTeam]);
 
   useEffect(() => {
@@ -229,11 +229,13 @@ export function FirstAiderDashboard() {
 
   const handleTransportChange = async (transport: TeamTransport) => {
     if (!selectedTeam) return;
+    const previous = (teams.find((t) => t.id === selectedTeam)?.transport ?? 'foot') as TeamTransport;
     updateTeamTransport(selectedTeam, transport);
     try {
       await api.patchTeamTransport(selectedTeam, transport);
-    } catch {
-      // silently ignore — local state already updated, will sync on next login
+    } catch (err) {
+      console.error('[firstaid] Failed to save transport type', err);
+      updateTeamTransport(selectedTeam, previous);
     }
   };
 
@@ -271,7 +273,8 @@ export function FirstAiderDashboard() {
         contactPhone: contactPhone.trim() || null,
         contactRadio: contactRadio.trim() || null,
       });
-    } catch {
+    } catch (err) {
+      console.error('[firstaid] Failed to save contact details', err);
       setContactsDirty(true);
     }
   };

@@ -275,7 +275,8 @@ export function IncidentForm() {
           setIndoorFloorId((prev) => prev || firstFloor.id);
           setIndoorZoneId((prev) => prev || firstZone?.id || '');
         }
-      } catch {
+      } catch (err) {
+        console.error('[incident-form] Failed to load indoor layout', err);
         if (active) setIndoorLayout(null);
       } finally {
         if (active) setIndoorLoading(false);
