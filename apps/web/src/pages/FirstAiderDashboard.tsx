@@ -20,6 +20,8 @@ import type { TeamOperationalStatus, TeamWorkspacePatient, TeamWorkspaceResponse
 import type { TeamTransport } from '../stores/auth';
 import { VitalsEntryForm, type VitalsFormShape } from './SickBay/VitalsEntryForm';
 
+type FirstAiderTab = 'pasienter' | 'hendelser' | 'lag' | 'chat';
+
 export function FirstAiderDashboard() {
   const { eventId, teams, updateTeamTransport } = useAuthStore();
   const selectedTeam = useFirstAidWorkspaceStore((s) => s.selectedTeamId);
@@ -53,7 +55,6 @@ export function FirstAiderDashboard() {
   const [messages, setMessages] = useState<Array<{ id: string; text: string; fromTeamId?: string; fromSelf: boolean; sentAt: string }>>([]);
   const [messageText, setMessageText] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
-  type FirstAiderTab = 'pasienter' | 'hendelser' | 'lag' | 'chat';
   const [activeTab, setActiveTab] = useState<FirstAiderTab>('pasienter');
   const [sectorAssignments, setSectorAssignments] = useState<Record<string, { sector: string; assignedAt: string }>>({});
   const [vitalsForm, setVitalsForm] = useState<VitalsFormShape>({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
@@ -1217,7 +1218,7 @@ export function FirstAiderDashboard() {
             overflow: 'hidden',
           }}>
             <div style={{
-              maxHeight: '60vh', overflowY: 'auto', padding: 'var(--space-3)',
+              maxHeight: 'calc(60vh - 64px)', overflowY: 'auto', padding: 'var(--space-3)',
               display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
             }}>
               {messages.length === 0 && (
@@ -1301,30 +1302,10 @@ export function FirstAiderDashboard() {
       >
         {(
           [
-            {
-              id: 'pasienter' as FirstAiderTab,
-              icon: '🫀',
-              label: 'Pasienter',
-              badge: patientBadgeCount,
-            },
-            {
-              id: 'hendelser' as FirstAiderTab,
-              icon: '🚨',
-              label: 'Hendelser',
-              badge: hendelseBadgeCount,
-            },
-            {
-              id: 'lag' as FirstAiderTab,
-              icon: '👥',
-              label: 'Lag',
-              badge: 0,
-            },
-            {
-              id: 'chat' as FirstAiderTab,
-              icon: '💬',
-              label: 'Chat',
-              badge: chatBadgeCount,
-            },
+            { id: 'pasienter', icon: '🫀', label: 'Pasienter', badge: patientBadgeCount },
+            { id: 'hendelser', icon: '🚨', label: 'Hendelser', badge: hendelseBadgeCount },
+            { id: 'lag',       icon: '👥', label: 'Lag',       badge: 0 },
+            { id: 'chat',      icon: '💬', label: 'Chat',      badge: chatBadgeCount },
           ] as const
         ).map((tab) => (
           <button
