@@ -17,10 +17,11 @@ type AuthUser = {
   eventId?: string;
   sub?: string;
   email?: string;
+  codeId?: string;
 };
 
 function getActor(user: AuthUser): string {
-  const actor = user.sub ?? user.email;
+  const actor = user.sub ?? user.email ?? (user.codeId ? `code:${user.codeId}` : undefined) ?? user.role;
   if (!actor) {
     const err = new Error('Token mangler identitet') as Error & { statusCode: number };
     err.statusCode = 401;

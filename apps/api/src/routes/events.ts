@@ -300,8 +300,9 @@ export async function eventRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = request.body as { mciActive: boolean; mciSectors?: string[] };
 
-    if (!user.email) {
-      return reply.code(401).send({ error: 'Token mangler e-post' });
+    const actor: string = user.email ?? user.sub ?? user.role;
+    if (!actor) {
+      return reply.code(401).send({ error: 'Token mangler identitet' });
     }
 
     const [existing] = await db.select().from(events).where(eq(events.id, id)).limit(1);
@@ -318,7 +319,7 @@ export async function eventRoutes(app: FastifyInstance) {
       ? await buildMciSummaryAttachment({
           eventId: id,
           eventName: existing.name,
-          generatedBy: user.email,
+          generatedBy: actor,
         })
       : null;
 
@@ -327,7 +328,7 @@ export async function eventRoutes(app: FastifyInstance) {
       .set({
         mciActive: body.mciActive,
         mciActivatedAt: body.mciActive ? (existing.mciActivatedAt ?? now) : null,
-        mciActivatedBy: body.mciActive ? (existing.mciActivatedBy ?? user.email) : null,
+        mciActivatedBy: body.mciActive ? (existing.mciActivatedBy ?? actor) : null,
         mciSectors: body.mciSectors ?? existing.mciSectors,
         mciSummaryHtml: summaryAttachment?.html ?? existing.mciSummaryHtml,
         mciSummaryGeneratedAt: summaryAttachment?.generatedAt ?? existing.mciSummaryGeneratedAt,
@@ -343,7 +344,7 @@ export async function eventRoutes(app: FastifyInstance) {
       eventId: id,
       payload: {
         mciActive: body.mciActive,
-        activatedBy: user.email,
+        activatedBy: actor,
         summaryGenerated: Boolean(summaryAttachment),
       },
       timestamp: now.toISOString(),

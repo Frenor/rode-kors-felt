@@ -8,6 +8,8 @@ import { broadcast } from './ws.js';
 type AuthUser = {
   sub?: string;
   email?: string;
+  codeId?: string;
+  role?: string;
   eventId?: string;
 };
 
@@ -35,7 +37,7 @@ export function mapAction(row: typeof actionEvents.$inferSelect) {
 }
 
 function getActor(user: AuthUser): string {
-  const actor = user.sub ?? user.email;
+  const actor = user.sub ?? user.email ?? (user.codeId ? `code:${user.codeId}` : undefined) ?? user.role;
   if (!actor) {
     const err = new Error('Token mangler identitet') as Error & { statusCode: number };
     err.statusCode = 401;
