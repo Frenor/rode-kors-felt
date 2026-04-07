@@ -211,28 +211,25 @@ export function AppShell({ children }: AppShellProps) {
           );
         })()}
 
-        {/* Theme toggle */}
-        <div role="group" aria-label="Temavalg" style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-          {(['light', 'auto', 'dark'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTheme(t)}
-              aria-pressed={theme === t}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 'var(--text-xs)',
-                padding: '4px 8px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)',
-                background: theme === t ? 'var(--color-surface-raised)' : 'transparent',
-                color: theme === t ? 'var(--color-text)' : 'var(--color-text-subtle)',
-                cursor: 'pointer',
-              }}
-            >
-              {t === 'light' ? '☀' : t === 'dark' ? '☾' : 'Auto'}
-            </button>
-          ))}
-        </div>
+        {/* Theme toggle — single cycling button */}
+        <button
+          onClick={() => setTheme(theme === 'light' ? 'auto' : theme === 'auto' ? 'dark' : 'light')}
+          aria-label={`Tema: ${theme === 'light' ? 'Lys' : theme === 'dark' ? 'Mørk' : 'Auto'} — klikk for å bytte`}
+          title={`Tema: ${theme === 'light' ? 'Lys' : theme === 'dark' ? 'Mørk' : 'Auto'}`}
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
+            padding: '4px 8px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-surface-raised)',
+            color: 'var(--color-text)',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          {theme === 'light' ? '☀' : theme === 'dark' ? '☾' : 'Auto'}
+        </button>
 
         {/* Logout */}
         <button
