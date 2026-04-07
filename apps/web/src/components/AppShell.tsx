@@ -112,10 +112,13 @@ export function AppShell({ children }: AppShellProps) {
           position: 'sticky',
           top: 0,
           zIndex: 'var(--z-sticky)',
+          overflow: 'hidden',
+          width: '100%',
+          boxSizing: 'border-box',
         }}
       >
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexShrink: 0 }}>
           <div
             aria-hidden="true"
             style={{
@@ -158,6 +161,10 @@ export function AppShell({ children }: AppShellProps) {
             fontSize: 'var(--text-xs)',
             color: 'var(--color-text-subtle)',
             marginLeft: 'var(--space-2)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            minWidth: 0,
           }}>
             {eventName}
           </span>
@@ -191,6 +198,7 @@ export function AppShell({ children }: AppShellProps) {
                 fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--text-xs)',
                 color,
+                flexShrink: 0,
               }}
             >
               <div style={{
@@ -204,7 +212,7 @@ export function AppShell({ children }: AppShellProps) {
         })()}
 
         {/* Theme toggle */}
-        <div role="group" aria-label="Temavalg" style={{ display: 'flex', gap: 2 }}>
+        <div role="group" aria-label="Temavalg" style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
           {(['light', 'auto', 'dark'] as const).map((t) => (
             <button
               key={t}
@@ -238,6 +246,7 @@ export function AppShell({ children }: AppShellProps) {
             background: 'transparent',
             color: 'var(--color-text-muted)',
             cursor: 'pointer',
+            flexShrink: 0,
           }}
         >
           Logg ut
