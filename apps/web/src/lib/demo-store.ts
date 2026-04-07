@@ -498,6 +498,9 @@ export const demoStore = {
         status: patient.status,
         presentingComplaint: patient.presentingComplaint ?? null,
         updatedAt: patient.updatedAt,
+        lat: null,
+        lon: null,
+        positionText: null,
       })),
       monitoredPatients: monitoredPatients.map((patient) => ({
         id: patient.id,
@@ -505,6 +508,9 @@ export const demoStore = {
         status: patient.status,
         presentingComplaint: patient.presentingComplaint ?? null,
         updatedAt: patient.updatedAt,
+        lat: null,
+        lon: null,
+        positionText: null,
       })),
       unassignedPatients: unassignedPatients.map((patient) => ({
         id: patient.id,
@@ -512,6 +518,9 @@ export const demoStore = {
         status: patient.status,
         presentingComplaint: patient.presentingComplaint ?? null,
         updatedAt: patient.updatedAt,
+        lat: null,
+        lon: null,
+        positionText: null,
       })),
       updatedAt: new Date().toISOString(),
     };
