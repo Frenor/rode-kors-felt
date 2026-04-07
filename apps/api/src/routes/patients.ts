@@ -22,8 +22,7 @@ type AuthUser = {
 };
 
 function getActor(user: AuthUser): string {
-  // Code-redeemed tokens (first_aider, sickbay) have codeId instead of sub/email
-  const actor = user.sub ?? user.email ?? (user.codeId ? `code:${user.codeId}` : undefined);
+  const actor = user.sub ?? user.email ?? (user.codeId ? `code:${user.codeId}` : undefined) ?? user.role;
   if (!actor) {
     const err = new Error('Token mangler identitet') as Error & { statusCode: number };
     err.statusCode = 401;
