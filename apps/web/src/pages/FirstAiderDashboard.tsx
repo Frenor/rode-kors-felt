@@ -428,7 +428,7 @@ export function FirstAiderDashboard() {
   };
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '6.25rem' }}>
+    <div data-testid="firstaid-patient-workspace" className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '6.25rem' }}>
       {/* Team selection */}
       {!selectedTeam && teams.length > 0 && (
         <div style={{ marginBottom: 'var(--space-6)' }}>
@@ -776,7 +776,7 @@ export function FirstAiderDashboard() {
               letterSpacing: 'var(--tracking-mono)', marginBottom: 'var(--space-3)',
             }}
           >
-            Tildelte pasienter ({combinedAssignedPatients.length})
+            Egne pasienter ({combinedAssignedPatients.length})
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {combinedAssignedPatients.map((p) => {

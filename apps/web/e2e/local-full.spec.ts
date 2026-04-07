@@ -36,7 +36,9 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await expect(workspace).toBeVisible();
   await expect(workspace.getByText('Egne pasienter', { exact: true })).toBeVisible();
   await expect(workspace.getByText('Utildelte pasienter', { exact: true })).toBeVisible();
+  await workspace.getByTestId('firstaid-field-status-pill').click();
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
+  await page.getByRole('button', { name: 'Avbryt' }).click();
 
   await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
   await page.waitForURL('**/firstaid/incident');

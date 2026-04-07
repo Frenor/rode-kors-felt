@@ -31,10 +31,11 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await selectTeamIfNeeded(page);
   const workspace = page.getByTestId('firstaid-patient-workspace');
   await expect(workspace).toBeVisible();
-  await expect(workspace.getByText('Aktiv pasient', { exact: true })).toBeVisible();
-  await expect(workspace.getByText('Overvåkede pasienter', { exact: true })).toBeVisible();
+  await expect(workspace.getByText('Egne pasienter', { exact: true })).toBeVisible();
   await expect(workspace.getByText('Utildelte pasienter', { exact: true })).toBeVisible();
+  await workspace.getByTestId('firstaid-field-status-pill').click();
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
+  await page.getByRole('button', { name: 'Avbryt' }).click();
   await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
   await page.waitForURL('**/firstaid/incident');
   await page.getByRole('button', { name: 'Medisinsk' }).click();
