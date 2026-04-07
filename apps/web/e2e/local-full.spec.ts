@@ -34,7 +34,7 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await selectTeamIfNeeded(page);
   const workspace = page.getByTestId('firstaid-patient-workspace');
   await expect(workspace).toBeVisible();
-  await expect(workspace.getByText('Egne pasienter', { exact: true })).toBeVisible();
+  await expect(workspace.getByText('Overvåkede pasienter', { exact: true })).toBeVisible();
   await expect(workspace.getByText('Utildelte pasienter', { exact: true })).toBeVisible();
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
 

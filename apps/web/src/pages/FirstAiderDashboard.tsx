@@ -854,65 +854,65 @@ export function FirstAiderDashboard() {
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>Laster pasientarbeidsflate...</p>
           ) : (
             <>
-              {activePatientId ? (
-                <section aria-labelledby="active-patient-heading" style={{
-                  borderRadius: 'var(--radius-md)',
-                  border: '2px solid var(--color-brand)',
-                  background: 'var(--color-brand-dim)',
-                  padding: 'var(--space-3)',
-                  display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                    <div>
-                      <div style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)' }}>
-                        Aktiv pasient
-                      </div>
+              <section aria-labelledby="active-patient-heading" style={{
+                borderRadius: 'var(--radius-md)',
+                border: `2px solid ${activePatientId ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                background: activePatientId ? 'var(--color-brand-dim)' : 'var(--color-surface-sunken)',
+                padding: 'var(--space-3)',
+                display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+              }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)' }}>
+                  Aktiv pasient
+                </div>
+                {activePatientId ? (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
                       <div id="active-patient-heading" style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
                         {(assignedPatients.find((p) => p.id === activePatientId) as any)?.label
                           || allVisiblePatients.find((p) => p.id === activePatientId)?.presentingComplaint
                           || `Pasient ${activePatientId.slice(0, 8)}`}
                       </div>
+                      <button
+                        onClick={handleDeactivatePatient}
+                        style={{
+                          flexShrink: 0, padding: '4px var(--space-2)', borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--color-border)', background: 'transparent',
+                          color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)', cursor: 'pointer',
+                        }}
+                      >
+                        Lukk
+                      </button>
                     </div>
                     <button
-                      onClick={handleDeactivatePatient}
+                      onClick={handleReportToCoordinator}
+                      className="touch-target"
                       style={{
-                        flexShrink: 0, padding: '4px var(--space-2)', borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-border)', background: 'transparent',
-                        color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)', cursor: 'pointer',
+                        width: '100%', minHeight: 40, borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-brand)', background: 'transparent',
+                        color: 'var(--color-brand)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
                       }}
                     >
-                      Lukk
+                      Rapporter til koordinator
                     </button>
+                    <VitalsEntryForm
+                      patientId={activePatientId}
+                      form={vitalsForm}
+                      onChange={setVitalsForm}
+                      onSubmit={handleRecordVitals}
+                    />
+                  </>
+                ) : (
+                  <div id="active-patient-heading" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+                    Ingen aktiv pasient – velg en fra listen over
                   </div>
-                  <button
-                    onClick={handleReportToCoordinator}
-                    className="touch-target"
-                    style={{
-                      width: '100%', minHeight: 40, borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--color-brand)', background: 'transparent',
-                      color: 'var(--color-brand)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
-                    }}
-                  >
-                    Rapporter til koordinator
-                  </button>
-                  <VitalsEntryForm
-                    patientId={activePatientId}
-                    form={vitalsForm}
-                    onChange={setVitalsForm}
-                    onSubmit={handleRecordVitals}
-                  />
-                </section>
-              ) : (
-                <div style={{ padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-sunken)', fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
-                  Ingen aktiv pasient – velg en fra listen over
-                </div>
-              )}
+                )}
+              </section>
 
               <div data-testid="firstaid-patient-list" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Egne pasienter</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Overvåkede pasienter</div>
                 {monitoredPatients.length === 0 ? (
                   <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
-                    Ingen egne pasienter ennå.
+                    Ingen overvåkede pasienter ennå.
                   </p>
                 ) : (
                   monitoredPatients.map((patient) => (
