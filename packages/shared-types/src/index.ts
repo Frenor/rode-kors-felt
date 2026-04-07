@@ -325,6 +325,9 @@ export const TeamWorkspacePatient = z.object({
   status: PatientStatus,
   presentingComplaint: z.string().nullable(),
   updatedAt: z.string().datetime(),
+  lat: z.number().nullable(),
+  lon: z.number().nullable(),
+  positionText: z.string().nullable(),
 });
 export type TeamWorkspacePatient = z.infer<typeof TeamWorkspacePatient>;
 

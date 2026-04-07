@@ -252,6 +252,9 @@ export async function teamRoutes(app: FastifyInstance) {
         status: row.status,
         presentingComplaint: row.presentingComplaint ?? null,
         updatedAt: row.updatedAt.toISOString(),
+        lat: row.lat ?? null,
+        lon: row.lon ?? null,
+        positionText: row.positionText ?? null,
       })),
       monitoredPatients: monitoredPatients.map((row) => ({
         id: row.id,
@@ -259,6 +262,9 @@ export async function teamRoutes(app: FastifyInstance) {
         status: row.status,
         presentingComplaint: row.presentingComplaint ?? null,
         updatedAt: row.updatedAt.toISOString(),
+        lat: row.lat ?? null,
+        lon: row.lon ?? null,
+        positionText: row.positionText ?? null,
       })),
       unassignedPatients: unassignedPatients.map((row) => ({
         id: row.id,
@@ -266,6 +272,9 @@ export async function teamRoutes(app: FastifyInstance) {
         status: row.status,
         presentingComplaint: row.presentingComplaint ?? null,
         updatedAt: row.updatedAt.toISOString(),
+        lat: row.lat ?? null,
+        lon: row.lon ?? null,
+        positionText: row.positionText ?? null,
       })),
       updatedAt: new Date().toISOString(),
     });

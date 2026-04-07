@@ -203,6 +203,9 @@ export interface TeamWorkspacePatient {
   status: string;
   presentingComplaint: string | null;
   updatedAt: string;
+  lat: number | null;
+  lon: number | null;
+  positionText: string | null;
 }
 
 export interface TeamWorkspaceResponse {
