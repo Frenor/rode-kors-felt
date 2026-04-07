@@ -1,13 +1,14 @@
 # ═══════════════════════════════════════════════════════════════
 # Deploy — Production
-# Triggered on push to main. Requires manual approval via the
-# GitHub "production" environment protection rule before deploying.
+# PAUSED: non-Pages deploys are disabled. Re-enable by restoring
+# the push trigger and un-commenting the deploy job below.
+# Requires manual approval via the "production" environment rule.
 # ═══════════════════════════════════════════════════════════════
 name: Deploy — Production
 
 on:
-  push:
-    branches: [main]
+  # push:        # PAUSED — restore to auto-deploy on main
+  #   branches: [main]
   workflow_dispatch:
     inputs:
       reason:
@@ -20,7 +21,6 @@ concurrency:
 
 jobs:
   # Validate that the exact SHA being promoted was tested on staging.
-  # This checks that the CI workflow passed for this commit.
   verify-staging:
     name: Verify staging CI passed
     runs-on: ubuntu-latest
@@ -45,24 +45,23 @@ jobs:
               core.info(`CI run ${ciRun.id} passed for ${context.sha}`);
             }
 
-  deploy:
-    name: Production deploy
-    needs: verify-staging
-    uses: ./.github/workflows/_deploy.yml
-    # The "production" GitHub environment must have:
-    #   - Required reviewers (at least 1 approver)
-    #   - Deployment branch restriction: main only
-    # Configure at: Settings → Environments → production
-    with:
-      environment: production
-      image_tag: ${{ github.sha }}
-    secrets:
-      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      ECS_CLUSTER: ${{ secrets.PROD_ECS_CLUSTER }}
-      API_ECS_SERVICE: ${{ secrets.PROD_API_ECS_SERVICE }}
-      MIGRATION_TASK_FAMILY: ${{ secrets.PROD_MIGRATION_TASK_FAMILY }}
-      MIGRATION_SUBNET: ${{ secrets.PROD_MIGRATION_SUBNET }}
-      MIGRATION_SECURITY_GROUP: ${{ secrets.PROD_MIGRATION_SECURITY_GROUP }}
-      CF_DISTRIBUTION_ID: ${{ secrets.PROD_CF_DISTRIBUTION_ID }}
+  # deploy:                                # PAUSED — non-Pages deploy
+  #   name: Production deploy
+  #   needs: verify-staging
+  #   uses: ./.github/workflows/_deploy.yml
+  #   # The "production" GitHub environment must have:
+  #   #   - Required reviewers (at least 1 approver)
+  #   #   - Deployment branch restriction: main only
+  #   with:
+  #     environment: production
+  #     image_tag: ${{ github.sha }}
+  #   secrets:
+  #     AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #     ECS_CLUSTER: ${{ secrets.PROD_ECS_CLUSTER }}
+  #     API_ECS_SERVICE: ${{ secrets.PROD_API_ECS_SERVICE }}
+  #     MIGRATION_TASK_FAMILY: ${{ secrets.PROD_MIGRATION_TASK_FAMILY }}
+  #     MIGRATION_SUBNET: ${{ secrets.PROD_MIGRATION_SUBNET }}
+  #     MIGRATION_SECURITY_GROUP: ${{ secrets.PROD_MIGRATION_SECURITY_GROUP }}
+  #     CF_DISTRIBUTION_ID: ${{ secrets.PROD_CF_DISTRIBUTION_ID }}

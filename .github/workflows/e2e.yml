@@ -1,8 +1,8 @@
 # ═══════════════════════════════════════════════════════════════
-# E2E Tests — Playwright
+# E2E Tests — Playwright (local-full project)
 # Runs on every PR to develop or main.
-# Spins up PostgreSQL + Redis as service containers, starts the
-# API and Web in test mode, then runs all Playwright specs.
+# Spins up PostgreSQL + Redis as service containers; Playwright
+# starts the API and Web dev servers itself via webServer config.
 # ═══════════════════════════════════════════════════════════════
 name: E2E Tests
 
@@ -25,13 +25,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: rkf
-          POSTGRES_PASSWORD: rkftest
-          POSTGRES_DB: rkf_test
+          POSTGRES_USER: rkf_dev
+          POSTGRES_PASSWORD: rkf_dev_password
+          POSTGRES_DB: rkf
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U rkf"
+          --health-cmd "pg_isready -U rkf_dev"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -47,14 +47,12 @@ jobs:
           --health-retries 10
 
     env:
-      NODE_ENV: test
-      DATABASE_URL: postgresql://rkf:rkftest@localhost:5432/rkf_test
+      CI: true
+      DATABASE_URL: postgresql://rkf_dev:rkf_dev_password@localhost:5432/rkf
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: e2e-test-secret-do-not-use-in-production
-      VITE_API_URL: http://localhost:4000
 
     steps:
-      # ── Setup ────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -72,39 +70,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ── Build web ────────────────────────────────────────────
-      - name: Build API
-        run: pnpm --filter @rkf/api build
-
-      - name: Build web PWA
-        run: pnpm --filter @rkf/web build
-        env:
-          VITE_API_URL: ${{ env.VITE_API_URL }}
-
-      # ── Playwright browsers ──────────────────────────────────
       - name: Install Playwright browsers
-        run: pnpm --filter @rkf/web exec playwright install --with-deps chromium webkit
+        run: pnpm --filter @rkf/web exec playwright install --with-deps chromium
 
       - name: Prepare Playwright artifact directories
         run: |
           rm -rf apps/web/playwright-report/local-full apps/web/test-results/local-full
           mkdir -p apps/web/playwright-report apps/web/test-results
 
-      # ── Run E2E tests ────────────────────────────────────────
       - name: Run Playwright tests
         run: pnpm --filter @rkf/web test:e2e --project local-full
         env:
-          PLAYWRIGHT_BASE_URL: http://localhost:3000
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/local-full
           PLAYWRIGHT_TEST_RESULTS_DIR: test-results/local-full
-          VITE_WS_URL: ws://localhost:4000/ws
-          # Credentials from CLAUDE.md dev seed
-          E2E_FIRST_AIDER_CODE: "123456"
-          E2E_SICK_BAY_CODE: "654321"
-          E2E_ADMIN_EMAIL: admin@rkf.no
-          E2E_ADMIN_PASSWORD: admin123
 
-      # ── Artifacts ────────────────────────────────────────────
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
