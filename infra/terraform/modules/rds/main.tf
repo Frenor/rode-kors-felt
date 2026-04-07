@@ -128,6 +128,7 @@ resource "aws_db_instance" "this" {
   performance_insights_enabled         = true
   performance_insights_retention_period = 7
   parameter_group_name                 = "default.postgres16"
+  enabled_cloudwatch_logs_exports      = ["postgresql", "upgrade"]
 
   tags = {
     Name = "rkf-${var.environment}-postgres"
