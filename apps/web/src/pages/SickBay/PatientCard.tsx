@@ -259,7 +259,7 @@ export function PatientCard({
               </span>
             </span>
           )}
-          <div ref={statusMenuRef} style={{ position: 'relative' }}>
+          <div ref={statusMenuRef} style={{ position: 'relative' }} data-testid={`patient-status-${patient.id}`}>
             <button
               type="button"
               data-testid={`patient-status-badge-${patient.id}`}
@@ -281,11 +281,12 @@ export function PatientCard({
               )}
             </button>
 
-            {showStatusMenu && nextStatuses.length > 0 && (
+            {nextStatuses.length > 0 && (
               <div
                 role="listbox"
                 aria-label="Mulige statusendringer"
                 data-testid={`patient-status-menu-${patient.id}`}
+                hidden={!showStatusMenu}
                 style={{
                   position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 50,
                   background: 'var(--color-surface)', border: '1px solid var(--color-border)',

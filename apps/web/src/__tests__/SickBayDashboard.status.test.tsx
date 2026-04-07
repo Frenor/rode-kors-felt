@@ -173,8 +173,9 @@ describe('Patient grouping and closed card visibility', () => {
     ]);
 
     const section = screen.getByTestId('patient-section-incoming');
-    const statuses = Array.from(section.querySelectorAll('[data-testid^="patient-status-"]'))
-      .map((el) => el.getAttribute('data-testid'));
+    const statuses = Array.from(
+      section.querySelectorAll('[data-testid^="patient-status-"]:not([data-testid*="-badge-"]):not([data-testid*="-menu-"])')
+    ).map((el) => el.getAttribute('data-testid'));
 
     expect(statuses).toEqual([
       'patient-status-pat-b',
@@ -223,7 +224,7 @@ describe('Status transition buttons — valid next states', () => {
     const { patient } = await renderWithPatient('incoming');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
 
-    expect(within(container).getByText('Aktiv: Innkommende')).toBeInTheDocument();
+    expect(within(container).getByText('Innkommende')).toBeInTheDocument();
     expect(within(container).getByTestId('status-btn-in_treatment')).toBeInTheDocument();
     expect(within(container).getByTestId('status-btn-observation')).toBeInTheDocument();
     expect(within(container).queryByTestId('status-btn-discharged')).not.toBeInTheDocument();
@@ -307,7 +308,15 @@ describe('handleStatusChange — correct status argument', () => {
 
     fireEvent.click(within(container).getByTestId('status-btn-discharged'));
 
-    expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'status.set', status: 'discharged' });
+    // Discharge modal intercepts — fill required fields and submit
+    const dialog = screen.getByRole('dialog', { name: 'Skriv ut pasient' });
+    fireEvent.change(within(dialog).getByLabelText('Hvordan forlot pasienten?'), { target: { value: 'gikk_hjem' } });
+    fireEvent.change(within(dialog).getByLabelText('Hvor dro pasienten?'), { target: { value: 'hjem' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Bekreft utskrivelse' }));
+
+    await waitFor(() => {
+      expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'status.set', status: 'discharged' });
+    });
   });
 
   it('clicking "Under behandling" from observation calls executePatientAction with in_treatment', async () => {
@@ -375,38 +384,37 @@ describe('Incoming panel placement assignment', () => {
 describe('"Overført" button — SBAR modal gate', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('clicking "Overført" opens the SBAR modal dialog without calling executePatientAction', async () => {
+  it('clicking "Overført" opens the transfer modal dialog without calling executePatientAction', async () => {
     const { patient } = await renderWithPatient('in_treatment');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
 
     fireEvent.click(within(container).getByTestId('status-btn-transferred'));
 
-    // SBAR dialog must appear
-    expect(screen.getByRole('dialog', { name: 'SBAR-overlevering' })).toBeInTheDocument();
+    // Transfer dialog must appear
+    expect(screen.getByRole('dialog', { name: 'Overfør pasient' })).toBeInTheDocument();
 
     expect(mockExecutePatientAction).not.toHaveBeenCalled();
   });
 
-  it('clicking "Overført" from observation also opens SBAR modal', async () => {
+  it('clicking "Overført" from observation also opens transfer modal', async () => {
     const { patient } = await renderWithPatient('observation');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
 
     fireEvent.click(within(container).getByTestId('status-btn-transferred'));
 
-    expect(screen.getByRole('dialog', { name: 'SBAR-overlevering' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Overfør pasient' })).toBeInTheDocument();
     expect(mockExecutePatientAction).not.toHaveBeenCalled();
   });
 
-  it('SBAR modal contains all four required fields (S, B, A, R)', async () => {
+  it('transfer modal contains departure method and destination fields', async () => {
     const { patient } = await renderWithPatient('in_treatment');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
     fireEvent.click(within(container).getByTestId('status-btn-transferred'));
 
-    const dialog = screen.getByRole('dialog', { name: 'SBAR-overlevering' });
-    expect(within(dialog).getByLabelText(/S — Situasjon/i)).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/B — Bakgrunn/i)).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/A — Vurdering/i)).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/R — Anbefaling/i)).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Overfør pasient' });
+    expect(within(dialog).getByLabelText('Hvordan forlot pasienten?')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Hvor dro pasienten?')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Bekreft overføring' })).toBeInTheDocument();
   });
 });
 
