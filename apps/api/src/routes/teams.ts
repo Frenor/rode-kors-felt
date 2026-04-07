@@ -241,41 +241,25 @@ export async function teamRoutes(app: FastifyInstance) {
     const monitoredSet = new Set(monitoredPatients.map((row) => row.id));
     const unassignedPatients = patientRows.filter((row) => !assignedSet.has(row.id) && !monitoredSet.has(row.id));
 
+    const toWorkspacePatient = (row: typeof assignedPatients[number]) => ({
+      id: row.id,
+      incidentId: row.incidentId ?? null,
+      status: row.status,
+      presentingComplaint: row.presentingComplaint ?? null,
+      updatedAt: row.updatedAt.toISOString(),
+      lat: row.lat ?? null,
+      lon: row.lon ?? null,
+      positionText: row.positionText ?? null,
+    });
+
     const response = TeamWorkspaceResponse.parse({
       teamId: team.id,
       eventId: team.eventId,
       latestStatus,
       activePatientId,
-      assignedPatients: assignedPatients.map((row) => ({
-        id: row.id,
-        incidentId: row.incidentId ?? null,
-        status: row.status,
-        presentingComplaint: row.presentingComplaint ?? null,
-        updatedAt: row.updatedAt.toISOString(),
-        lat: row.lat ?? null,
-        lon: row.lon ?? null,
-        positionText: row.positionText ?? null,
-      })),
-      monitoredPatients: monitoredPatients.map((row) => ({
-        id: row.id,
-        incidentId: row.incidentId ?? null,
-        status: row.status,
-        presentingComplaint: row.presentingComplaint ?? null,
-        updatedAt: row.updatedAt.toISOString(),
-        lat: row.lat ?? null,
-        lon: row.lon ?? null,
-        positionText: row.positionText ?? null,
-      })),
-      unassignedPatients: unassignedPatients.map((row) => ({
-        id: row.id,
-        incidentId: row.incidentId ?? null,
-        status: row.status,
-        presentingComplaint: row.presentingComplaint ?? null,
-        updatedAt: row.updatedAt.toISOString(),
-        lat: row.lat ?? null,
-        lon: row.lon ?? null,
-        positionText: row.positionText ?? null,
-      })),
+      assignedPatients: assignedPatients.map(toWorkspacePatient),
+      monitoredPatients: monitoredPatients.map(toWorkspacePatient),
+      unassignedPatients: unassignedPatients.map(toWorkspacePatient),
       updatedAt: new Date().toISOString(),
     });
 

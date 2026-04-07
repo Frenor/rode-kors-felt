@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
 import { useFirstAidWorkspaceStore } from '../stores/firstaid-workspace';
@@ -18,7 +18,7 @@ import {
 import { api } from '../lib/api';
 import type { TeamOperationalStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
 import type { TeamTransport } from '../stores/auth';
-import { VitalsEntryForm, type VitalsFormShape } from './SickBay/VitalsEntryForm';
+import { VitalsEntryForm, EMPTY_VITALS_FORM, type VitalsFormShape } from './SickBay/VitalsEntryForm';
 
 export function FirstAiderDashboard() {
   const { eventId, teams, updateTeamTransport } = useAuthStore();
@@ -228,14 +228,13 @@ export function FirstAiderDashboard() {
   const navigateToIncident = (incident: any) => {
     const { lat, lng } = incident.location ?? {};
     if (lat == null || lng == null) return;
-    const teamTransport = (teams.find((t) => t.id === selectedTeam)?.transport ?? 'foot') as TeamTransport;
-    const travelMode = TRANSPORT_TRAVEL_MODE[teamTransport];
+    const travelMode = TRANSPORT_TRAVEL_MODE[currentTeamTransport];
     window.open(`https://maps.google.com/maps?daddr=${lat},${lng}&travelmode=${travelMode}`, '_blank', 'noopener');
   };
 
   const handleTransportChange = async (transport: TeamTransport) => {
     if (!selectedTeam) return;
-    const previous = (teams.find((t) => t.id === selectedTeam)?.transport ?? 'foot') as TeamTransport;
+    const previous = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
     updateTeamTransport(selectedTeam, transport);
     try {
       await api.patchTeamTransport(selectedTeam, transport);
@@ -364,7 +363,7 @@ export function FirstAiderDashboard() {
   };
 
   const getPatientVitalsForm = (patientId: string): VitalsFormShape =>
-    perPatientVitalsForm[patientId] ?? { pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' };
+    perPatientVitalsForm[patientId] ?? EMPTY_VITALS_FORM;
 
   const handleSubmitVitals = async (patientId: string) => {
     const form = getPatientVitalsForm(patientId);
@@ -378,16 +377,13 @@ export function FirstAiderDashboard() {
       acvpu: form.acvpu || undefined,
     };
     await api.recordVitals(patientId, payload as Record<string, number | undefined>);
-    setPerPatientVitalsForm((prev) => ({
-      ...prev,
-      [patientId]: { pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' },
-    }));
+    setPerPatientVitalsForm((prev) => ({ ...prev, [patientId]: EMPTY_VITALS_FORM }));
   };
 
   const handleSubmitNote = async (patientId: string) => {
     const text = perPatientNoteText[patientId]?.trim();
     if (!text) return;
-    const author = teams.find((t) => t.id === selectedTeam)?.name ?? 'Ukjent lag';
+    const author = selectedTeamData?.name ?? 'Ukjent lag';
     await api.addPatientNote(patientId, text, author);
     setPerPatientNoteText((prev) => ({ ...prev, [patientId]: '' }));
   };
@@ -417,13 +413,14 @@ export function FirstAiderDashboard() {
     other: 'Annet',
   };
 
-  // Combined assigned patient list: coordinator-assigned (rich data) first, then self-monitored
-  const combinedAssignedPatients = [
-    ...assignedPatients,
-    ...monitoredPatients.filter((p) => !assignedPatients.some((a) => a.id === p.id)),
-  ];
+  const selectedTeamData = useMemo(() => teams.find((t) => t.id === selectedTeam) ?? null, [teams, selectedTeam]);
 
-  const currentTeamTransport = (teams.find((t) => t.id === selectedTeam)?.transport ?? 'foot') as TeamTransport;
+  const combinedAssignedPatients = useMemo(() => {
+    const assignedIds = new Set(assignedPatients.map((p) => p.id));
+    return [...assignedPatients, ...monitoredPatients.filter((p) => !assignedIds.has(p.id))];
+  }, [assignedPatients, monitoredPatients]);
+
+  const currentTeamTransport = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
 
   const openMapsNav = (lat: number, lon: number) => {
     const mode = TRANSPORT_TRAVEL_MODE[currentTeamTransport];
@@ -431,8 +428,8 @@ export function FirstAiderDashboard() {
   };
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: 100 }}>
-      {/* [A] Team selection (if not chosen yet) */}
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '6.25rem' }}>
+      {/* Team selection */}
       {!selectedTeam && teams.length > 0 && (
         <div style={{ marginBottom: 'var(--space-6)' }}>
           <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>
@@ -473,7 +470,7 @@ export function FirstAiderDashboard() {
         </div>
       )}
 
-      {/* [B] Team header bar */}
+      {/* Sticky team header */}
       {selectedTeam && (
         <header style={{
           display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
@@ -484,7 +481,7 @@ export function FirstAiderDashboard() {
           position: 'sticky', top: 0, zIndex: 10,
         }}>
           <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', flex: 1 }}>
-            {teams.find((t) => t.id === selectedTeam)?.name ?? 'Ukjent lag'}
+            {selectedTeamData?.name ?? 'Ukjent lag'}
           </span>
           <span style={{
             fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
@@ -525,7 +522,7 @@ export function FirstAiderDashboard() {
         </header>
       )}
 
-      {/* [C] Status picker bottom sheet */}
+      {/* Status picker bottom sheet */}
       {showStatusPicker && (
         <div
           role="dialog"
@@ -592,7 +589,7 @@ export function FirstAiderDashboard() {
         </div>
       )}
 
-      {/* [D] Settings panel (collapsed by default) */}
+      {/* Settings panel */}
       {selectedTeam && showSettings && (
         <section
           aria-label="Lagets innstillinger"
@@ -748,7 +745,7 @@ export function FirstAiderDashboard() {
         </section>
       )}
 
-      {/* [E] Sector assignment badge */}
+      {/* Sector assignment badge */}
       {selectedTeam && sectorAssignments[selectedTeam] && (
         <section
           aria-live="polite"
@@ -768,7 +765,7 @@ export function FirstAiderDashboard() {
         </section>
       )}
 
-      {/* [F] Unified patient list */}
+      {/* Patient list */}
       {selectedTeam && (
         <section aria-labelledby="patient-list-heading" aria-live="polite">
           <h2
@@ -804,7 +801,6 @@ export function FirstAiderDashboard() {
                     transition: 'border-color 0.3s ease',
                   }}
                 >
-                  {/* Card header — always visible, tap to expand */}
                   <button
                     onClick={() => togglePatientExpand(p.id)}
                     style={{
@@ -876,7 +872,7 @@ export function FirstAiderDashboard() {
                         form={getPatientVitalsForm(p.id)}
                         onChange={(updater) => setPerPatientVitalsForm((prev) => ({
                           ...prev,
-                          [p.id]: updater(getPatientVitalsForm(p.id)),
+                          [p.id]: updater(prev[p.id] ?? EMPTY_VITALS_FORM),
                         }))}
                         onSubmit={() => handleSubmitVitals(p.id)}
                       />
