@@ -21,6 +21,7 @@ import type { TeamTransport } from '../stores/auth';
 import { VitalsEntryForm, type VitalsFormShape } from './SickBay/VitalsEntryForm';
 
 type FirstAiderTab = 'pasienter' | 'hendelser' | 'lag' | 'chat';
+const TAB_BAR_HEIGHT = 64;
 
 export function FirstAiderDashboard() {
   const { eventId, teams, updateTeamTransport } = useAuthStore();
@@ -55,7 +56,14 @@ export function FirstAiderDashboard() {
   const [messages, setMessages] = useState<Array<{ id: string; text: string; fromTeamId?: string; fromSelf: boolean; sentAt: string }>>([]);
   const [messageText, setMessageText] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<FirstAiderTab>('pasienter');
+  const [activeTab, setActiveTabState] = useState<FirstAiderTab>(() => {
+    const saved = localStorage.getItem('rkf-firstaid-tab');
+    return (saved as FirstAiderTab | null) ?? 'pasienter';
+  });
+  const setActiveTab = (tab: FirstAiderTab) => {
+    setActiveTabState(tab);
+    localStorage.setItem('rkf-firstaid-tab', tab);
+  };
   const [sectorAssignments, setSectorAssignments] = useState<Record<string, { sector: string; assignedAt: string }>>({});
   const [vitalsForm, setVitalsForm] = useState<VitalsFormShape>({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
 
@@ -442,12 +450,12 @@ export function FirstAiderDashboard() {
     other: 'Annet',
   };
 
-  const patientBadgeCount = assignedPatients.length + (workspace?.monitoredPatients.length ?? 0);
+  const patientBadgeCount = assignedPatients.length + monitoredPatients.length;
   const hendelseBadgeCount = queuedIncidents?.length ?? 0;
   const chatBadgeCount = messages.length;
 
   return (
-    <div className="animate-fade-in" style={{ paddingBottom: 'calc(64px + var(--space-2))' }}>
+    <div className="animate-fade-in" style={{ paddingBottom: `calc(${TAB_BAR_HEIGHT}px + var(--space-2))` }}>
 
       {/* ── PASIENTER TAB ─────────────────────────────────────────── */}
       {activeTab === 'pasienter' && !selectedTeam && (
@@ -1293,7 +1301,7 @@ export function FirstAiderDashboard() {
           bottom: 0,
           left: 0,
           right: 0,
-          height: 64,
+          height: TAB_BAR_HEIGHT,
           background: 'var(--color-surface)',
           borderTop: '1px solid var(--color-border)',
           display: 'grid',
@@ -1312,6 +1320,7 @@ export function FirstAiderDashboard() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             aria-current={activeTab === tab.id ? 'page' : undefined}
+            aria-label={tab.badge > 0 ? `${tab.label}, ${tab.badge} varsler` : tab.label}
             style={{
               display: 'flex',
               flexDirection: 'column',
