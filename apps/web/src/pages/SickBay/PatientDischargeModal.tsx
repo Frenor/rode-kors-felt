@@ -117,33 +117,22 @@ export function PatientDischargeModal({
       role="dialog"
       aria-label={title}
       aria-modal="true"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
-        background: 'rgba(0,0,0,0.6)', display: 'flex',
-        alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
-      }}
+      className="modal-backdrop"
     >
       <FocusTrap onEscape={onClose}>
-        <div style={{
-          background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
-          padding: 'var(--space-6)', maxWidth: 480, width: '100%',
-          maxHeight: '92vh', overflowY: 'auto',
-        }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-1)' }}>
+        <div className="modal-content">
+          <h2 className="text-lg fw-700 mb-1">
             {title}
           </h2>
-          <p style={{
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-subtle)', marginBottom: 'var(--space-4)',
-          }}>
+          <p className="mono-xs-subtle mb-4">
             {patientLine}
           </p>
 
           {/* Departure method */}
-          <div style={{ marginBottom: 'var(--space-3)' }}>
+          <div className="mb-3">
             <label
               htmlFor="discharge-departure"
-              style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}
+              className="field-label-strong"
             >
               Hvordan forlot pasienten?
             </label>
@@ -161,10 +150,10 @@ export function PatientDischargeModal({
 
           {/* Conditional: name of person picking up */}
           {form.departureMethod === 'hentet_av' && (
-            <div style={{ marginBottom: 'var(--space-3)' }}>
+            <div className="mb-3">
               <label
                 htmlFor="discharge-departure-name"
-                style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}
+                className="field-label-strong"
               >
                 Navn på personen som hentet
               </label>
@@ -180,10 +169,10 @@ export function PatientDischargeModal({
           )}
 
           {/* Destination */}
-          <div style={{ marginBottom: 'var(--space-3)' }}>
+          <div className="mb-3">
             <label
               htmlFor="discharge-destination"
-              style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}
+              className="field-label-strong"
             >
               Hvor dro pasienten?
             </label>
@@ -201,10 +190,10 @@ export function PatientDischargeModal({
 
           {/* Conditional: hospital/other name */}
           {(form.destination === 'sykehus' || form.destination === 'annet') && (
-            <div style={{ marginBottom: 'var(--space-3)' }}>
+            <div className="mb-3">
               <label
                 htmlFor="discharge-destination-name"
-                style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}
+                className="field-label-strong"
               >
                 {form.destination === 'sykehus' ? 'Sykehusnavn (valgfritt)' : 'Spesifiser destinasjon'}
               </label>
@@ -220,10 +209,10 @@ export function PatientDischargeModal({
           )}
 
           {/* Transfer notes */}
-          <div style={{ marginBottom: 'var(--space-4)' }}>
+          <div className="mb-4">
             <label
               htmlFor="discharge-notes"
-              style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}
+              className="field-label-strong"
             >
               {isTransfer ? 'Overlevering — hva skjedde, hva ble gjort, hva må følges opp' : 'Merknader'}
               <span style={{ fontWeight: 400, color: 'var(--color-text-subtle)', marginLeft: 4 }}>(valgfritt)</span>
@@ -236,32 +225,23 @@ export function PatientDischargeModal({
               placeholder={isTransfer
                 ? 'Nåværende tilstand, behandling gitt, hva AMK/ambulanse bør vite...'
                 : 'Eventuelle merknader ved utskrivelse...'}
-              style={{
-                width: '100%', padding: 'var(--space-2)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                fontSize: 'var(--text-sm)', resize: 'vertical', fontFamily: 'inherit',
-              }}
+              className="form-textarea"
+              style={{ borderRadius: 'var(--radius-md)' }}
             />
           </div>
 
           {/* Auto timestamp */}
-          <p style={{
-            fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
-            color: 'var(--color-text-subtle)', marginBottom: 'var(--space-4)',
-          }}>
+          <p className="mono-xs-subtle mb-4">
             Tidspunkt registreres automatisk: {now}
           </p>
 
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="touch-target"
+              className="touch-target btn-ghost"
               style={{
-                flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)', background: 'transparent',
-                color: 'var(--color-text)', cursor: 'pointer',
+                flex: 1, minHeight: 'var(--touch-min)',
               }}
             >
               Avbryt

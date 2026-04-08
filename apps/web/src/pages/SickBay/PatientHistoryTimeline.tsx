@@ -33,16 +33,13 @@ export function PatientHistoryTimeline({ patient, medications }: PatientHistoryT
     .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
   return (
-    <div style={{
-      marginTop: 'var(--space-3)', padding: 'var(--space-3)',
-      background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
-    }}>
-      <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+    <div className="panel-sunken">
+      <h4 className="heading-sm">
         Logg / Historikk
       </h4>
 
       {timeline.length === 0 ? (
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+        <p className="text-xs-subtle">
           Ingen historikk ennå.
         </p>
       ) : timeline.map((entry, i) => {
@@ -53,15 +50,12 @@ export function PatientHistoryTimeline({ patient, medications }: PatientHistoryT
           const n2 = calculateNEWS2(v);
           const n2c = news2Colors[n2.alertLevel];
           return (
-            <div key={i} style={{
-              display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start',
-              padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-border)',
-            }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap', minWidth: 38 }}>{timeStr}</span>
+            <div key={i} className="timeline-row">
+              <span className="timeline-ts">{timeStr}</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--radius-full)', background: n2c.bg, color: n2c.color, whiteSpace: 'nowrap' }}>
                 NEWS2 {n2.total}
               </span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flexWrap: 'wrap' }}>
+              <span className="mono-xs-subtle" style={{ flexWrap: 'wrap' }}>
                 {[
                   v.pulse && `Puls ${v.pulse}`,
                   v.spo2 && `SpO₂ ${v.spo2}%`,
@@ -78,18 +72,15 @@ export function PatientHistoryTimeline({ patient, medications }: PatientHistoryT
 
         if (entry.type === 'note') {
           return (
-            <div key={i} style={{
-              display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start',
-              padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-border)',
-            }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap', minWidth: 38 }}>{timeStr}</span>
-              <div style={{ flex: 1 }}>
+            <div key={i} className="timeline-row">
+              <span className="timeline-ts">{timeStr}</span>
+              <div className="flex-1">
                 {entry.data.author && (
-                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-subtle)', marginBottom: 2, display: 'block' }}>
+                  <span className="text-xs-subtle fw-600" style={{ marginBottom: 2, display: 'block' }}>
                     {entry.data.author}
                   </span>
                 )}
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', whiteSpace: 'pre-wrap' }}>
+                <span className="text-xs" style={{ color: 'var(--color-text)', whiteSpace: 'pre-wrap' }}>
                   {entry.data.text}
                 </span>
               </div>
@@ -99,13 +90,10 @@ export function PatientHistoryTimeline({ patient, medications }: PatientHistoryT
 
         if (entry.type === 'medication') {
           return (
-            <div key={i} style={{
-              display: 'flex', gap: 'var(--space-2)', alignItems: 'center',
-              padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-border)',
-            }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap', minWidth: 38 }}>{timeStr}</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-status-warning)' }}>Rx</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text)' }}>
+            <div key={i} className="timeline-row" style={{ alignItems: 'center' }}>
+              <span className="timeline-ts">{timeStr}</span>
+              <span className="mono-xs fw-700" style={{ color: 'var(--color-status-warning)' }}>Rx</span>
+              <span className="mono-xs" style={{ color: 'var(--color-text)' }}>
                 {entry.data.drug}{entry.data.dose && ` ${entry.data.dose}`}
                 {entry.data.route && ` (${routeLabels[entry.data.route] ?? entry.data.route})`}
                 {entry.data.givenBy && ` — ${entry.data.givenBy}`}
@@ -150,15 +138,12 @@ export function PatientHistoryTimeline({ patient, medications }: PatientHistoryT
                 ].filter(Boolean).join(' · ');
 
           return (
-            <div key={i} style={{
-              display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start',
-              padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-border)',
-            }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap', minWidth: 38 }}>{timeStr}</span>
+            <div key={i} className="timeline-row">
+              <span className="timeline-ts">{timeStr}</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--radius-full)', background: 'var(--color-brand-dim)', color: 'var(--color-brand)', whiteSpace: 'nowrap' }}>
                 {label}
               </span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text)', whiteSpace: 'pre-wrap' }}>
+              <span className="mono-xs" style={{ color: 'var(--color-text)', whiteSpace: 'pre-wrap' }}>
                 {detail || 'Ingen detaljer registrert.'}
               </span>
             </div>

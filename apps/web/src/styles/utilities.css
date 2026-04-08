@@ -1,0 +1,369 @@
+/**
+ * RKF Utility Classes
+ *
+ * Single-purpose helpers extracted from repeated inline `style={{}}` props.
+ * Each class maps directly to one or a small cluster of CSS declarations
+ * that appeared 4+ times across the codebase as identical static objects.
+ *
+ * Rules:
+ *  - Never use these to override component-specific CSS; add a new class instead.
+ *  - Dynamic values (computed from JS props/state) stay as inline styles or
+ *    CSS custom properties — they do NOT belong here.
+ *  - Class names mirror the token names where possible.
+ */
+
+/* ═══════════════════════════════════════════════
+   LAYOUT — FLEX
+═══════════════════════════════════════════════ */
+
+.flex            { display: flex; }
+.flex-col        { display: flex; flex-direction: column; }
+.flex-center     { display: flex; align-items: center; justify-content: center; }
+.flex-between    { display: flex; justify-content: space-between; align-items: center; }
+.flex-between-start { display: flex; justify-content: space-between; align-items: flex-start; }
+.flex-align      { display: flex; align-items: center; }
+.flex-wrap       { display: flex; flex-wrap: wrap; }
+.flex-1          { flex: 1; }
+.flex-shrink-0   { flex-shrink: 0; }
+.min-w-0         { min-width: 0; }
+.w-full          { width: 100%; }
+
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+
+/* ═══════════════════════════════════════════════
+   LAYOUT — GRID
+═══════════════════════════════════════════════ */
+
+/* Two equal columns with standard gap */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+
+/* Three equal columns with standard gap */
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+
+/* ═══════════════════════════════════════════════
+   SPACING — MARGIN
+═══════════════════════════════════════════════ */
+
+.mb-1 { margin-bottom: var(--space-1); }
+.mb-2 { margin-bottom: var(--space-2); }
+.mb-3 { margin-bottom: var(--space-3); }
+.mb-4 { margin-bottom: var(--space-4); }
+.mb-6 { margin-bottom: var(--space-6); }
+.mb-8 { margin-bottom: var(--space-8); }
+
+.mt-1 { margin-top: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-6 { margin-top: var(--space-6); }
+.mt-8 { margin-top: var(--space-8); }
+
+/* ═══════════════════════════════════════════════
+   TYPOGRAPHY — SIZE
+═══════════════════════════════════════════════ */
+
+.text-xs   { font-size: var(--text-xs); }
+.text-sm   { font-size: var(--text-sm); }
+.text-base { font-size: var(--text-base); }
+.text-lg   { font-size: var(--text-lg); }
+.text-xl   { font-size: var(--text-xl); }
+.text-2xl  { font-size: var(--text-2xl); }
+.text-3xl  { font-size: var(--text-3xl); }
+
+.fw-500 { font-weight: 500; }
+.fw-600 { font-weight: 600; }
+.fw-700 { font-weight: 700; }
+
+/* ═══════════════════════════════════════════════
+   TYPOGRAPHY — COLOR
+═══════════════════════════════════════════════ */
+
+.text-muted    { color: var(--color-text-muted); }
+.text-subtle   { color: var(--color-text-subtle); }
+.text-critical { color: var(--color-status-critical); }
+.text-brand    { color: var(--color-brand); }
+
+/* ═══════════════════════════════════════════════
+   TYPOGRAPHY — COMPOUND PATTERNS
+   (combinations that appear 4+ times verbatim)
+═══════════════════════════════════════════════ */
+
+/* fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' — 28×  */
+.text-xs-subtle { font-size: var(--text-xs); color: var(--color-text-subtle); }
+
+/* fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' — 5×  */
+.text-xs-muted  { font-size: var(--text-xs); color: var(--color-text-muted); }
+
+/* fontFamily: mono, fontSize: xs, color: text-subtle — 12× */
+.mono-xs-subtle {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+
+/* fontFamily: mono, fontSize: xs, color: text-muted */
+.mono-xs-muted {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* fontFamily: mono, fontSize: xs — standalone */
+.mono-xs { font-family: var(--font-mono); font-size: var(--text-xs); }
+
+/* fontFamily: mono, fontSize: sm — 7× */
+.mono-sm { font-family: var(--font-mono); font-size: var(--text-sm); }
+
+/* fontSize: sm, fontWeight: 600 — 10× */
+.text-sm-strong { font-size: var(--text-sm); font-weight: 600; }
+
+/* Section headings: fontSize: sm, fontWeight: 700, marginBottom: space-2 — 4× */
+.heading-sm { font-size: var(--text-sm); font-weight: 700; margin-bottom: var(--space-2); }
+
+/* Uppercase label pattern used in coordinator panels — 5× */
+.section-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ═══════════════════════════════════════════════
+   FORM ELEMENTS
+═══════════════════════════════════════════════ */
+
+/* Form field label: display: block; text-sm; fw-500; mb-1; color: text — 8× */
+.field-label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+  color: var(--color-text);
+}
+
+/* Stronger label variant: fw-600 — 5× */
+.field-label-strong {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+/* Standard full-height input (touch-min) — intake/login/modal inputs — 6× */
+.form-input {
+  width: 100%;
+  height: var(--touch-min);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-input-border);
+  background: var(--color-input-bg);
+  color: var(--color-text);
+  font-size: var(--text-base);
+}
+
+/* Compact 36 px input — medication/note panel etc — 6× */
+.form-input-sm {
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-input-border);
+  background: var(--color-input-bg);
+  color: var(--color-text);
+  font-size: var(--text-xs);
+}
+
+/* Textarea — discharge/note modals */
+.form-textarea {
+  width: 100%;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-input-border);
+  background: var(--color-input-bg);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  resize: vertical;
+  font-family: inherit;
+}
+
+/* Fieldset reset — used in vitals form */
+.fieldset-reset { border: none; padding: 0; }
+
+/* ═══════════════════════════════════════════════
+   CARDS & PANELS
+═══════════════════════════════════════════════ */
+
+/* Bare card shell — 11× */
+.card {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+/* Card with space-4 padding */
+.card-p4 {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+/* Card with space-3 padding — 6× */
+.card-p3 {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+/* Sunken sub-panel: VitalsEntryForm, NotePanel, MedicationPanel, PatientHistoryTimeline — 5× */
+.panel-sunken {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-md);
+}
+
+/* ═══════════════════════════════════════════════
+   MODALS
+═══════════════════════════════════════════════ */
+
+/* Full-viewport overlay — PatientIntakeModal, PatientDischargeModal, AmkBriefModal, etc. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+/* Modal content box — max 480 px, scrollable */
+.modal-content {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  max-width: 480px;
+  width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+/* ═══════════════════════════════════════════════
+   TIMELINE
+═══════════════════════════════════════════════ */
+
+/* Timeline entry row — PatientHistoryTimeline — 4× */
+.timeline-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Timestamp column inside a timeline row — 4× */
+.timeline-ts {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+  min-width: 38px;
+}
+
+/* ═══════════════════════════════════════════════
+   ACTION BUTTONS (chip-style)
+═══════════════════════════════════════════════ */
+
+/* Quick-action chip used in PatientActionButtons — togglable */
+.action-btn {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Active (pressed) state — set data-active="true" on the element */
+.action-btn[data-active='true'] {
+  border-color: var(--color-brand);
+  background: var(--color-brand-dim);
+  color: var(--color-text);
+}
+
+/* Coordinator-panel micro buttons (IncidentCard action row) */
+.btn-sm {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+/* Primary brand button */
+.btn-brand {
+  border: none;
+  background: var(--color-brand);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+/* Ghost / outline button */
+.btn-ghost {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+/* ═══════════════════════════════════════════════
+   STATUS BANNERS
+═══════════════════════════════════════════════ */
+
+/* Warning/info top strip — AppShell offline & reconnecting banners */
+.banner-strip {
+  padding: var(--space-2) var(--space-4);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.banner-warning {
+  background: var(--color-status-warning-bg);
+  border-bottom: 1px solid var(--color-status-warning-border);
+  color: var(--color-status-warning);
+}
+
+/* ═══════════════════════════════════════════════
+   PAGE-LEVEL LAYOUTS
+═══════════════════════════════════════════════ */
+
+/* Vertically + horizontally centred full-viewport page (CodeEntryPage, LoginPage) */
+.page-center {
+  min-height: 100dvh;
+  background: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+/* Full-height flex column (AppShell root) */
+.page-fill-col {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}

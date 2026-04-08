@@ -26,11 +26,7 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
       role="dialog"
       aria-label="Registrer ny pasient"
       aria-modal="true"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
-        background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 'var(--space-4)',
-      }}
+      className="modal-backdrop"
     >
       <FocusTrap onEscape={onClose}>
         <div style={{
@@ -38,35 +34,27 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
           padding: 'var(--space-6)', maxWidth: 480, width: '100%',
           maxHeight: 'calc(100dvh - var(--space-8))', overflowY: 'auto',
         }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
+          <h2 className="text-lg fw-700 mb-4">
             Ny pasient
           </h2>
 
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="fullName" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+          <div className="mb-4">
+            <label htmlFor="fullName" className="field-label">
               Fullt navn
             </label>
             <input id="fullName" type="text" value={form.fullName}
               onChange={(e) => onChange({ ...form, fullName: e.target.value })}
               placeholder="Fornavn Etternavn"
-              style={{
-                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
-              }} />
+              className="form-input" />
           </div>
 
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="gender" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+          <div className="mb-4">
+            <label htmlFor="gender" className="field-label">
               Kjønn
             </label>
             <select id="gender" value={form.gender}
               onChange={(e) => onChange({ ...form, gender: e.target.value as IntakeFormShape['gender'] })}
-              style={{
-                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
-              }}>
+              className="form-input">
               <option value="">Ikke oppgitt</option>
               {GENDER_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
@@ -74,36 +62,28 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
             </select>
           </div>
 
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="birthDate" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+          <div className="mb-4">
+            <label htmlFor="birthDate" className="field-label">
               Fødselsdato
             </label>
             <input id="birthDate" type="date" value={form.birthDate}
               max={new Date().toISOString().slice(0, 10)}
               onChange={(e) => onChange({ ...form, birthDate: e.target.value })}
-              style={{
-                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
-              }} />
+              className="form-input" />
             {form.birthDate && (
-              <p style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+              <p className="mt-2 text-xs-subtle">
                 Alder: {previewAge != null ? `${previewAge} år` : 'Ukjent'}
               </p>
             )}
           </div>
 
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="ageGroup" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+          <div className="mb-4">
+            <label htmlFor="ageGroup" className="field-label">
               Aldersgruppe
             </label>
             <select id="ageGroup" value={form.ageGroup}
               onChange={(e) => onChange({ ...form, ageGroup: e.target.value })}
-              style={{
-                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
-              }}>
+              className="form-input">
               <option value="child">Barn</option>
               <option value="adolescent">Ungdom</option>
               <option value="adult">Voksen</option>
@@ -111,19 +91,15 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
             </select>
           </div>
 
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="placementType" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+          <div className="mb-4">
+            <label htmlFor="placementType" className="field-label">
               Plasseringstype
             </label>
             <select
               id="placementType"
               value={form.placementType}
               onChange={(e) => onChange({ ...form, placementType: e.target.value as IntakeFormShape['placementType'] })}
-              style={{
-                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
-              }}
+              className="form-input"
             >
               <option value="">Ikke satt</option>
               <option value="chair">Stol</option>
@@ -131,8 +107,8 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
             </select>
           </div>
 
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="placementNumber" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+          <div className="mb-4">
+            <label htmlFor="placementNumber" className="field-label">
               Plasseringsnummer
             </label>
             <input
@@ -143,54 +119,38 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
               value={form.placementNumber}
               onChange={(e) => onChange({ ...form, placementNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 4) })}
               placeholder="F.eks. 12"
-              style={{
-                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
-              }}
+              className="form-input"
             />
           </div>
 
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="complaint" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+          <div className="mb-4">
+            <label htmlFor="complaint" className="field-label">
               Problemstilling
             </label>
             <input id="complaint" type="text" value={form.presentingComplaint}
               onChange={(e) => onChange({ ...form, presentingComplaint: e.target.value })}
               placeholder="Kort beskrivelse..."
-              style={{
-                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
-              }} />
+              className="form-input" />
           </div>
 
-          <div style={{ marginBottom: 'var(--space-6)' }}>
-            <label htmlFor="clinician" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 'var(--space-1)' }}>
+          <div className="mb-6">
+            <label htmlFor="clinician" className="field-label">
               Behandler
             </label>
             <input id="clinician" type="text" value={form.assignedClinician}
               onChange={(e) => onChange({ ...form, assignedClinician: e.target.value })}
               placeholder="Navn..."
-              style={{
-                width: '100%', height: 'var(--touch-min)', padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-base)',
-              }} />
+              className="form-input" />
           </div>
 
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button onClick={onClose} className="touch-target" style={{
-              flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text)',
-              cursor: 'pointer',
+          <div className="flex gap-2">
+            <button onClick={onClose} className="touch-target btn-ghost" style={{
+              flex: 1, minHeight: 'var(--touch-min)',
             }}>
               Avbryt
             </button>
-            <button onClick={onSubmit} className="touch-target" style={{
-              flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-              border: 'none', background: 'var(--color-brand)', color: 'white', fontWeight: 600,
-              cursor: 'pointer',
+            <button onClick={onSubmit} className="touch-target btn-brand" style={{
+              flex: 1, minHeight: 'var(--touch-min)',
             }}>
               Registrer
             </button>
