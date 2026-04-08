@@ -505,7 +505,11 @@ export function PatientCard({
             Kjønn
             <select
               value={demoForm.gender}
-              onChange={(e) => setDemoForm((f) => ({ ...f, gender: e.target.value as DemographicsFormShape['gender'] }))}
+              onChange={(e) => {
+                const val = e.target.value;
+                const gender = val === 'male' || val === 'female' || val === 'other' ? val : '';
+                setDemoForm((f) => ({ ...f, gender }));
+              }}
               style={{
                 height: 'var(--touch-min)',
                 borderRadius: 'var(--radius-md)',
@@ -538,11 +542,14 @@ export function PatientCard({
                 padding: '0 var(--space-2)',
               }}
             />
-            {demoForm.birthDate && (
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                Alder: {calculateAgeYears(demoForm.birthDate) != null ? `${calculateAgeYears(demoForm.birthDate)} år` : 'Ukjent'}
-              </span>
-            )}
+            {demoForm.birthDate && (() => {
+              const age = calculateAgeYears(demoForm.birthDate);
+              return (
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                  Alder: {age != null ? `${age} år` : 'Ukjent'}
+                </span>
+              );
+            })()}
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
