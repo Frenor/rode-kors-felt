@@ -178,6 +178,12 @@ describe('team.patient_status_set action', () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().action.actionType).toBe('team.patient_status_set');
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.patient_status_set', patientId, status: null, clientActionId: randomUUID() },
+    });
   });
 
   it('deduplicates on same clientActionId', async () => {
@@ -199,6 +205,12 @@ describe('team.patient_status_set action', () => {
     });
     expect(second.statusCode).toBe(200);
     expect(second.json().deduplicated).toBe(true);
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.patient_status_set', patientId, status: null, clientActionId: randomUUID() },
+    });
   });
 
   it('rejects unknown status values with 400', async () => {
@@ -232,6 +244,12 @@ describe('team.patient_status_set action', () => {
     const found = body.monitoredPatients.find((p: { id: string }) => p.id === patientId);
     expect(found).toBeDefined();
     expect(found.teamPatientStatus).toBe('monitoring');
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.patient_status_set', patientId, status: null, clientActionId: randomUUID() },
+    });
   });
 
   it('en_route_to_patient keeps patient in unassignedPatients but sets teamPatientStatus', async () => {
@@ -254,6 +272,12 @@ describe('team.patient_status_set action', () => {
     const inMonitored = body.monitoredPatients.find((p: { id: string }) => p.id === patientId);
     expect(inMonitored).toBeDefined();
     expect(inMonitored.teamPatientStatus).toBe('en_route_to_patient');
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.patient_status_set', patientId, status: null, clientActionId: randomUUID() },
+    });
   });
 
   it('null status clears engagement and returns patient to unassignedPatients', async () => {
