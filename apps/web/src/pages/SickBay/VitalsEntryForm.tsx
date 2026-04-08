@@ -32,14 +32,11 @@ type NumericFieldKey = (typeof NUMERIC_FIELDS)[number]['key'];
 
 export function VitalsEntryForm({ patientId, form, onChange, onSubmit }: VitalsEntryFormProps) {
   return (
-    <div style={{
-      marginTop: 'var(--space-3)', padding: 'var(--space-3)',
-      background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
-    }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+    <div className="panel-sunken">
+      <div className="grid-3 mb-3">
         {NUMERIC_FIELDS.map((f) => (
           <div key={f.key}>
-            <label htmlFor={`v-${patientId}-${f.key}`} style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>
+            <label htmlFor={`v-${patientId}-${f.key}`} className="mono-xs-subtle">
               {f.label}
             </label>
             <input
@@ -60,11 +57,11 @@ export function VitalsEntryForm({ patientId, form, onChange, onSubmit }: VitalsE
         ))}
       </div>
 
-      <fieldset style={{ border: 'none', padding: 0, marginBottom: 'var(--space-3)' }}>
-        <legend style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)' }}>
+      <fieldset className="fieldset-reset mb-3">
+        <legend className="mono-xs-subtle mb-1">
           Bevissthet (ACVPU)
         </legend>
-        <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+        <div className="flex flex-wrap gap-1">
           {ACVPU_OPTIONS.map((opt) => (
             <button
               key={opt.value}

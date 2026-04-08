@@ -12,14 +12,11 @@ interface NotePanelProps {
 
 export function NotePanel({ patientId, form, onChange, onSubmit }: NotePanelProps) {
   return (
-    <div style={{
-      marginTop: 'var(--space-3)', padding: 'var(--space-3)',
-      background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
-    }}>
-      <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>Nytt notat</h4>
+    <div className="panel-sunken">
+      <h4 className="heading-sm">Nytt notat</h4>
 
-      <div style={{ marginBottom: 'var(--space-2)' }}>
-        <label htmlFor={`note-author-${patientId}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+      <div className="mb-2">
+        <label htmlFor={`note-author-${patientId}`} className="text-xs-subtle">
           Forfatter
         </label>
         <input
@@ -28,16 +25,12 @@ export function NotePanel({ patientId, form, onChange, onSubmit }: NotePanelProp
           value={form.author}
           placeholder="Navn (valgfritt)"
           onChange={(e) => onChange({ ...form, author: e.target.value })}
-          style={{
-            width: '100%', height: 36, padding: '0 var(--space-2)',
-            borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-            background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)',
-          }}
+          className="form-input-sm"
         />
       </div>
 
-      <div style={{ marginBottom: 'var(--space-2)' }}>
-        <label htmlFor={`note-text-${patientId}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+      <div className="mb-2">
+        <label htmlFor={`note-text-${patientId}`} className="text-xs-subtle">
           Notat
         </label>
         <textarea
@@ -46,12 +39,8 @@ export function NotePanel({ patientId, form, onChange, onSubmit }: NotePanelProp
           placeholder="Skriv notat her..."
           rows={3}
           onChange={(e) => onChange({ ...form, text: e.target.value })}
-          style={{
-            width: '100%', padding: 'var(--space-2)',
-            borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-            background: 'var(--color-input-bg)', color: 'var(--color-text)',
-            fontSize: 'var(--text-xs)', resize: 'vertical', fontFamily: 'inherit',
-          }}
+          className="form-textarea"
+          style={{ fontSize: 'var(--text-xs)' }}
         />
       </div>
 
