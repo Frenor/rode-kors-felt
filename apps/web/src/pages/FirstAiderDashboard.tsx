@@ -16,9 +16,14 @@ import {
   type QueuedTeamActionPayload,
 } from '../lib/offline-firstaid-queue';
 import { api } from '../lib/api';
-import type { TeamOperationalStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
+import type { TeamOperationalStatus, TeamPatientStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
 import type { TeamTransport } from '../stores/auth';
 import { VitalsEntryForm, EMPTY_VITALS_FORM, type VitalsFormShape } from './SickBay/VitalsEntryForm';
+import { PatientLocationRow } from './FirstAider/PatientLocationRow';
+import { PatientEngagementPicker } from './FirstAider/PatientEngagementPicker';
+import { TeamSettingsPanel, TRANSPORT_LABELS } from './FirstAider/TeamSettingsPanel';
+import { TeamStatusPickerSheet } from './FirstAider/TeamStatusPickerSheet';
+import { TeamChatSection } from './FirstAider/TeamChatSection';
 
 export function FirstAiderDashboard() {
   const { eventId, teams, updateTeamTransport } = useAuthStore();
@@ -29,8 +34,9 @@ export function FirstAiderDashboard() {
   const setActivePatient = useFirstAidWorkspaceStore((s) => s.setActivePatient);
   const setTeamStatus = useFirstAidWorkspaceStore((s) => s.setTeamStatus);
   const setTeamSyncedAt = useFirstAidWorkspaceStore((s) => s.setTeamSyncedAt);
-  const [incidents, setIncidents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const setPatientStatus = useFirstAidWorkspaceStore((s) => s.setPatientStatus);
+  const clearPatientStatus = useFirstAidWorkspaceStore((s) => s.clearPatientStatus);
+  const patientStatusMap = useFirstAidWorkspaceStore((s) => s.patientStatusMap);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspace, setWorkspace] = useState<TeamWorkspaceResponse | null>(null);
   const [teamGear, setTeamGear] = useState<string[]>([]);
@@ -74,14 +80,6 @@ export function FirstAiderDashboard() {
     [],
     [],
   );
-
-  useEffect(() => {
-    if (!eventId) return;
-    api.getIncidents(eventId).then((res) => {
-      setIncidents(res.incidents);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [eventId]);
 
   useEffect(() => {
     if (!eventId || !selectedTeam) {
@@ -225,13 +223,6 @@ export function FirstAiderDashboard() {
     atv: 'driving',
   };
 
-  const navigateToIncident = (incident: any) => {
-    const { lat, lng } = incident.location ?? {};
-    if (lat == null || lng == null) return;
-    const travelMode = TRANSPORT_TRAVEL_MODE[currentTeamTransport];
-    window.open(`https://maps.google.com/maps?daddr=${lat},${lng}&travelmode=${travelMode}`, '_blank', 'noopener');
-  };
-
   const handleTransportChange = async (transport: TeamTransport) => {
     if (!selectedTeam) return;
     const previous = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
@@ -243,18 +234,6 @@ export function FirstAiderDashboard() {
       updateTeamTransport(selectedTeam, previous);
     }
   };
-
-  const GEAR_CATALOG = [
-    { id: 'first_aid_bag', label: 'Førstehjelpsveske' },
-    { id: 'aed', label: 'Hjertestarter (AED)' },
-    { id: 'stretcher', label: 'Båre' },
-    { id: 'oxygen', label: 'Oksygen' },
-    { id: 'emergency_blanket', label: 'Varmedekke' },
-    { id: 'tourniquet', label: 'Tourniquet' },
-    { id: 'vacuum_mattress', label: 'Vakuummadrass' },
-    { id: 'spine_board', label: 'Ryggbrett' },
-    { id: 'cervical_collar', label: 'Nakkekrage' },
-  ] as const;
 
   const handleGearToggle = async (itemId: string) => {
     if (!selectedTeam) return;
@@ -282,25 +261,6 @@ export function FirstAiderDashboard() {
       console.error('[firstaid] Failed to save contact details', err);
       setContactsDirty(true);
     }
-  };
-
-  const bearingTo = (lat: number, lng: number): string => {
-    if (!gpsPosition) return '';
-    const dLng = lng - gpsPosition.lng;
-    const y = Math.sin(dLng) * Math.cos(lat * Math.PI / 180);
-    const x = Math.cos(gpsPosition.lat * Math.PI / 180) * Math.sin(lat * Math.PI / 180) -
-      Math.sin(gpsPosition.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.cos(dLng);
-    const brng = Math.round((Math.atan2(y, x) * 180 / Math.PI + 360) % 360);
-    const dirs = ['N','NØ','Ø','SØ','S','SV','V','NV'];
-    return dirs[Math.round(brng / 45) % 8]!;
-  };
-
-  const statusLabels: Record<string, string> = {
-    on_scene: 'På stedet',
-    transporting: 'Under transport',
-    at_sickbay: 'På sykestue',
-    handed_over: 'Overlevert',
-    resolved: 'Løst',
   };
 
   const teamStatusLabels: Record<TeamOperationalStatus, string> = {
@@ -348,18 +308,46 @@ export function FirstAiderDashboard() {
     await queueAndSyncTeamAction(selectedTeam, payload);
   };
 
-  const handleSetActivePatient = async (patientId: string) => {
+  const handleSetPatientStatus = async (patientId: string, status: TeamPatientStatus | null) => {
     if (!eventId || !selectedTeam) return;
-    setActivePatient(eventId, selectedTeam, patientId);
-    const monitored = workspace?.monitoredPatients.some((patient) => patient.id === patientId)
-      || workspace?.assignedPatients.some((patient) => patient.id === patientId);
-    if (!monitored) {
-      await queueAndSyncTeamAction(selectedTeam, {
-        type: 'team.monitor_started',
-        patientId,
-        clientActionId: crypto.randomUUID(),
-      });
+    // Optimistic update
+    if (status != null) {
+      setPatientStatus(eventId, selectedTeam, patientId, status);
+      setActivePatient(eventId, selectedTeam, patientId);
+    } else {
+      clearPatientStatus(eventId, selectedTeam, patientId);
     }
+    // Derive new team operational status from updated map
+    const key = `${eventId}:${selectedTeam}:${patientId}`;
+    const updatedMap: Record<string, TeamPatientStatus> = { ...patientStatusMap };
+    if (status != null) {
+      updatedMap[key] = status;
+    } else {
+      delete updatedMap[key];
+    }
+    const currentStatuses = Object.entries(updatedMap)
+      .filter(([k]) => k.startsWith(`${eventId}:${selectedTeam}:`))
+      .map(([, v]) => v);
+    const manualOnly = selectedTeamStatus === 'needs_assistance' || selectedTeamStatus === 'unavailable';
+    if (!manualOnly) {
+      let derived: TeamOperationalStatus = 'available';
+      if (currentStatuses.some((s) => s === 'transporting' || s === 'monitoring')) derived = 'on_scene';
+      else if (currentStatuses.some((s) => s === 'en_route_to_patient')) derived = 'en_route';
+      if (derived !== selectedTeamStatus) {
+        setTeamStatus(eventId, selectedTeam, derived);
+        await queueAndSyncTeamAction(selectedTeam, {
+          type: 'team.status_set',
+          status: derived,
+          clientActionId: crypto.randomUUID(),
+        });
+      }
+    }
+    await queueAndSyncTeamAction(selectedTeam, {
+      type: 'team.patient_status_set',
+      patientId,
+      status,
+      clientActionId: crypto.randomUUID(),
+    });
   };
 
   const getPatientVitalsForm = (patientId: string): VitalsFormShape =>
@@ -392,13 +380,6 @@ export function FirstAiderDashboard() {
     setExpandedPatientId((prev) => (prev === patientId ? null : patientId));
   };
 
-  const transportLabels: Record<TeamTransport, string> = {
-    foot: 'Til fots',
-    bike: 'Sykkel',
-    vehicle: 'Kjøretøy',
-    atv: 'ATV',
-  };
-
   const TRIAGE_STYLE: Record<string, { bg: string; text: string; label: string }> = {
     red:    { bg: '#fee2e2', text: '#b91c1c', label: 'Rød' },
     yellow: { bg: '#fef9c3', text: '#854d0e', label: 'Gul' },
@@ -406,19 +387,25 @@ export function FirstAiderDashboard() {
     black:  { bg: '#f1f5f9', text: '#1e293b', label: 'Svart' },
   };
 
-  const typeLabels: Record<string, string> = {
-    medical: 'Medisinsk',
-    trauma: 'Traume',
-    psychiatric: 'Psykiatrisk',
-    other: 'Annet',
-  };
-
   const selectedTeamData = useMemo(() => teams.find((t) => t.id === selectedTeam) ?? null, [teams, selectedTeam]);
 
   const combinedAssignedPatients = useMemo(() => {
     const assignedIds = new Set(assignedPatients.map((p) => p.id));
-    return [...assignedPatients, ...monitoredPatients.filter((p) => !assignedIds.has(p.id))];
-  }, [assignedPatients, monitoredPatients]);
+    // Include workspace-monitored patients + any patient with a local optimistic status
+    const locallyTrackedIds = new Set(
+      Object.keys(patientStatusMap)
+        .filter((k) => eventId && selectedTeam && k.startsWith(`${eventId}:${selectedTeam}:`))
+        .map((k) => k.split(':')[2]!),
+    );
+    const extras = (workspace?.unassignedPatients ?? []).filter(
+      (p) => locallyTrackedIds.has(p.id) && !assignedIds.has(p.id),
+    );
+    return [
+      ...assignedPatients,
+      ...monitoredPatients.filter((p) => !assignedIds.has(p.id)),
+      ...extras.filter((p) => !monitoredPatients.some((m) => m.id === p.id)),
+    ];
+  }, [assignedPatients, monitoredPatients, patientStatusMap, eventId, selectedTeam, workspace?.unassignedPatients]);
 
   const currentTeamTransport = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
 
@@ -426,6 +413,8 @@ export function FirstAiderDashboard() {
     const mode = TRANSPORT_TRAVEL_MODE[currentTeamTransport];
     window.open(`https://maps.google.com/maps?daddr=${lat},${lon}&travelmode=${mode}`, '_blank', 'noopener');
   };
+
+  const teamStatusLabel = teamStatusLabels[selectedTeamStatus as TeamOperationalStatus];
 
   return (
     <div data-testid="firstaid-patient-workspace" className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '6.25rem' }}>
@@ -461,7 +450,7 @@ export function FirstAiderDashboard() {
                 <span>{team.name}</span>
                 {team.transport && (
                   <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--color-text-subtle)', fontFamily: 'var(--font-mono)' }}>
-                    {transportLabels[team.transport as TeamTransport] ?? team.transport}
+                    {TRANSPORT_LABELS[team.transport as TeamTransport] ?? team.transport}
                   </span>
                 )}
               </button>
@@ -502,7 +491,7 @@ export function FirstAiderDashboard() {
               cursor: 'pointer',
             }}
           >
-            {teamStatusLabels[selectedTeamStatus as TeamOperationalStatus]}
+            {teamStatusLabel}
           </button>
           <button
             onClick={() => setShowSettings((v) => !v)}
@@ -524,225 +513,31 @@ export function FirstAiderDashboard() {
 
       {/* Status picker bottom sheet */}
       {showStatusPicker && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Velg lagstatus"
-          style={{
-            position: 'fixed', inset: 0, zIndex: 50,
-            background: 'rgba(0,0,0,0.4)',
-            display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-          }}
-          onClick={() => setShowStatusPicker(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: 'var(--color-surface)',
-              borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
-              padding: 'var(--space-4)',
-              display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
-            }}
-          >
-            <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: 'var(--space-1)' }}>
-              Lagstatus
-            </div>
-            <div
-              role="radiogroup"
-              aria-label="Lagstatus i felt"
-              data-testid="firstaid-field-status-controls"
-              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}
-            >
-              {(Object.keys(teamStatusLabels) as TeamOperationalStatus[]).map((status) => (
-                <button
-                  key={status}
-                  data-testid={`firstaid-field-status-${status}`}
-                  onClick={async () => { await setTeamOperationalStatus(status); setShowStatusPicker(false); }}
-                  className="touch-target"
-                  style={{
-                    minHeight: 'var(--touch-min)',
-                    padding: 'var(--space-3)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: `1px solid ${selectedTeamStatus === status ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                    background: selectedTeamStatus === status ? 'var(--color-brand-dim)' : 'transparent',
-                    color: 'var(--color-text)',
-                    fontSize: 'var(--text-sm)', fontWeight: 600,
-                    cursor: 'pointer', textAlign: 'left',
-                  }}
-                >
-                  {teamStatusLabels[status]}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setShowStatusPicker(false)}
-              style={{
-                marginTop: 'var(--space-2)', padding: 'var(--space-3)',
-                border: 'none', background: 'var(--color-surface-sunken)',
-                borderRadius: 'var(--radius-sm)', color: 'var(--color-text-subtle)',
-                fontSize: 'var(--text-sm)', cursor: 'pointer',
-              }}
-            >
-              Avbryt
-            </button>
-          </div>
-        </div>
+        <TeamStatusPickerSheet
+          currentStatus={selectedTeamStatus as TeamOperationalStatus}
+          onSelect={setTeamOperationalStatus}
+          onClose={() => setShowStatusPicker(false)}
+        />
       )}
 
       {/* Settings panel */}
       {selectedTeam && showSettings && (
-        <section
-          aria-label="Lagets innstillinger"
-          style={{
-            padding: 'var(--space-4)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border)',
-            background: 'var(--color-surface)',
-            display: 'flex', flexDirection: 'column', gap: 'var(--space-4)',
-          }}
-        >
-          {/* Transport type */}
-          <div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)' }}>Fremkomstmiddel</div>
-            <div
-              role="radiogroup"
-              aria-label="Velg fremkomstmiddel"
-              style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-1)' }}
-            >
-              {(Object.keys(transportLabels) as TeamTransport[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => handleTransportChange(t)}
-                  aria-pressed={currentTeamTransport === t}
-                  className="touch-target"
-                  style={{
-                    minHeight: 44, padding: 'var(--space-1)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: `1px solid ${currentTeamTransport === t ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                    background: currentTeamTransport === t ? 'var(--color-brand-dim)' : 'transparent',
-                    color: 'var(--color-text)',
-                    fontSize: 'var(--text-xs)', fontWeight: currentTeamTransport === t ? 700 : 400,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {transportLabels[t]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Gear checklist */}
-          <div>
-            <button
-              onClick={() => setShowGear((v) => !v)}
-              style={{
-                width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: 'var(--space-2) 0', background: 'none', border: 'none',
-                color: 'var(--color-text)', cursor: 'pointer',
-              }}
-            >
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                Utstyr ({teamGear.length}/{GEAR_CATALOG.length})
-              </span>
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>{showGear ? '▲' : '▼'}</span>
-            </button>
-            {showGear && (
-              <div role="group" aria-label="Utstyrsliste" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                {GEAR_CATALOG.map((item) => {
-                  const checked = teamGear.includes(item.id);
-                  return (
-                    <label
-                      key={item.id}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-                        padding: 'var(--space-2) var(--space-3)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: `1px solid ${checked ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                        background: checked ? 'var(--color-brand-dim)' : 'transparent',
-                        cursor: 'pointer', minHeight: 44,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => handleGearToggle(item.id)}
-                        style={{ width: 18, height: 18, accentColor: 'var(--color-brand)', flexShrink: 0 }}
-                      />
-                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: checked ? 600 : 400 }}>{item.label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Contact numbers */}
-          <div>
-            <button
-              onClick={() => setShowContacts((v) => !v)}
-              style={{
-                width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: 'var(--space-2) 0', background: 'none', border: 'none',
-                color: 'var(--color-text)', cursor: 'pointer',
-              }}
-            >
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                Kontaktinfo {(contactPhone || contactRadio) ? `· ${[contactPhone, contactRadio].filter(Boolean).join(' / ')}` : '· Ikke satt'}
-              </span>
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>{showContacts ? '▲' : '▼'}</span>
-            </button>
-            {showContacts && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                <div>
-                  <label htmlFor="contact-phone" style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)' }}>
-                    Mobilnummer
-                  </label>
-                  <input
-                    id="contact-phone" type="tel" value={contactPhone}
-                    onChange={(e) => { setContactPhone(e.target.value); setContactsDirty(true); }}
-                    placeholder="f.eks. 900 12 345"
-                    style={{
-                      width: '100%', height: 44, padding: '0 var(--space-3)',
-                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                      background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                      fontSize: 'var(--text-sm)', boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="contact-radio" style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)' }}>
-                    ISSI
-                  </label>
-                  <input
-                    id="contact-radio" type="text" inputMode="numeric" value={contactRadio}
-                    onChange={(e) => { setContactRadio(e.target.value); setContactsDirty(true); }}
-                    placeholder="f.eks. 1234567"
-                    style={{
-                      width: '100%', height: 44, padding: '0 var(--space-3)',
-                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                      background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                      fontSize: 'var(--text-sm)', boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-                <button
-                  onClick={handleContactsSave}
-                  disabled={!contactsDirty}
-                  className="touch-target"
-                  style={{
-                    height: 44, borderRadius: 'var(--radius-sm)', border: 'none',
-                    background: contactsDirty ? 'var(--color-brand)' : 'var(--color-border)',
-                    color: contactsDirty ? 'white' : 'var(--color-text-subtle)',
-                    fontSize: 'var(--text-sm)', fontWeight: 600,
-                    cursor: contactsDirty ? 'pointer' : 'default',
-                  }}
-                >
-                  Lagre kontaktinfo
-                </button>
-              </div>
-            )}
-          </div>
-        </section>
+        <TeamSettingsPanel
+          currentTransport={currentTeamTransport}
+          onTransportChange={handleTransportChange}
+          teamGear={teamGear}
+          showGear={showGear}
+          onToggleGear={() => setShowGear((v) => !v)}
+          onGearToggle={handleGearToggle}
+          contactPhone={contactPhone}
+          contactRadio={contactRadio}
+          contactsDirty={contactsDirty}
+          showContacts={showContacts}
+          onToggleContacts={() => setShowContacts((v) => !v)}
+          onContactPhoneChange={(v) => { setContactPhone(v); setContactsDirty(true); }}
+          onContactRadioChange={(v) => { setContactRadio(v); setContactsDirty(true); }}
+          onContactsSave={handleContactsSave}
+        />
       )}
 
       {/* Sector assignment badge */}
@@ -789,7 +584,9 @@ export function FirstAiderDashboard() {
               const posText = (p as TeamWorkspacePatient).positionText;
               const lat = (p as TeamWorkspacePatient).lat;
               const lon = (p as TeamWorkspacePatient).lon;
-              const hasCoords = lat != null && lon != null;
+              const pKey = eventId && selectedTeam ? `${eventId}:${selectedTeam}:${p.id}` : null;
+              const patientLocalStatus = pKey ? (patientStatusMap[pKey] ?? null) : null;
+              const patientServerStatus = (p as TeamWorkspacePatient).teamPatientStatus ?? null;
               return (
                 <div
                   key={p.id}
@@ -841,30 +638,13 @@ export function FirstAiderDashboard() {
                       display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
                     }}>
                       {/* Position + navigate */}
-                      {(posText || hasCoords) && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', flex: 1 }}>
-                            {posText
-                              ? `📍 ${posText}`
-                              : `📍 ${lat!.toFixed(4)}, ${lon!.toFixed(4)}${gpsPosition ? ` · ${bearingTo(lat!, lon!)}` : ''}`}
-                          </span>
-                          {hasCoords && (
-                            <button
-                              onClick={() => openMapsNav(lat!, lon!)}
-                              className="touch-target"
-                              style={{
-                                minHeight: 36, padding: '0 var(--space-3)',
-                                borderRadius: 'var(--radius-sm)',
-                                border: '1px solid var(--color-brand)', background: 'transparent',
-                                color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600,
-                                cursor: 'pointer', flexShrink: 0,
-                              }}
-                            >
-                              Naviger hit
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      <PatientLocationRow
+                        positionText={posText ?? null}
+                        lat={lat ?? null}
+                        lon={lon ?? null}
+                        gpsPosition={gpsPosition}
+                        onNavigate={openMapsNav}
+                      />
 
                       {/* Vitals entry */}
                       <VitalsEntryForm
@@ -906,6 +686,14 @@ export function FirstAiderDashboard() {
                           Lagre
                         </button>
                       </div>
+
+                      {/* Patient status picker */}
+                      <PatientEngagementPicker
+                        patientId={p.id}
+                        localStatus={patientLocalStatus}
+                        serverStatus={patientServerStatus}
+                        onSetStatus={handleSetPatientStatus}
+                      />
 
                       {/* Trenger bistand */}
                       <button
@@ -950,7 +738,6 @@ export function FirstAiderDashboard() {
                 </div>
               )}
               {(workspace?.unassignedPatients ?? []).map((patient) => {
-                const hasCoords = patient.lat != null && patient.lon != null;
                 return (
                   <div
                     key={patient.id}
@@ -965,38 +752,24 @@ export function FirstAiderDashboard() {
                     <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                       {patient.presentingComplaint || 'Ukjent problemstilling'}
                     </div>
-                    {(patient.positionText || hasCoords) && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flex: 1 }}>
-                          {patient.positionText
-                            ? `📍 ${patient.positionText}`
-                            : `📍 ${patient.lat!.toFixed(4)}, ${patient.lon!.toFixed(4)}${gpsPosition ? ` · ${bearingTo(patient.lat!, patient.lon!)}` : ''}`}
-                        </span>
-                        {hasCoords && (
-                          <button
-                            onClick={() => openMapsNav(patient.lat!, patient.lon!)}
-                            className="touch-target"
-                            style={{
-                              minHeight: 36, padding: '0 var(--space-3)',
-                              borderRadius: 'var(--radius-sm)',
-                              border: '1px solid var(--color-brand)', background: 'transparent',
-                              color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600,
-                              cursor: 'pointer', flexShrink: 0,
-                            }}
-                          >
-                            Naviger hit
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <PatientLocationRow
+                      positionText={patient.positionText}
+                      lat={patient.lat}
+                      lon={patient.lon}
+                      gpsPosition={gpsPosition}
+                      onNavigate={openMapsNav}
+                    />
                     <button
-                      onClick={() => handleSetActivePatient(patient.id)}
+                      onClick={() => handleSetPatientStatus(patient.id, 'monitoring')}
                       className="touch-target"
                       style={{
-                        minHeight: 'var(--touch-min)', width: '100%',
-                        borderRadius: 'var(--radius-sm)', border: 'none',
-                        background: 'var(--color-brand)', color: 'white',
-                        fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
+                        minHeight: 32, padding: '0 var(--space-3)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-brand)',
+                        background: 'transparent',
+                        color: 'var(--color-brand)',
+                        fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
+                        alignSelf: 'flex-start',
                       }}
                     >
                       Ta over pasient →
@@ -1075,200 +848,16 @@ export function FirstAiderDashboard() {
       )}
 
       {/* Team chat */}
-      <section style={{ marginBottom: 'var(--space-4)' }}>
-        <button
-          onClick={() => setShowChat((v) => !v)}
-          style={{
-            width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-            color: 'var(--color-text)', cursor: 'pointer',
-          }}
-        >
-          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>Lagmelding</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-            {messages.length > 0 ? `${messages.length} meldinger` : 'Ingen meldinger'} {showChat ? '▲' : '▼'}
-          </span>
-        </button>
-
-        {showChat && (
-          <div style={{
-            marginTop: 'var(--space-2)', borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-            overflow: 'hidden',
-          }}>
-            {/* Message list */}
-            <div style={{
-              maxHeight: 220, overflowY: 'auto', padding: 'var(--space-3)',
-              display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
-            }}>
-              {messages.length === 0 && (
-                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', textAlign: 'center' }}>
-                  Ingen meldinger ennå
-                </p>
-              )}
-              {messages.map((msg) => (
-                <div key={msg.id} style={{
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: msg.fromSelf ? 'flex-end' : 'flex-start',
-                }}>
-                  <div style={{
-                    maxWidth: '80%', padding: 'var(--space-2) var(--space-3)',
-                    borderRadius: 'var(--radius-md)',
-                    background: msg.fromSelf ? 'var(--color-brand)' : 'var(--color-surface-sunken)',
-                    color: msg.fromSelf ? 'white' : 'var(--color-text)',
-                    fontSize: 'var(--text-sm)',
-                  }}>
-                    {!msg.fromSelf && msg.fromTeamId && (
-                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, marginBottom: 2, opacity: 0.7 }}>
-                        {teams.find((t) => t.id === msg.fromTeamId)?.name ?? 'Ukjent lag'}
-                      </div>
-                    )}
-                    {msg.text}
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--color-text-subtle)', marginTop: 2 }}>
-                    {new Date(msg.sentAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-              ))}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Input row */}
-            <div style={{
-              display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-2)',
-              borderTop: '1px solid var(--color-border)',
-            }}>
-              <input
-                type="text"
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                placeholder="Skriv melding..."
-                style={{
-                  flex: 1, height: 44, padding: '0 var(--space-3)',
-                  borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                  background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)',
-                }}
-              />
-              <button
-                onClick={sendMessage}
-                disabled={!messageText.trim()}
-                style={{
-                  height: 44, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-                  border: 'none', background: 'var(--color-brand)', color: 'white',
-                  fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
-                  opacity: !messageText.trim() ? 0.5 : 1,
-                }}
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* Recent incidents */}
-      <section aria-labelledby="recent-heading">
-        <h2
-          id="recent-heading"
-          style={{
-            fontSize: 'var(--text-sm)',
-            fontFamily: 'var(--font-mono)',
-            color: 'var(--color-text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: 'var(--tracking-mono)',
-            marginBottom: 'var(--space-3)',
-          }}
-        >
-          Siste hendelser
-        </h2>
-
-        {loading ? (
-          <p style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-sm)' }}>
-            Laster...
-          </p>
-        ) : incidents.length === 0 ? (
-          <div style={{
-            padding: 'var(--space-8)',
-            textAlign: 'center',
-            color: 'var(--color-text-subtle)',
-            background: 'var(--color-surface)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border)',
-          }}>
-            <p style={{ fontSize: 'var(--text-sm)' }}>Ingen hendelser ennå</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {incidents.slice(0, 10).map((incident) => (
-              <div
-                key={incident.id}
-                style={{
-                  padding: 'var(--space-4)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                  <span style={{
-                    fontWeight: 600,
-                    fontSize: 'var(--text-sm)',
-                  }}>
-                    {typeLabels[incident.type] || incident.type}
-                  </span>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--text-xs)',
-                    padding: '2px 8px',
-                    borderRadius: 'var(--radius-full)',
-                    background: incident.status === 'resolved' ? 'var(--color-status-ok-bg)' : 'var(--color-status-warning-bg)',
-                    color: incident.status === 'resolved' ? 'var(--color-status-ok)' : 'var(--color-status-warning)',
-                  }}>
-                    {statusLabels[incident.status] || incident.status}
-                  </span>
-                </div>
-                {incident.acvpu && (
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--color-text-muted)',
-                  }}>
-                    ACVPU: {incident.acvpu.toUpperCase()}
-                  </span>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--color-text-subtle)',
-                  }}>
-                    {new Date(incident.createdAt).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' })}
-                    {incident.location && gpsPosition && (
-                      <span style={{ marginLeft: 8 }}>· {bearingTo(incident.location.lat, incident.location.lng)}</span>
-                    )}
-                  </span>
-                  {incident.location && incident.status !== 'resolved' && (
-                    <button
-                      onClick={() => navigateToIncident(incident)}
-                      className="touch-target"
-                      style={{
-                        minHeight: 36, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-brand)', background: 'transparent',
-                        color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Naviger hit
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <TeamChatSection
+        messages={messages}
+        teams={teams}
+        showChat={showChat}
+        onToggleChat={() => setShowChat((v) => !v)}
+        messageText={messageText}
+        onMessageTextChange={setMessageText}
+        onSend={sendMessage}
+        chatEndRef={chatEndRef}
+      />
     </div>
   );
 }
