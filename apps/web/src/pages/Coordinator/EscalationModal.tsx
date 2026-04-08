@@ -29,22 +29,18 @@ export function EscalationModal({
       role="dialog"
       aria-label="Eskalér hendelse"
       aria-modal="true"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 'var(--z-modal)' as React.CSSProperties['zIndex'],
-        background: 'rgba(0,0,0,0.5)', display: 'flex',
-        alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
-      }}
+      className="modal-backdrop"
     >
       <FocusTrap onEscape={onClose}>
         <div style={{
           background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
           padding: 'var(--space-6)', maxWidth: 440, width: '100%',
         }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
+          <h2 className="text-lg fw-700 mb-4">
             Eskalér hendelse
           </h2>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+          <div className="flex-col gap-3 mb-4">
             {(['path_a_rk_ambulance', 'path_b_113'] as const).map((path) => (
               <button
                 key={path}
@@ -67,8 +63,8 @@ export function EscalationModal({
             ))}
           </div>
 
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="escalate-reason" style={{ display: 'block', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-1)' }}>
+          <div className="mb-4">
+            <label htmlFor="escalate-reason" className="field-label">
               Årsak (valgfritt)
             </label>
             <textarea
@@ -76,23 +72,15 @@ export function EscalationModal({
               value={escalateReason}
               onChange={(e) => onReasonChange(e.target.value)}
               rows={3}
-              style={{
-                width: '100%', padding: 'var(--space-2)',
-                borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                fontSize: 'var(--text-sm)', resize: 'vertical',
-              }}
+              className="form-textarea"
             />
           </div>
 
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <div className="flex gap-2">
             <button
               onClick={onClose}
-              style={{
-                flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)', background: 'transparent',
-                cursor: 'pointer',
-              }}
+              className="btn-ghost"
+              style={{ flex: 1, minHeight: 'var(--touch-min)' }}
             >
               Avbryt
             </button>

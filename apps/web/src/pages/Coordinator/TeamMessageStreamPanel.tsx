@@ -21,36 +21,28 @@ export function TeamMessageStreamPanel({ messages, teams }: TeamMessageStreamPan
     <section
       aria-label="Lagsmeldinger"
       data-testid="coordinator-team-message-stream"
-      style={{
-        marginBottom: 'var(--space-4)',
-        padding: 'var(--space-3)',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--color-border)',
-        background: 'var(--color-surface)',
-      }}
+      className="card-p3 mb-4"
     >
-      <header style={{ marginBottom: 'var(--space-2)' }}>
-        <h2 style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+      <header className="mb-2">
+        <h2 className="text-sm fw-700" style={{ margin: 0 }}>
           Lagsmeldinger
         </h2>
-        <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+        <p className="text-xs-subtle" style={{ margin: 0 }}>
           Live-strøm av meldinger sendt mellom lag.
         </p>
       </header>
 
       <div
         aria-live="polite"
+        className="flex-col gap-2"
         style={{
           maxHeight: 220,
           overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-2)',
           paddingRight: 'var(--space-1)',
         }}
       >
         {messages.length === 0 ? (
-          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+          <p className="text-sm text-subtle" style={{ margin: 0 }}>
             Ingen lagsmeldinger ennå.
           </p>
         ) : (
@@ -75,22 +67,17 @@ export function TeamMessageStreamPanel({ messages, teams }: TeamMessageStreamPan
                 }}
               >
                 <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 'var(--space-2)',
-                    marginBottom: 2,
-                  }}
+                  className="flex-between gap-2"
+                  style={{ marginBottom: 2 }}
                 >
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>
+                  <span className="mono-xs fw-700">
                     {toTeam ? `${fromTeam} → ${toTeam}` : `${fromTeam} → Alle`}
                   </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                  <span className="mono-xs-subtle">
                     {sentAt}
                   </span>
                 </div>
-                <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>
+                <p className="text-sm" style={{ margin: 0, color: 'var(--color-text)' }}>
                   {message.text}
                 </p>
               </article>

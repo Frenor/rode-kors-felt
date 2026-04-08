@@ -28,8 +28,8 @@ export function DeteriorationAlertsPanel({
         background: 'var(--color-status-critical-bg)',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-        <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--color-status-critical)' }}>
+      <div className="flex-between mb-2">
+        <h3 className="text-sm fw-700 text-critical">
           Kritiske pasienter — NEWS2 stiger raskt
         </h3>
         <button
@@ -40,7 +40,7 @@ export function DeteriorationAlertsPanel({
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      <div className="flex-col gap-2">
         {[...alerts].sort((a, b) => b.ratePerHour - a.ratePerHour).map((alert) => (
           <div key={alert.patientId} style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -50,23 +50,23 @@ export function DeteriorationAlertsPanel({
           }}>
             <div>
               <span
-                style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700 }}
+                className="mono-xs fw-700"
                 aria-label={`NEWS2 stiger — score ${alert.news2Score}`}
               >
                 <span aria-hidden="true">↑ </span>NEWS2 {alert.news2Score}
               </span>
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginLeft: 'var(--space-2)' }}>
+              <span className="text-xs-subtle" style={{ marginLeft: 'var(--space-2)' }}>
                 +{alert.ratePerHour.toFixed(1)} poeng/t
               </span>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+            <div className="flex-align gap-2">
               <button
                 onClick={() => onEscalate(alert.patientId)}
                 aria-label={`Eskalér pasient med NEWS2 ${alert.news2Score}`}
+                className="btn-sm"
                 style={{
-                  fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
                   border: '1px solid var(--color-status-critical)', background: 'transparent',
-                  color: 'var(--color-status-critical)', cursor: 'pointer', fontWeight: 600,
+                  color: 'var(--color-status-critical)', fontWeight: 600,
                 }}
               >
                 Eskalér

@@ -40,25 +40,25 @@ export function MCIOverviewPanel({
         background: 'var(--color-status-critical-bg)',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
+      <div className="flex-between mb-3">
         <div>
-          <span style={{ fontWeight: 700, color: 'var(--color-status-critical)', fontSize: 'var(--text-sm)' }}>
+          <span className="text-sm fw-700 text-critical">
             MASSEULYKKE — MCI-MODUS AKTIV
           </span>
           {mciActivatedBy && (
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginLeft: 'var(--space-2)' }}>
+            <span className="text-xs-subtle" style={{ marginLeft: 'var(--space-2)' }}>
               (aktivert av {mciActivatedBy})
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <div className="flex gap-2">
           <button
             onClick={onDownloadSummary}
             disabled={downloadingSummary}
+            className="btn-sm"
             style={{
-              fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-              color: 'var(--color-text)', cursor: 'pointer', fontWeight: 600,
+              color: 'var(--color-text)', fontWeight: 600,
             }}
           >
             Last ned overlevering
@@ -66,10 +66,10 @@ export function MCIOverviewPanel({
           <button
             onClick={onToggleMci}
             disabled={togglingMci}
+            className="btn-sm"
             style={{
-              fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--color-status-critical)', background: 'transparent',
-              color: 'var(--color-status-critical)', cursor: 'pointer', fontWeight: 600,
+              color: 'var(--color-status-critical)', fontWeight: 600,
             }}
           >
             Deaktiver MCI
@@ -87,10 +87,10 @@ export function MCIOverviewPanel({
               borderRadius: 'var(--radius-md)', background: bg,
               border: `1px solid ${color}`,
             }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xl)', fontWeight: 700, color }}>
+              <div className="fw-700 text-2xl" style={{ fontFamily: 'var(--font-mono)', color }}>
                 {count}
               </div>
-              <div style={{ fontSize: 'var(--text-xs)', color, fontWeight: 600 }}>{label}</div>
+              <div className="text-xs fw-600" style={{ color }}>{label}</div>
             </div>
           );
         })}

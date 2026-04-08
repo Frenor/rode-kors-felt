@@ -44,12 +44,9 @@ export function IncidentFeed({
 }: IncidentFeedProps) {
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <h2 style={{
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)',
-            color: 'var(--color-text-muted)', textTransform: 'uppercase', margin: 0,
-          }}>
+      <div className="flex-between mb-3">
+        <div className="flex-align gap-2">
+          <h2 className="section-label" style={{ margin: 0 }}>
             Hendelsesfeed
           </h2>
           {activeFilter && (
@@ -84,16 +81,12 @@ export function IncidentFeed({
       {loading ? (
         <p>Laster...</p>
       ) : incidents.length === 0 ? (
-        <div style={{
-          padding: 'var(--space-8)', textAlign: 'center',
-          background: 'var(--color-surface)', borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)', color: 'var(--color-text-subtle)',
-        }}>
+        <div className="card text-subtle" style={{ padding: 'var(--space-8)', textAlign: 'center' }}>
           <span aria-hidden="true" style={{ display: 'block', fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-2)' }}>📋</span>
           Ingen aktive hendelser
         </div>
       ) : (
-        <div role="feed" aria-label="Hendelser" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        <div role="feed" aria-label="Hendelser" className="flex-col gap-2">
           {incidents.map((inc) => (
             <IncidentCard
               key={inc.id}

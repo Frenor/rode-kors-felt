@@ -36,29 +36,22 @@ export function NewTaskModal({
       role="dialog"
       aria-label="Nytt koordinatoroppdrag"
       aria-modal="true"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 'var(--z-modal)' as React.CSSProperties['zIndex'],
-        background: 'rgba(0,0,0,0.5)', display: 'flex',
-        alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
-      }}
+      className="modal-backdrop"
     >
       <FocusTrap onEscape={onClose}>
-        <div style={{
-          background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
-          padding: 'var(--space-6)', maxWidth: 480, width: '100%',
-        }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-1)' }}>
+        <div className="modal-content">
+          <h2 className="text-lg fw-700 mb-1">
             Nytt koordinatoroppdrag
           </h2>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-5)' }}>
+          <p className="text-sm text-muted" style={{ marginBottom: 'var(--space-5)' }}>
             Opprettet av koordinator — vises i hendelsesfeed og tildeles valgt lag.
           </p>
 
           {/* Type */}
-          <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+          <label className="field-label-strong">
             Hendelsestype
           </label>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
+          <div className="flex flex-wrap gap-2 mb-4">
             {(['medical', 'trauma', 'psychiatric', 'other'] as const).map((t) => (
               <button
                 key={t}
@@ -80,20 +73,15 @@ export function NewTaskModal({
           </div>
 
           {/* Team */}
-          <label htmlFor="new-oppdrag-team" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+          <label htmlFor="new-oppdrag-team" className="field-label-strong">
             Tildel lag (valgfritt)
           </label>
           <select
             id="new-oppdrag-team"
             value={teamId}
             onChange={(e) => onTeamChange(e.target.value)}
-            style={{
-              width: '100%', padding: 'var(--space-2) var(--space-3)',
-              borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-              background: 'var(--color-input-bg)', color: 'var(--color-text)',
-              fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)',
-              minHeight: 'var(--touch-min)',
-            }}
+            className="form-input"
+            style={{ marginBottom: 'var(--space-4)' }}
           >
             <option value="">— Velg lag —</option>
             {teams.map((t) => (
@@ -104,7 +92,7 @@ export function NewTaskModal({
           </select>
 
           {/* Note */}
-          <label htmlFor="new-oppdrag-note" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+          <label htmlFor="new-oppdrag-note" className="field-label-strong">
             Sted / beskrivelse
           </label>
           <textarea
@@ -113,33 +101,23 @@ export function NewTaskModal({
             onChange={(e) => onNoteChange(e.target.value)}
             placeholder="F.eks. «Sektor B ved inngang, person sitter på bakken»"
             rows={3}
-            style={{
-              width: '100%', padding: 'var(--space-2) var(--space-3)',
-              borderRadius: 'var(--radius-md)', border: '1px solid var(--color-input-border)',
-              background: 'var(--color-input-bg)', color: 'var(--color-text)',
-              fontSize: 'var(--text-sm)', resize: 'vertical',
-              marginBottom: 'var(--space-5)',
-            }}
+            className="form-textarea"
+            style={{ marginBottom: 'var(--space-5)' }}
           />
 
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <div className="flex gap-2">
             <button
               onClick={onClose}
-              style={{
-                flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer',
-              }}
+              className="btn-ghost"
+              style={{ flex: 1, minHeight: 'var(--touch-min)' }}
             >
               Avbryt
             </button>
             <button
               onClick={onSubmit}
               disabled={creating}
-              style={{
-                flex: 2, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-                border: 'none', background: 'var(--color-brand)', color: 'white',
-                fontWeight: 700, cursor: 'pointer',
-              }}
+              className="btn-brand"
+              style={{ flex: 2, minHeight: 'var(--touch-min)' }}
             >
               {creating ? 'Oppretter...' : 'Opprett og tildel'}
             </button>
