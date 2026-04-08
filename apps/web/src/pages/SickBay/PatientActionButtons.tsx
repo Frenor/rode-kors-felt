@@ -34,8 +34,7 @@ export function PatientActionButtons({
     whiteSpace: 'nowrap' as const,
   });
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
         <button
           onClick={onOpenAmk}
           data-testid="patient-ring-113"
@@ -71,7 +70,6 @@ export function PatientActionButtons({
         <button onClick={onToggleHistory} className="touch-target" style={quickActionStyle(showHistory)}>
           Logg
         </button>
-      </div>
     </div>
   );
 }

@@ -195,68 +195,35 @@ export function PatientCard({
     <article
       aria-label={`Pasient ${patientName}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
       style={{
-        padding: 'var(--space-4)', borderRadius: 'var(--radius-md)',
+        padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
         border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-        display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', height: '100%',
+        display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', height: '100%',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-          <span style={{ fontWeight: 600 }}>{patientName}</span>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>{complaintText}</span>
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 700,
-              color: placementLabel ? 'var(--color-status-info)' : 'var(--color-text-subtle)',
-            }}
-          >
-            {placementLabel ? `Plassering: ${placementLabel}` : 'Plassering: Ikke satt'}
-          </span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{patientName}</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{complaintText}</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-            {patientDemographics}
+            {`${placementLabel || 'Ikke satt'}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', flexShrink: 0 }}>
           {news2 && n2colors && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <span
-                    aria-label={`${news2BadgeLabel(news2)}${news2MissingLabels.length > 0 ? ' (ufullstendig score)' : ''}: ${news2MonitoringLabel(news2)}`}
-                    style={{
-                      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
-                      padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                      background: n2colors.bg, color: n2colors.color,
-                    }}
-                  >
-                    {news2BadgeLabel(news2)}{news2MissingLabels.length > 0 ? '*' : ''}
-                  </span>
-                  {trendArrow && (
-                    <span
-                      aria-label={`Trend: ${trend?.direction}`}
-                      style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: trendColor }}
-                    >
-                      {trendArrow}
-                    </span>
-                  )}
-                </span>
-                {news2MissingLabels.length > 0 && (
-                  <span style={{
-                    fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
-                    color: 'var(--color-text-subtle)', fontStyle: 'italic',
-                  }}>
-                    * {news2MissingLabels.join(', ')} ikke målt
-                  </span>
-                )}
-                <span style={{
-                  fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
-                  color: n2colors.color,
-                }}>
-                  {news2MonitoringLabel(news2)}
-                </span>
-              </span>
+            <span
+              title={`${news2MonitoringLabel(news2)}${news2MissingLabels.length > 0 ? ` · Mangler: ${news2MissingLabels.join(', ')}` : ''}`}
+              aria-label={`NEWS2 ${news2BadgeLabel(news2)}${news2MissingLabels.length > 0 ? ' (ufullstendig score)' : ''}: ${news2MonitoringLabel(news2)}`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 2,
+                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
+                padding: '2px 6px', borderRadius: 'var(--radius-full)',
+                background: n2colors.bg, color: n2colors.color,
+              }}
+            >
+              {news2BadgeLabel(news2)}{news2MissingLabels.length > 0 ? '*' : ''}
+              {trendArrow && (
+                <span aria-hidden="true" style={{ fontWeight: 700, color: trendColor }}>{trendArrow}</span>
+              )}
             </span>
           )}
           <div ref={statusMenuRef} style={{ position: 'relative' }} data-testid={`patient-status-${patient.id}`}>
@@ -353,29 +320,28 @@ export function PatientCard({
         onOpenAmk={onOpenAmk}
       />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-        <button
-          type="button"
-          className="touch-target"
-          onClick={() => setShowPlacementEditor((prev) => !prev)}
-          style={{
-            minHeight: 36,
-            borderRadius: 'var(--radius-full)',
-            border: '1px solid var(--color-border)',
-            background: 'transparent',
-            color: 'var(--color-text)',
-            fontWeight: 600,
-            fontSize: 'var(--text-xs)',
-            fontFamily: 'var(--font-mono)',
-            cursor: 'pointer',
-            alignSelf: 'flex-start',
-            padding: '0 var(--space-3)',
-          }}
-        >
-          {showPlacementEditor ? 'Lukk plassering' : 'Oppdater plassering'}
-        </button>
+      <button
+        type="button"
+        className="touch-target"
+        onClick={() => setShowPlacementEditor((prev) => !prev)}
+        style={{
+          minHeight: 32,
+          borderRadius: 'var(--radius-full)',
+          border: '1px solid var(--color-border)',
+          background: 'transparent',
+          color: 'var(--color-text)',
+          fontWeight: 600,
+          fontSize: 'var(--text-xs)',
+          fontFamily: 'var(--font-mono)',
+          cursor: 'pointer',
+          alignSelf: 'flex-start',
+          padding: '0 var(--space-3)',
+        }}
+      >
+        {showPlacementEditor ? 'Lukk plassering' : 'Oppdater plassering'}
+      </button>
 
-        {showPlacementEditor && (
+      {showPlacementEditor && (
           <div
             data-testid={`placement-editor-${patient.id}`}
             style={{
@@ -448,7 +414,6 @@ export function PatientCard({
             </button>
           </div>
         )}
-      </div>
 
       {showMeds && (
         <MedicationPanel
