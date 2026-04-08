@@ -61,6 +61,13 @@ export const TeamOperationalStatus = z.enum([
 ]);
 export type TeamOperationalStatus = z.infer<typeof TeamOperationalStatus>;
 
+export const TeamPatientStatus = z.enum([
+  'en_route_to_patient',
+  'transporting',
+  'monitoring',
+]);
+export type TeamPatientStatus = z.infer<typeof TeamPatientStatus>;
+
 export const EscalationType = z.enum(['auto', 'manual']);
 export type EscalationType = z.infer<typeof EscalationType>;
 
@@ -312,10 +319,19 @@ export const TeamMonitorStoppedActionRequest = z.object({
 });
 export type TeamMonitorStoppedActionRequest = z.infer<typeof TeamMonitorStoppedActionRequest>;
 
+export const TeamPatientStatusSetActionRequest = z.object({
+  type: z.literal('team.patient_status_set'),
+  patientId: z.string().uuid(),
+  status: TeamPatientStatus,
+  clientActionId: z.string().uuid(),
+});
+export type TeamPatientStatusSetActionRequest = z.infer<typeof TeamPatientStatusSetActionRequest>;
+
 export const TeamActionRequest = z.discriminatedUnion('type', [
   TeamStatusSetActionRequest,
   TeamMonitorStartedActionRequest,
   TeamMonitorStoppedActionRequest,
+  TeamPatientStatusSetActionRequest,
 ]);
 export type TeamActionRequest = z.infer<typeof TeamActionRequest>;
 
@@ -328,6 +344,7 @@ export const TeamWorkspacePatient = z.object({
   lat: z.number().nullable(),
   lon: z.number().nullable(),
   positionText: z.string().nullable(),
+  teamPatientStatus: TeamPatientStatus.nullable().optional(),
 });
 export type TeamWorkspacePatient = z.infer<typeof TeamWorkspacePatient>;
 

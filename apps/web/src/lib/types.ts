@@ -59,6 +59,8 @@ export type TeamOperationalStatus =
   | 'needs_assistance'
   | 'unavailable';
 
+export type TeamPatientStatus = 'en_route_to_patient' | 'transporting' | 'monitoring';
+
 export type SickBayPlacementType = 'chair' | 'bed';
 
 export interface AmkCallLog {
@@ -206,6 +208,7 @@ export interface TeamWorkspacePatient {
   lat: number | null;
   lon: number | null;
   positionText: string | null;
+  teamPatientStatus?: TeamPatientStatus | null;
 }
 
 export interface TeamWorkspaceResponse {

@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { TeamOperationalStatus } from './types';
+import type { TeamOperationalStatus, TeamPatientStatus } from './types';
 
 export type QueuedTeamActionPayload =
   | {
@@ -17,6 +17,12 @@ export type QueuedTeamActionPayload =
   | {
       type: 'team.monitor_stopped';
       patientId: string;
+      clientActionId: string;
+    }
+  | {
+      type: 'team.patient_status_set';
+      patientId: string;
+      status: TeamPatientStatus;
       clientActionId: string;
     };
 
