@@ -62,25 +62,11 @@ export function TeamSettingsPanel({
   return (
     <section
       aria-label="Lagets innstillinger"
-      style={{
-        padding: 'var(--space-4)',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--color-border)',
-        background: 'var(--color-surface)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-4)',
-      }}
+      className="card card-p4 flex-col gap-4"
     >
       {/* Transport type */}
       <div>
-        <div
-          style={{
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-subtle)',
-            marginBottom: 'var(--space-1)',
-          }}
-        >
+        <div className="text-xs-subtle mb-1">
           Fremkomstmiddel
         </div>
         <div
@@ -120,26 +106,13 @@ export function TeamSettingsPanel({
       <div>
         <button
           onClick={onToggleGear}
-          style={{
-            width: '100%',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: 'var(--space-2) 0',
-            background: 'none',
-            border: 'none',
-            color: 'var(--color-text)',
-            cursor: 'pointer',
-          }}
+          className="flex-between"
+          style={{ width: '100%', padding: 'var(--space-2) 0', background: 'none', border: 'none', color: 'var(--color-text)', cursor: 'pointer' }}
         >
-          <span
-            style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}
-          >
+          <span className="text-xs-subtle">
             Utstyr ({teamGear.length}/{GEAR_CATALOG.length})
           </span>
-          <span
-            style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}
-          >
+          <span className="text-xs-subtle">
             {showGear ? '▲' : '▼'}
           </span>
         </button>
@@ -147,17 +120,15 @@ export function TeamSettingsPanel({
           <div
             role="group"
             aria-label="Utstyrsliste"
-            style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}
+            className="flex-col gap-1"
           >
             {GEAR_CATALOG.map((item) => {
               const checked = teamGear.includes(item.id);
               return (
                 <label
                   key={item.id}
+                  className="flex flex-align gap-2"
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-2)',
                     padding: 'var(--space-2) var(--space-3)',
                     borderRadius: 'var(--radius-sm)',
                     border: `1px solid ${checked ? 'var(--color-brand)' : 'var(--color-border)'}`,
@@ -170,12 +141,8 @@ export function TeamSettingsPanel({
                     type="checkbox"
                     checked={checked}
                     onChange={() => onGearToggle(item.id)}
-                    style={{
-                      width: 18,
-                      height: 18,
-                      accentColor: 'var(--color-brand)',
-                      flexShrink: 0,
-                    }}
+                    className="flex-shrink-0"
+                    style={{ width: 18, height: 18, accentColor: 'var(--color-brand)' }}
                   />
                   <span
                     style={{ fontSize: 'var(--text-sm)', fontWeight: checked ? 600 : 400 }}
@@ -193,45 +160,25 @@ export function TeamSettingsPanel({
       <div>
         <button
           onClick={onToggleContacts}
-          style={{
-            width: '100%',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: 'var(--space-2) 0',
-            background: 'none',
-            border: 'none',
-            color: 'var(--color-text)',
-            cursor: 'pointer',
-          }}
+          className="flex-between"
+          style={{ width: '100%', padding: 'var(--space-2) 0', background: 'none', border: 'none', color: 'var(--color-text)', cursor: 'pointer' }}
         >
-          <span
-            style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}
-          >
+          <span className="text-xs-subtle">
             Kontaktinfo{' '}
             {contactPhone || contactRadio
               ? `· ${[contactPhone, contactRadio].filter(Boolean).join(' / ')}`
               : '· Ikke satt'}
           </span>
-          <span
-            style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}
-          >
+          <span className="text-xs-subtle">
             {showContacts ? '▲' : '▼'}
           </span>
         </button>
         {showContacts && (
-          <div
-            style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}
-          >
+          <div className="flex-col gap-2">
             <div>
               <label
                 htmlFor="contact-phone"
-                style={{
-                  display: 'block',
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--color-text-subtle)',
-                  marginBottom: 'var(--space-1)',
-                }}
+                className="field-label"
               >
                 Mobilnummer
               </label>
@@ -241,28 +188,14 @@ export function TeamSettingsPanel({
                 value={contactPhone}
                 onChange={(e) => onContactPhoneChange(e.target.value)}
                 placeholder="f.eks. 900 12 345"
-                style={{
-                  width: '100%',
-                  height: 44,
-                  padding: '0 var(--space-3)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--color-input-border)',
-                  background: 'var(--color-input-bg)',
-                  color: 'var(--color-text)',
-                  fontSize: 'var(--text-sm)',
-                  boxSizing: 'border-box',
-                }}
+                className="w-full form-input-sm"
+                style={{ height: 44, boxSizing: 'border-box' }}
               />
             </div>
             <div>
               <label
                 htmlFor="contact-radio"
-                style={{
-                  display: 'block',
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--color-text-subtle)',
-                  marginBottom: 'var(--space-1)',
-                }}
+                className="field-label"
               >
                 ISSI
               </label>
@@ -273,17 +206,8 @@ export function TeamSettingsPanel({
                 value={contactRadio}
                 onChange={(e) => onContactRadioChange(e.target.value)}
                 placeholder="f.eks. 1234567"
-                style={{
-                  width: '100%',
-                  height: 44,
-                  padding: '0 var(--space-3)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--color-input-border)',
-                  background: 'var(--color-input-bg)',
-                  color: 'var(--color-text)',
-                  fontSize: 'var(--text-sm)',
-                  boxSizing: 'border-box',
-                }}
+                className="w-full form-input-sm"
+                style={{ height: 44, boxSizing: 'border-box' }}
               />
             </div>
             <button

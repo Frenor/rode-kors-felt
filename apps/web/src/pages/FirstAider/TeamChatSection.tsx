@@ -36,30 +36,14 @@ export function TeamChatSection({
   chatEndRef,
 }: TeamChatSectionProps) {
   return (
-    <section style={{ marginBottom: 'var(--space-4)' }}>
+    <section className="mb-4">
       <button
         onClick={onToggleChat}
-        style={{
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: 'var(--space-3) var(--space-4)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)',
-          background: 'var(--color-surface)',
-          color: 'var(--color-text)',
-          cursor: 'pointer',
-        }}
+        className="card flex-between"
+        style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', color: 'var(--color-text)', cursor: 'pointer' }}
       >
-        <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>Lagmelding</span>
-        <span
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-subtle)',
-          }}
-        >
+        <span className="text-sm fw-600">Lagmelding</span>
+        <span className="mono-xs-subtle">
           {messages.length > 0 ? `${messages.length} meldinger` : 'Ingen meldinger'}{' '}
           {showChat ? '▲' : '▼'}
         </span>
@@ -67,32 +51,18 @@ export function TeamChatSection({
 
       {showChat && (
         <div
-          style={{
-            marginTop: 'var(--space-2)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border)',
-            background: 'var(--color-surface)',
-            overflow: 'hidden',
-          }}
+          className="card mt-2"
+          style={{ overflow: 'hidden' }}
         >
           {/* Message list */}
           <div
-            style={{
-              maxHeight: 220,
-              overflowY: 'auto',
-              padding: 'var(--space-3)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--space-2)',
-            }}
+            className="flex-col gap-2"
+            style={{ maxHeight: 220, overflowY: 'auto', padding: 'var(--space-3)' }}
           >
             {messages.length === 0 && (
               <p
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--color-text-subtle)',
-                  textAlign: 'center',
-                }}
+                className="text-xs-subtle"
+                style={{ textAlign: 'center' }}
               >
                 Ingen meldinger ennå
               </p>
@@ -100,11 +70,8 @@ export function TeamChatSection({
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: msg.fromSelf ? 'flex-end' : 'flex-start',
-                }}
+                className="flex-col"
+                style={{ alignItems: msg.fromSelf ? 'flex-end' : 'flex-start' }}
               >
                 <div
                   style={{
@@ -120,12 +87,8 @@ export function TeamChatSection({
                 >
                   {!msg.fromSelf && msg.fromTeamId && (
                     <div
-                      style={{
-                        fontSize: 'var(--text-xs)',
-                        fontWeight: 600,
-                        marginBottom: 2,
-                        opacity: 0.7,
-                      }}
+                      className="text-xs fw-600"
+                      style={{ marginBottom: 2, opacity: 0.7 }}
                     >
                       {teams.find((t) => t.id === msg.fromTeamId)?.name ?? 'Ukjent lag'}
                     </div>
@@ -151,12 +114,8 @@ export function TeamChatSection({
 
           {/* Input row */}
           <div
-            style={{
-              display: 'flex',
-              gap: 'var(--space-2)',
-              padding: 'var(--space-2)',
-              borderTop: '1px solid var(--color-border)',
-            }}
+            className="flex gap-2"
+            style={{ padding: 'var(--space-2)', borderTop: '1px solid var(--color-border)' }}
           >
             <input
               type="text"
@@ -169,16 +128,8 @@ export function TeamChatSection({
                 }
               }}
               placeholder="Skriv melding..."
-              style={{
-                flex: 1,
-                height: 44,
-                padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                fontSize: 'var(--text-sm)',
-              }}
+              className="flex-1 form-input-sm"
+              style={{ height: 44, fontSize: 'var(--text-sm)' }}
             />
             <button
               onClick={onSend}

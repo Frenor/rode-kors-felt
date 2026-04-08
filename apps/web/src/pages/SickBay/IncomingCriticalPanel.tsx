@@ -74,49 +74,46 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
         background: 'var(--color-status-critical-bg)',
       }}
     >
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
-        <h2 style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--color-status-critical)' }}>
+      <header className="flex-between gap-2">
+        <h2 className="text-base text-critical" style={{ margin: 0 }}>
           Kritisk innkommende nå
         </h2>
         <span
           data-testid="sickbay-critical-count"
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}
+          className="mono-xs text-critical"
         >
           {items.length} pasient{items.length === 1 ? '' : 'er'}
         </span>
       </header>
 
-      <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      <div className="flex-col gap-2 mt-2">
         {sortedItems.map((item) => (
           <article
             key={item.incidentId}
             data-testid={`sickbay-critical-patient-${item.incidentId}`}
+            className="card flex-between gap-2"
             style={{
               padding: 'var(--space-2)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--color-status-critical-border)',
-              background: 'var(--color-surface)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 'var(--space-2)',
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+            <div className="flex-col" style={{ gap: 4 }}>
+              <div className="text-sm fw-700">
                 Hendelse {item.incidentId.slice(0, 8)}
               </div>
               <div
                 aria-label="Progresjon i forløpet"
-                style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}
+                className="mono-xs-subtle"
               >
                 Forløp: {progressLabels[item.progressStage] ?? item.progressStage}
                 {item.triageTag ? ` · START ${triageLabels[item.triageTag] ?? item.triageTag}` : ''}
                 {item.news2 ? ` · NEWS2 ${item.news2.total}` : ''}
               </div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+              <div className="text-xs-subtle">
                 {item.criticalReasons.map((reason) => reasonLabels[reason] ?? reason).join(' · ')}
               </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+              <div className="mono-xs-subtle">
                 {item.latestVitals
                   ? [
                       item.latestVitals.pulse != null ? `Puls ${item.latestVitals.pulse}` : null,
@@ -127,7 +124,7 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
               </div>
             </div>
             {item.patientId ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'stretch' }}>
+              <div className="flex-col gap-2" style={{ alignItems: 'stretch' }}>
                 <button
                   onClick={() => onStartTreatment(item.patientId!)}
                   className="touch-target"
@@ -171,11 +168,8 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
                 {expandedPlacementRows[item.incidentId] && (
                   <div
                     data-testid={`assign-placement-form-${item.incidentId}`}
-                    style={{
-                      display: 'grid',
-                      gap: 'var(--space-2)',
-                      minWidth: 220,
-                    }}
+                    className="gap-2"
+                    style={{ display: 'grid', minWidth: 220 }}
                   >
                     <select
                       value={placementFormByIncident[item.incidentId]?.placementType ?? ''}
