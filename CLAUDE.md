@@ -8,6 +8,16 @@ Use [docs/ai/COMPACT-PLAYBOOK.md](/Users/fredrik/Developer/rode-kors-felt/docs/a
 3. Keep one logical change per commit and push frequently.
 4. Update `PLAN.md` checkpoints for milestone-level changes.
 
+## Environment Setup
+
+If `node_modules` is missing (fresh clone or CI-like environment), install first:
+
+```bash
+pnpm install
+```
+
+Signs that install is needed: `vitest: not found`, `eslint: not found`, or similar `command not found` errors when running scripts.
+
 ## Pre-Commit Checklist
 
 **Always run before committing:**
