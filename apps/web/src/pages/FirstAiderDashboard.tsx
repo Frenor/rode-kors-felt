@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
 import { useFirstAidWorkspaceStore } from '../stores/firstaid-workspace';
@@ -18,7 +18,7 @@ import {
 import { api } from '../lib/api';
 import type { TeamOperationalStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
 import type { TeamTransport } from '../stores/auth';
-import { VitalsEntryForm, type VitalsFormShape } from './SickBay/VitalsEntryForm';
+import { VitalsEntryForm, EMPTY_VITALS_FORM, type VitalsFormShape } from './SickBay/VitalsEntryForm';
 
 export function FirstAiderDashboard() {
   const { eventId, teams, updateTeamTransport } = useAuthStore();
@@ -26,9 +26,7 @@ export function FirstAiderDashboard() {
   const setSelectedTeam = useFirstAidWorkspaceStore((s) => s.setSelectedTeam);
   const activePatientIdByTeam = useFirstAidWorkspaceStore((s) => s.activePatientIdByTeam);
   const latestStatusByTeam = useFirstAidWorkspaceStore((s) => s.latestStatusByTeam);
-  const lastSyncedAtByTeam = useFirstAidWorkspaceStore((s) => s.lastSyncedAtByTeam);
   const setActivePatient = useFirstAidWorkspaceStore((s) => s.setActivePatient);
-  const clearActivePatient = useFirstAidWorkspaceStore((s) => s.clearActivePatient);
   const setTeamStatus = useFirstAidWorkspaceStore((s) => s.setTeamStatus);
   const setTeamSyncedAt = useFirstAidWorkspaceStore((s) => s.setTeamSyncedAt);
   const [incidents, setIncidents] = useState<any[]>([]);
@@ -55,7 +53,12 @@ export function FirstAiderDashboard() {
   const [showChat, setShowChat] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [sectorAssignments, setSectorAssignments] = useState<Record<string, { sector: string; assignedAt: string }>>({});
-  const [vitalsForm, setVitalsForm] = useState<VitalsFormShape>({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
+  // Per-patient state — accordion expand, vitals forms, and injury notes
+  const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
+  const [perPatientVitalsForm, setPerPatientVitalsForm] = useState<Record<string, VitalsFormShape>>({});
+  const [perPatientNoteText, setPerPatientNoteText] = useState<Record<string, string>>({});
+  const [showSettings, setShowSettings] = useState(false);
+  const [showStatusPicker, setShowStatusPicker] = useState(false);
 
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
@@ -225,14 +228,13 @@ export function FirstAiderDashboard() {
   const navigateToIncident = (incident: any) => {
     const { lat, lng } = incident.location ?? {};
     if (lat == null || lng == null) return;
-    const teamTransport = (teams.find((t) => t.id === selectedTeam)?.transport ?? 'foot') as TeamTransport;
-    const travelMode = TRANSPORT_TRAVEL_MODE[teamTransport];
+    const travelMode = TRANSPORT_TRAVEL_MODE[currentTeamTransport];
     window.open(`https://maps.google.com/maps?daddr=${lat},${lng}&travelmode=${travelMode}`, '_blank', 'noopener');
   };
 
   const handleTransportChange = async (transport: TeamTransport) => {
     if (!selectedTeam) return;
-    const previous = (teams.find((t) => t.id === selectedTeam)?.transport ?? 'foot') as TeamTransport;
+    const previous = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
     updateTeamTransport(selectedTeam, transport);
     try {
       await api.patchTeamTransport(selectedTeam, transport);
@@ -310,34 +312,15 @@ export function FirstAiderDashboard() {
   };
 
   const workspaceKey = eventId && selectedTeam ? `${eventId}:${selectedTeam}` : null;
-  const activePatientId = workspaceKey ? activePatientIdByTeam[workspaceKey] : undefined;
   const selectedTeamStatus = workspaceKey
     ? latestStatusByTeam[workspaceKey] ?? workspace?.latestStatus ?? 'available'
     : 'available';
-  const lastSyncedAt = workspaceKey ? lastSyncedAtByTeam[workspaceKey] : undefined;
   const pendingTeamActionCount = (queuedTeamActions ?? []).filter((item) => item.status === 'pending').length;
   const failedTeamActionCount = (queuedTeamActions ?? []).filter((item) => item.status === 'failed').length;
-  const syncLabel = !navigator.onLine
-    ? 'Laget lokalt'
-    : pendingTeamActionCount > 0
-      ? 'Synkroniserer'
-      : failedTeamActionCount > 0
-        ? 'Ikke synkronisert'
-        : 'Synkronisert';
 
-  const allVisiblePatients: TeamWorkspacePatient[] = [
-    ...(workspace?.assignedPatients ?? []),
-    ...(workspace?.monitoredPatients ?? []),
-    ...(workspace?.unassignedPatients ?? []),
-  ];
   const monitoredPatients = (workspace?.monitoredPatients ?? []).filter(
     (p) => !assignedPatients.some((a) => a.id === p.id),
   );
-
-  // Reset vitals form whenever the active patient changes
-  useEffect(() => {
-    setVitalsForm({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
-  }, [activePatientId]);
 
   const queueAndSyncTeamAction = async (teamId: string, payload: QueuedTeamActionPayload) => {
     await enqueueTeamAction(teamId, payload);
@@ -379,44 +362,34 @@ export function FirstAiderDashboard() {
     }
   };
 
-  const handleDeactivatePatient = async () => {
-    if (!eventId || !selectedTeam || !activePatientId) return;
-    const patientId = activePatientId;
-    clearActivePatient(eventId, selectedTeam);
-    await queueAndSyncTeamAction(selectedTeam, {
-      type: 'team.monitor_stopped',
-      patientId,
-      clientActionId: crypto.randomUUID(),
-    });
-  };
+  const getPatientVitalsForm = (patientId: string): VitalsFormShape =>
+    perPatientVitalsForm[patientId] ?? EMPTY_VITALS_FORM;
 
-  const handleRecordVitals = async () => {
-    if (!activePatientId) return;
+  const handleSubmitVitals = async (patientId: string) => {
+    const form = getPatientVitalsForm(patientId);
     const payload = {
-      pulse: vitalsForm.pulse ? parseInt(vitalsForm.pulse) : undefined,
-      spo2: vitalsForm.spo2 ? parseInt(vitalsForm.spo2) : undefined,
-      respiratoryRate: vitalsForm.rr ? parseInt(vitalsForm.rr) : undefined,
-      painScore: vitalsForm.pain ? parseInt(vitalsForm.pain) : undefined,
-      systolicBP: vitalsForm.bp ? parseInt(vitalsForm.bp) : undefined,
-      temperature: vitalsForm.temp ? parseFloat(vitalsForm.temp) : undefined,
-      acvpu: vitalsForm.acvpu || undefined,
+      pulse: form.pulse ? parseInt(form.pulse) : undefined,
+      spo2: form.spo2 ? parseInt(form.spo2) : undefined,
+      respiratoryRate: form.rr ? parseInt(form.rr) : undefined,
+      painScore: form.pain ? parseInt(form.pain) : undefined,
+      systolicBP: form.bp ? parseInt(form.bp) : undefined,
+      temperature: form.temp ? parseFloat(form.temp) : undefined,
+      acvpu: form.acvpu || undefined,
     };
-    await api.recordVitals(activePatientId, payload as Record<string, number | undefined>);
-    setVitalsForm({ pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' });
+    await api.recordVitals(patientId, payload as Record<string, number | undefined>);
+    setPerPatientVitalsForm((prev) => ({ ...prev, [patientId]: EMPTY_VITALS_FORM }));
   };
 
-  const handleReportToCoordinator = () => {
-    if (!activePatientId || !eventId) return;
-    const fullPatient = assignedPatients.find((p) => p.id === activePatientId);
-    const workspacePatient = allVisiblePatients.find((p) => p.id === activePatientId);
-    const patientLabel = (fullPatient as any)?.label || workspacePatient?.presentingComplaint || `Pasient ${activePatientId.slice(0, 8)}`;
-    const teamName = teams.find((t) => t.id === selectedTeam)?.name ?? 'Ukjent lag';
-    wsSend({
-      type: 'team.message',
-      eventId,
-      payload: { fromTeamId: selectedTeam ?? undefined, text: `${teamName} behandler: ${patientLabel}` },
-      timestamp: new Date().toISOString(),
-    });
+  const handleSubmitNote = async (patientId: string) => {
+    const text = perPatientNoteText[patientId]?.trim();
+    if (!text) return;
+    const author = selectedTeamData?.name ?? 'Ukjent lag';
+    await api.addPatientNote(patientId, text, author);
+    setPerPatientNoteText((prev) => ({ ...prev, [patientId]: '' }));
+  };
+
+  const togglePatientExpand = (patientId: string) => {
+    setExpandedPatientId((prev) => (prev === patientId ? null : patientId));
   };
 
   const transportLabels: Record<TeamTransport, string> = {
@@ -440,9 +413,23 @@ export function FirstAiderDashboard() {
     other: 'Annet',
   };
 
+  const selectedTeamData = useMemo(() => teams.find((t) => t.id === selectedTeam) ?? null, [teams, selectedTeam]);
+
+  const combinedAssignedPatients = useMemo(() => {
+    const assignedIds = new Set(assignedPatients.map((p) => p.id));
+    return [...assignedPatients, ...monitoredPatients.filter((p) => !assignedIds.has(p.id))];
+  }, [assignedPatients, monitoredPatients]);
+
+  const currentTeamTransport = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
+
+  const openMapsNav = (lat: number, lon: number) => {
+    const mode = TRANSPORT_TRAVEL_MODE[currentTeamTransport];
+    window.open(`https://maps.google.com/maps?daddr=${lat},${lon}&travelmode=${mode}`, '_blank', 'noopener');
+  };
+
   return (
-    <div className="animate-fade-in">
-      {/* Team selection (if not chosen yet) */}
+    <div data-testid="firstaid-patient-workspace" className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '6.25rem' }}>
+      {/* Team selection */}
       {!selectedTeam && teams.length > 0 && (
         <div style={{ marginBottom: 'var(--space-6)' }}>
           <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>
@@ -483,222 +470,164 @@ export function FirstAiderDashboard() {
         </div>
       )}
 
-      {/* Main action — 1 tap from dashboard */}
-      {selectedTeam && sectorAssignments[selectedTeam] && (
-        <section
-          aria-live="polite"
-          style={{
-            marginBottom: 'var(--space-4)',
-            padding: 'var(--space-3) var(--space-4)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-brand)',
-            background: 'var(--color-brand-dim)',
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-brand)' }}>
-            Tildelt sektor: {sectorAssignments[selectedTeam]!.sector}
-          </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-            Oppdatert {new Date(sectorAssignments[selectedTeam]!.assignedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        </section>
-      )}
-
-      {/* Assigned patients from coordinator */}
-      {selectedTeam && assignedPatients.length > 0 && (
-        <section
-          aria-labelledby="assigned-patients-heading"
-          aria-live="polite"
-          style={{ marginBottom: 'var(--space-4)' }}
-        >
-          <h2
-            id="assigned-patients-heading"
+      {/* Sticky team header */}
+      {selectedTeam && (
+        <header style={{
+          display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+          padding: 'var(--space-3) var(--space-4)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--color-border)',
+          background: 'var(--color-surface)',
+          position: 'sticky', top: 0, zIndex: 10,
+        }}>
+          <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', flex: 1 }}>
+            {selectedTeamData?.name ?? 'Ukjent lag'}
+          </span>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
+            color: pendingTeamActionCount > 0 ? 'var(--color-status-warning)' : failedTeamActionCount > 0 ? 'var(--color-status-critical)' : 'var(--color-text-subtle)',
+          }}>
+            {pendingTeamActionCount > 0 ? `↑${pendingTeamActionCount}` : failedTeamActionCount > 0 ? '!' : '✓'}
+          </span>
+          <button
+            onClick={() => setShowStatusPicker(true)}
+            data-testid="firstaid-field-status-pill"
             style={{
-              fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-              color: 'var(--color-text-muted)', textTransform: 'uppercase',
-              letterSpacing: 'var(--tracking-mono)', marginBottom: 'var(--space-3)',
+              minHeight: 32, padding: '0 var(--space-3)',
+              borderRadius: 'var(--radius-full)',
+              border: `1px solid ${selectedTeamStatus === 'needs_assistance' ? 'var(--color-status-critical-border)' : 'var(--color-border)'}`,
+              background: selectedTeamStatus === 'needs_assistance' ? 'var(--color-status-critical-bg)' : 'var(--color-surface-sunken)',
+              color: selectedTeamStatus === 'needs_assistance' ? 'var(--color-status-critical)' : 'var(--color-text-subtle)',
+              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 600,
+              cursor: 'pointer',
             }}
           >
-            Tildelte pasienter ({assignedPatients.length})
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {assignedPatients.map((p) => {
-              const highlighted = highlightedFields.get(p.id);
-              const isFlashing = highlighted && highlighted.size > 0;
-              const triage = p.triageStatus ? TRIAGE_STYLE[p.triageStatus] : null;
-              return (
-                <div
-                  key={p.id}
-                  style={{
-                    padding: 'var(--space-3)',
-                    borderRadius: 'var(--radius-md)',
-                    border: `1px solid ${isFlashing ? 'var(--color-status-warning)' : 'var(--color-border)'}`,
-                    background: isFlashing ? 'var(--color-status-warning-bg)' : 'var(--color-surface)',
-                    transition: 'background 0.4s ease, border-color 0.4s ease',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 'var(--space-1)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    {triage && (
-                      <span style={{
-                        display: 'inline-block', padding: '1px 8px',
-                        borderRadius: 'var(--radius-full)',
-                        background: highlighted?.has('triageStatus') ? 'var(--color-status-warning-bg)' : triage.bg,
-                        color: triage.text, fontSize: 'var(--text-xs)', fontWeight: 700,
-                        fontFamily: 'var(--font-mono)',
-                        outline: highlighted?.has('triageStatus') ? '2px solid var(--color-status-warning)' : 'none',
-                      }}>
-                        {triage.label}
-                      </span>
-                    )}
-                    <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
-                      {p.label || 'Ukjent pasient'}
-                    </span>
-                    {isFlashing && (
-                      <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-status-warning)' }}>
-                        Oppdatert
-                      </span>
-                    )}
-                  </div>
-                  {p.positionText && (
-                    <div style={{
-                      fontSize: 'var(--text-xs)',
-                      color: 'var(--color-text-subtle)',
-                      background: highlighted?.has('positionText') ? 'var(--color-status-warning-bg)' : 'transparent',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: highlighted?.has('positionText') ? '2px 4px' : '0',
-                      transition: 'background 0.4s ease',
-                    }}>
-                      Posisjon: {p.positionText}
-                    </div>
-                  )}
-                  {p.description && (
-                    <div style={{
-                      fontSize: 'var(--text-sm)',
-                      color: 'var(--color-text)',
-                      background: highlighted?.has('description') ? 'var(--color-status-warning-bg)' : 'transparent',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: highlighted?.has('description') ? '2px 4px' : '0',
-                      transition: 'background 0.4s ease',
-                    }}>
-                      {p.description}
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                    {p.lat != null && p.lon != null && (
-                      <button
-                        onClick={() => {
-                          const mode = TRANSPORT_TRAVEL_MODE[(teams.find((t) => t.id === selectedTeam)?.transport ?? 'foot') as TeamTransport];
-                          window.open(`https://maps.google.com/maps?daddr=${p.lat},${p.lon}&travelmode=${mode}`, '_blank', 'noopener');
-                        }}
-                        className="touch-target"
-                        style={{
-                          minHeight: 36, padding: '0 var(--space-3)',
-                          borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-brand)',
-                          background: 'transparent', color: 'var(--color-brand)',
-                          fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
-                        }}
-                      >
-                        Naviger hit
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleSetActivePatient(p.id)}
-                      className="touch-target"
-                      style={{
-                        minHeight: 36, padding: '0 var(--space-3)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: `1px solid ${activePatientId === p.id ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                        background: activePatientId === p.id ? 'var(--color-brand)' : 'transparent',
-                        color: activePatientId === p.id ? 'white' : 'var(--color-text)',
-                        fontSize: 'var(--text-xs)', fontWeight: 700, cursor: 'pointer',
-                      }}
-                    >
-                      {activePatientId === p.id ? 'Aktiv' : 'Sett aktiv'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+            {teamStatusLabels[selectedTeamStatus as TeamOperationalStatus]}
+          </button>
+          <button
+            onClick={() => setShowSettings((v) => !v)}
+            aria-label="Innstillinger"
+            aria-expanded={showSettings}
+            style={{
+              minHeight: 32, minWidth: 32, padding: '0 var(--space-2)',
+              borderRadius: 'var(--radius-sm)',
+              border: `1px solid ${showSettings ? 'var(--color-brand)' : 'var(--color-border)'}`,
+              background: showSettings ? 'var(--color-brand-dim)' : 'transparent',
+              color: showSettings ? 'var(--color-brand)' : 'var(--color-text-subtle)',
+              fontSize: 'var(--text-base)', cursor: 'pointer',
+            }}
+          >
+            ⚙
+          </button>
+        </header>
       )}
 
-      {selectedTeam && (
-        <section
-          data-testid="firstaid-patient-workspace"
+      {/* Status picker bottom sheet */}
+      {showStatusPicker && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Velg lagstatus"
           style={{
-            marginBottom: 'var(--space-4)',
-            padding: 'var(--space-3)',
+            position: 'fixed', inset: 0, zIndex: 50,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+          }}
+          onClick={() => setShowStatusPicker(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--color-surface)',
+              borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
+              padding: 'var(--space-4)',
+              display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: 'var(--space-1)' }}>
+              Lagstatus
+            </div>
+            <div
+              role="radiogroup"
+              aria-label="Lagstatus i felt"
+              data-testid="firstaid-field-status-controls"
+              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}
+            >
+              {(Object.keys(teamStatusLabels) as TeamOperationalStatus[]).map((status) => (
+                <button
+                  key={status}
+                  data-testid={`firstaid-field-status-${status}`}
+                  onClick={async () => { await setTeamOperationalStatus(status); setShowStatusPicker(false); }}
+                  className="touch-target"
+                  style={{
+                    minHeight: 'var(--touch-min)',
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1px solid ${selectedTeamStatus === status ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                    background: selectedTeamStatus === status ? 'var(--color-brand-dim)' : 'transparent',
+                    color: 'var(--color-text)',
+                    fontSize: 'var(--text-sm)', fontWeight: 600,
+                    cursor: 'pointer', textAlign: 'left',
+                  }}
+                >
+                  {teamStatusLabels[status]}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowStatusPicker(false)}
+              style={{
+                marginTop: 'var(--space-2)', padding: 'var(--space-3)',
+                border: 'none', background: 'var(--color-surface-sunken)',
+                borderRadius: 'var(--radius-sm)', color: 'var(--color-text-subtle)',
+                fontSize: 'var(--text-sm)', cursor: 'pointer',
+              }}
+            >
+              Avbryt
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Settings panel */}
+      {selectedTeam && showSettings && (
+        <section
+          aria-label="Lagets innstillinger"
+          style={{
+            padding: 'var(--space-4)',
             borderRadius: 'var(--radius-md)',
             border: '1px solid var(--color-border)',
             background: 'var(--color-surface)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-3)',
+            display: 'flex', flexDirection: 'column', gap: 'var(--space-4)',
           }}
         >
-          <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 700 }}>Mine pasienter</h2>
-              <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                {syncLabel}
-                {lastSyncedAt ? ` · ${new Date(lastSyncedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}` : ''}
-                {pendingTeamActionCount > 0 ? ` · ${pendingTeamActionCount} i kø` : ''}
-              </p>
-            </div>
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 'var(--text-xs)',
-                padding: '2px 8px',
-                borderRadius: 'var(--radius-full)',
-                background: selectedTeamStatus === 'needs_assistance'
-                  ? 'var(--color-status-critical-bg)'
-                  : 'var(--color-surface-sunken)',
-                color: selectedTeamStatus === 'needs_assistance'
-                  ? 'var(--color-status-critical)'
-                  : 'var(--color-text-subtle)',
-              }}
-            >
-              {teamStatusLabels[selectedTeamStatus as TeamOperationalStatus]}
-            </span>
-          </header>
-
-          {/* Transport type picker */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Fremkomstmiddel</div>
+          {/* Transport type */}
+          <div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)' }}>Fremkomstmiddel</div>
             <div
               role="radiogroup"
               aria-label="Velg fremkomstmiddel"
               style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-1)' }}
             >
-              {(Object.keys(transportLabels) as TeamTransport[]).map((t) => {
-                const currentTransport = (teams.find((team) => team.id === selectedTeam)?.transport ?? 'foot') as TeamTransport;
-                return (
-                  <button
-                    key={t}
-                    onClick={() => handleTransportChange(t)}
-                    aria-pressed={currentTransport === t}
-                    className="touch-target"
-                    style={{
-                      minHeight: 44,
-                      padding: 'var(--space-1)',
-                      borderRadius: 'var(--radius-sm)',
-                      border: `1px solid ${currentTransport === t ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                      background: currentTransport === t ? 'var(--color-brand-dim)' : 'transparent',
-                      color: 'var(--color-text)',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: currentTransport === t ? 700 : 400,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {transportLabels[t]}
-                  </button>
-                );
-              })}
+              {(Object.keys(transportLabels) as TeamTransport[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => handleTransportChange(t)}
+                  aria-pressed={currentTeamTransport === t}
+                  className="touch-target"
+                  style={{
+                    minHeight: 44, padding: 'var(--space-1)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1px solid ${currentTeamTransport === t ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                    background: currentTeamTransport === t ? 'var(--color-brand-dim)' : 'transparent',
+                    color: 'var(--color-text)',
+                    fontSize: 'var(--text-xs)', fontWeight: currentTeamTransport === t ? 700 : 400,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {transportLabels[t]}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -730,8 +659,7 @@ export function FirstAiderDashboard() {
                         borderRadius: 'var(--radius-sm)',
                         border: `1px solid ${checked ? 'var(--color-brand)' : 'var(--color-border)'}`,
                         background: checked ? 'var(--color-brand-dim)' : 'transparent',
-                        cursor: 'pointer',
-                        minHeight: 44,
+                        cursor: 'pointer', minHeight: 44,
                       }}
                     >
                       <input
@@ -740,9 +668,7 @@ export function FirstAiderDashboard() {
                         onChange={() => handleGearToggle(item.id)}
                         style={{ width: 18, height: 18, accentColor: 'var(--color-brand)', flexShrink: 0 }}
                       />
-                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: checked ? 600 : 400 }}>
-                        {item.label}
-                      </span>
+                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: checked ? 600 : 400 }}>{item.label}</span>
                     </label>
                   );
                 })}
@@ -761,7 +687,7 @@ export function FirstAiderDashboard() {
               }}
             >
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                Kontaktinfo {(contactPhone || contactRadio) ? '·' : ''} {contactPhone || contactRadio ? `${[contactPhone, contactRadio].filter(Boolean).join(' / ')}` : 'Ikke satt'}
+                Kontaktinfo {(contactPhone || contactRadio) ? `· ${[contactPhone, contactRadio].filter(Boolean).join(' / ')}` : '· Ikke satt'}
               </span>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>{showContacts ? '▲' : '▼'}</span>
             </button>
@@ -772,9 +698,7 @@ export function FirstAiderDashboard() {
                     Mobilnummer
                   </label>
                   <input
-                    id="contact-phone"
-                    type="tel"
-                    value={contactPhone}
+                    id="contact-phone" type="tel" value={contactPhone}
                     onChange={(e) => { setContactPhone(e.target.value); setContactsDirty(true); }}
                     placeholder="f.eks. 900 12 345"
                     style={{
@@ -790,10 +714,7 @@ export function FirstAiderDashboard() {
                     ISSI
                   </label>
                   <input
-                    id="contact-radio"
-                    type="text"
-                    inputMode="numeric"
-                    value={contactRadio}
+                    id="contact-radio" type="text" inputMode="numeric" value={contactRadio}
                     onChange={(e) => { setContactRadio(e.target.value); setContactsDirty(true); }}
                     placeholder="f.eks. 1234567"
                     style={{
@@ -812,7 +733,8 @@ export function FirstAiderDashboard() {
                     height: 44, borderRadius: 'var(--radius-sm)', border: 'none',
                     background: contactsDirty ? 'var(--color-brand)' : 'var(--color-border)',
                     color: contactsDirty ? 'white' : 'var(--color-text-subtle)',
-                    fontSize: 'var(--text-sm)', fontWeight: 600, cursor: contactsDirty ? 'pointer' : 'default',
+                    fontSize: 'var(--text-sm)', fontWeight: 600,
+                    cursor: contactsDirty ? 'pointer' : 'default',
                   }}
                 >
                   Lagre kontaktinfo
@@ -820,187 +742,278 @@ export function FirstAiderDashboard() {
               </div>
             )}
           </div>
+        </section>
+      )}
 
-          <div
-            role="radiogroup"
-            aria-label="Lagstatus i felt"
-            data-testid="firstaid-field-status-controls"
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}
-          >
-            {(Object.keys(teamStatusLabels) as TeamOperationalStatus[]).map((status) => (
-              <button
-                key={status}
-                data-testid={`firstaid-field-status-${status}`}
-                onClick={() => setTeamOperationalStatus(status)}
-                className="touch-target"
-                style={{
-                  minHeight: 'var(--touch-min)',
-                  padding: 'var(--space-2)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: `1px solid ${selectedTeamStatus === status ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                  background: selectedTeamStatus === status ? 'var(--color-brand-dim)' : 'transparent',
-                  color: 'var(--color-text)',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                {teamStatusLabels[status]}
-              </button>
-            ))}
+      {/* Sector assignment badge */}
+      {selectedTeam && sectorAssignments[selectedTeam] && (
+        <section
+          aria-live="polite"
+          style={{
+            padding: 'var(--space-3) var(--space-4)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-brand)',
+            background: 'var(--color-brand-dim)',
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-brand)' }}>
+            Tildelt sektor: {sectorAssignments[selectedTeam]!.sector}
           </div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+            Oppdatert {new Date(sectorAssignments[selectedTeam]!.assignedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </section>
+      )}
 
-          {workspaceLoading ? (
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>Laster pasientarbeidsflate...</p>
-          ) : (
-            <>
-              {activePatientId ? (
-                <section aria-labelledby="active-patient-heading" style={{
-                  borderRadius: 'var(--radius-md)',
-                  border: '2px solid var(--color-brand)',
-                  background: 'var(--color-brand-dim)',
-                  padding: 'var(--space-3)',
-                  display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                    <div>
-                      <div style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)' }}>
-                        Aktiv pasient
-                      </div>
-                      <div id="active-patient-heading" style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
-                        {(assignedPatients.find((p) => p.id === activePatientId) as any)?.label
-                          || allVisiblePatients.find((p) => p.id === activePatientId)?.presentingComplaint
-                          || `Pasient ${activePatientId.slice(0, 8)}`}
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleDeactivatePatient}
-                      style={{
-                        flexShrink: 0, padding: '4px var(--space-2)', borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-border)', background: 'transparent',
-                        color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)', cursor: 'pointer',
-                      }}
-                    >
-                      Lukk
-                    </button>
-                  </div>
+      {/* Patient list */}
+      {selectedTeam && (
+        <section aria-labelledby="patient-list-heading" aria-live="polite">
+          <h2
+            id="patient-list-heading"
+            style={{
+              fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
+              color: 'var(--color-text-muted)', textTransform: 'uppercase',
+              letterSpacing: 'var(--tracking-mono)', marginBottom: 'var(--space-3)',
+            }}
+          >
+            Egne pasienter ({combinedAssignedPatients.length})
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            {combinedAssignedPatients.map((p) => {
+              const isExpanded = expandedPatientId === p.id;
+              const highlighted = highlightedFields.get(p.id);
+              const isFlashing = highlighted && highlighted.size > 0;
+              const triageStatus = (p as any).triageStatus as string | undefined;
+              const triage = triageStatus ? TRIAGE_STYLE[triageStatus] : null;
+              const label = (p as any).label || (p as TeamWorkspacePatient).presentingComplaint || `Pasient ${p.id.slice(0, 8)}`;
+              const posText = (p as TeamWorkspacePatient).positionText;
+              const lat = (p as TeamWorkspacePatient).lat;
+              const lon = (p as TeamWorkspacePatient).lon;
+              const hasCoords = lat != null && lon != null;
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    borderRadius: 'var(--radius-md)',
+                    border: `1px solid ${isFlashing ? 'var(--color-status-warning)' : isExpanded ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                    background: isFlashing ? 'var(--color-status-warning-bg)' : 'var(--color-surface)',
+                    overflow: 'hidden',
+                    transition: 'border-color 0.3s ease',
+                  }}
+                >
                   <button
-                    onClick={handleReportToCoordinator}
-                    className="touch-target"
+                    onClick={() => togglePatientExpand(p.id)}
                     style={{
-                      width: '100%', minHeight: 40, borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--color-brand)', background: 'transparent',
-                      color: 'var(--color-brand)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
+                      width: '100%', minHeight: 'var(--touch-min)',
+                      padding: 'var(--space-3)',
+                      display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                      background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
                     }}
                   >
-                    Rapporter til koordinator
+                    {triage && (
+                      <span style={{
+                        flexShrink: 0, display: 'inline-block', padding: '2px 10px',
+                        borderRadius: 'var(--radius-full)',
+                        background: triage.bg, color: triage.text,
+                        fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
+                      }}>
+                        {triage.label}
+                      </span>
+                    )}
+                    <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', flex: 1, textAlign: 'left' }}>
+                      {label}
+                    </span>
+                    {isFlashing && (
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-status-warning)', flexShrink: 0 }}>
+                        Oppdatert
+                      </span>
+                    )}
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flexShrink: 0 }}>
+                      {isExpanded ? '▲' : '▼'}
+                    </span>
                   </button>
-                  <VitalsEntryForm
-                    patientId={activePatientId}
-                    form={vitalsForm}
-                    onChange={setVitalsForm}
-                    onSubmit={handleRecordVitals}
-                  />
-                </section>
-              ) : (
-                <div style={{ padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-sunken)', fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
-                  Ingen aktiv pasient – velg en fra listen over
-                </div>
-              )}
 
-              <div data-testid="firstaid-patient-list" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Egne pasienter</div>
-                {monitoredPatients.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
-                    Ingen egne pasienter ennå.
-                  </p>
-                ) : (
-                  monitoredPatients.map((patient) => (
-                    <div
-                      key={patient.id}
-                      data-testid={`firstaid-patient-item-${patient.id}`}
-                      style={{
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-sm)',
-                        padding: 'var(--space-2)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 'var(--space-2)',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                          {patient.presentingComplaint || 'Ukjent problemstilling'}
+                  {/* Expanded content */}
+                  {isExpanded && (
+                    <div style={{
+                      padding: 'var(--space-3)',
+                      borderTop: '1px solid var(--color-border)',
+                      display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
+                    }}>
+                      {/* Position + navigate */}
+                      {(posText || hasCoords) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', flex: 1 }}>
+                            {posText
+                              ? `📍 ${posText}`
+                              : `📍 ${lat!.toFixed(4)}, ${lon!.toFixed(4)}${gpsPosition ? ` · ${bearingTo(lat!, lon!)}` : ''}`}
+                          </span>
+                          {hasCoords && (
+                            <button
+                              onClick={() => openMapsNav(lat!, lon!)}
+                              className="touch-target"
+                              style={{
+                                minHeight: 36, padding: '0 var(--space-3)',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px solid var(--color-brand)', background: 'transparent',
+                                color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600,
+                                cursor: 'pointer', flexShrink: 0,
+                              }}
+                            >
+                              Naviger hit
+                            </button>
+                          )}
                         </div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                          Sist oppdatert {new Date(patient.updatedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
-                        </div>
+                      )}
+
+                      {/* Vitals entry */}
+                      <VitalsEntryForm
+                        patientId={p.id}
+                        form={getPatientVitalsForm(p.id)}
+                        onChange={(updater) => setPerPatientVitalsForm((prev) => ({
+                          ...prev,
+                          [p.id]: updater(prev[p.id] ?? EMPTY_VITALS_FORM),
+                        }))}
+                        onSubmit={() => handleSubmitVitals(p.id)}
+                      />
+
+                      {/* Injury note */}
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
+                        <textarea
+                          value={perPatientNoteText[p.id] ?? ''}
+                          onChange={(e) => setPerPatientNoteText((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                          placeholder="Skadenotater…"
+                          rows={2}
+                          style={{
+                            flex: 1, padding: 'var(--space-2)',
+                            borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                            background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                            fontSize: 'var(--text-sm)', resize: 'none', fontFamily: 'inherit',
+                          }}
+                        />
+                        <button
+                          onClick={() => handleSubmitNote(p.id)}
+                          disabled={!perPatientNoteText[p.id]?.trim()}
+                          className="touch-target"
+                          style={{
+                            minHeight: 44, padding: '0 var(--space-3)',
+                            borderRadius: 'var(--radius-sm)', border: 'none',
+                            background: perPatientNoteText[p.id]?.trim() ? 'var(--color-brand)' : 'var(--color-border)',
+                            color: perPatientNoteText[p.id]?.trim() ? 'white' : 'var(--color-text-subtle)',
+                            fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                          }}
+                        >
+                          Lagre
+                        </button>
                       </div>
+
+                      {/* Trenger bistand */}
                       <button
-                        onClick={() => handleSetActivePatient(patient.id)}
+                        onClick={async () => { await setTeamOperationalStatus('needs_assistance'); setExpandedPatientId(null); }}
                         className="touch-target"
                         style={{
-                          minHeight: 'var(--touch-min)',
-                          padding: '0 var(--space-3)',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--color-brand)',
-                          background: activePatientId === patient.id ? 'var(--color-brand)' : 'transparent',
-                          color: activePatientId === patient.id ? 'white' : 'var(--color-brand)',
-                          fontSize: 'var(--text-xs)',
-                          fontWeight: 700,
-                          cursor: 'pointer',
+                          minHeight: 'var(--touch-min)', width: '100%',
+                          borderRadius: 'var(--radius-sm)', border: 'none',
+                          background: 'var(--color-status-critical-bg)',
+                          color: 'var(--color-status-critical)',
+                          fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
                         }}
                       >
-                        {activePatientId === patient.id ? 'Aktiv' : 'Sett aktiv'}
+                        ! Trenger bistand
                       </button>
                     </div>
-                  ))
-                )}
-              </div>
+                  )}
+                </div>
+              );
+            })}
 
-              <section aria-labelledby="firstaid-unassigned-patients" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                <h3
-                  id="firstaid-unassigned-patients"
-                  style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}
-                >
-                  Utildelte pasienter
-                </h3>
-                {(workspace?.unassignedPatients ?? []).map((patient) => (
-                  <div key={patient.id} style={{ padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+            {/* Unassigned patients — always rendered so the section is always discoverable */}
+            <>
+              <h3
+                id="unassigned-patients-heading"
+                style={{
+                  margin: 'var(--space-2) 0 0',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-text-muted)', textTransform: 'uppercase',
+                  letterSpacing: 'var(--tracking-mono)',
+                }}
+              >
+                Utildelte pasienter ({(workspace?.unassignedPatients ?? []).length})
+              </h3>
+              {(workspace?.unassignedPatients ?? []).length === 0 && !workspaceLoading && (
+                <div style={{
+                  padding: 'var(--space-4)', textAlign: 'center',
+                  color: 'var(--color-text-subtle)', fontSize: 'var(--text-sm)',
+                  background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
+                }}>
+                  Ingen utildelte pasienter
+                </div>
+              )}
+              {(workspace?.unassignedPatients ?? []).map((patient) => {
+                const hasCoords = patient.lat != null && patient.lon != null;
+                return (
+                  <div
+                    key={patient.id}
+                    style={{
+                      padding: 'var(--space-3)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-surface)',
+                      display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+                    }}
+                  >
                     <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                       {patient.presentingComplaint || 'Ukjent problemstilling'}
                     </div>
+                    {(patient.positionText || hasCoords) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flex: 1 }}>
+                          {patient.positionText
+                            ? `📍 ${patient.positionText}`
+                            : `📍 ${patient.lat!.toFixed(4)}, ${patient.lon!.toFixed(4)}${gpsPosition ? ` · ${bearingTo(patient.lat!, patient.lon!)}` : ''}`}
+                        </span>
+                        {hasCoords && (
+                          <button
+                            onClick={() => openMapsNav(patient.lat!, patient.lon!)}
+                            className="touch-target"
+                            style={{
+                              minHeight: 36, padding: '0 var(--space-3)',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--color-brand)', background: 'transparent',
+                              color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600,
+                              cursor: 'pointer', flexShrink: 0,
+                            }}
+                          >
+                            Naviger hit
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <button
                       onClick={() => handleSetActivePatient(patient.id)}
                       className="touch-target"
                       style={{
-                        marginTop: 'var(--space-2)',
-                        minHeight: 44,
-                        padding: '0 var(--space-3)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-brand)',
-                        background: 'transparent',
-                        color: 'var(--color-brand)',
-                        fontSize: 'var(--text-xs)',
-                        cursor: 'pointer',
+                        minHeight: 'var(--touch-min)', width: '100%',
+                        borderRadius: 'var(--radius-sm)', border: 'none',
+                        background: 'var(--color-brand)', color: 'white',
+                        fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
                       }}
                     >
-                      Overvåk pasient
+                      Ta over pasient →
                     </button>
                   </div>
-                ))}
-                {(workspace?.unassignedPatients ?? []).length === 0 && (
-                  <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
-                    Ingen utildelte pasienter tilgjengelig.
-                  </p>
-                )}
-              </section>
+                );
+              })}
             </>
-          )}
+
+            {workspaceLoading && (
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+                Laster pasienter…
+              </p>
+            )}
+          </div>
         </section>
       )}
-
       <button
         onClick={() => navigate('/firstaid/incident', {
           state: { teamId: selectedTeam, eventId },

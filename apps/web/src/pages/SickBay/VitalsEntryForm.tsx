@@ -17,6 +17,8 @@ interface VitalsEntryFormProps {
   onSubmit: () => void;
 }
 
+export const EMPTY_VITALS_FORM: VitalsFormShape = { pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '' };
+
 const NUMERIC_FIELDS = [
   { key: 'pulse', label: 'Puls', placeholder: 'bpm', inputMode: 'numeric' as const },
   { key: 'spo2', label: 'SpO₂', placeholder: '%', inputMode: 'numeric' as const },
