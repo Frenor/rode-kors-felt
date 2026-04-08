@@ -42,15 +42,7 @@ pnpm --filter @rkf/web test:e2e -- --project=local-full apps/web/e2e/local-full.
 | `pages-demo` | pages-demo | `PLAYWRIGHT_DEMO_BASE_URL` env var |
 | `gce-prod-smoke` | gce-prod-smoke | `PLAYWRIGHT_GCE_BASE_URL` env var |
 
-> `pages-demo` runs against the live GitHub Pages deployment (triggered by `pages.yml` after every push to `main`). Test it locally by building in demo mode and pointing Playwright at it:
-> ```bash
-> VITE_DEMO_MODE=true VITE_BASE_PATH=/ pnpm --filter @rkf/web build
-> pnpm --filter @rkf/web exec vite preview --port 3200 &
-> PLAYWRIGHT_DEMO_BASE_URL=http://127.0.0.1:3200 \
->   pnpm --filter @rkf/web exec playwright test --project=pages-demo
-> ```
-
-> `gce-prod-smoke` needs an external URL — skip locally unless testing a deployed env.
+> `pages-demo` and `gce-prod-smoke` need an external URL — skip them locally unless testing a deployed env.
 
 **What lint-staged does on commit:** runs `eslint --fix` + `prettier --write` on staged `*.ts/tsx` files. If it fails, fix with `pnpm lint:fix` then re-stage.
 
