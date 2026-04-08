@@ -8,6 +8,7 @@ Use [docs/ai/COMPACT-PLAYBOOK.md](/Users/fredrik/Developer/rode-kors-felt/docs/a
 3. No backward compatibility unless explicitly requested.
 4. `PLAN.md` is execution source of truth.
 5. Small, isolated commits with frequent push.
+6. Any user-visible web flow change must include `pages-demo` e2e updates or a `PLAN.md` rationale.
 
 ## Agent Files (4-file setup)
 1. `prompts/agents/backend-engineer.md`

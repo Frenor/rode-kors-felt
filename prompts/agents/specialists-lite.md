@@ -4,6 +4,7 @@ Compact overlays used with core backend/frontend agents.
 
 ## qa
 - Owns test matrix: unit, integration, e2e, a11y.
+- Enforces `pages-demo` Playwright updates for user-visible web flow changes.
 - Validates event scoping, append-only behavior, and offline replay.
 - Flags release blockers with minimal repro steps.
 

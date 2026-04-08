@@ -13,5 +13,8 @@ Use this matrix first, then apply overlays from `specialists-lite.md`.
 - Sprint/plan split: `product`
 - Field validation: `field-user`
 
+## Mandatory Test Gate
+- Any task that changes user-visible web flows must include `qa` and update `apps/web/e2e/pages-demo.spec.ts` (or document a no-change rationale in `PLAN.md`).
+
 ## Conflict Priority
 `Safety > Offline > Accessibility > GDPR > Performance > DX`
