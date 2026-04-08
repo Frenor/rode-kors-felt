@@ -1,4 +1,4 @@
-import React, { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   calculateNEWS2,
@@ -80,26 +80,12 @@ interface MistChipSectionProps {
 }
 
 function MistChipSection({ label, chips, selected, onToggle, note, onNote, notePlaceholder, multiSelect }: MistChipSectionProps) {
-  const chipStyle = (active: boolean): React.CSSProperties => ({
-    minHeight: 44,
-    padding: '0 var(--space-3)',
-    borderRadius: 'var(--radius-sm)',
-    border: `2px solid ${active ? 'var(--color-brand)' : 'var(--color-border)'}`,
-    background: active ? 'var(--color-brand-dim)' : 'transparent',
-    color: 'var(--color-text)',
-    fontFamily: 'var(--font-mono)',
-    fontSize: 'var(--text-sm)',
-    fontWeight: active ? 700 : 400,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  });
-
   return (
-    <div style={{ marginBottom: 'var(--space-4)' }}>
-      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+    <div className="mb-4">
+      <div className="heading-sm">
         {label}
       </div>
-      <div role={multiSelect ? undefined : 'radiogroup'} style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+      <div role={multiSelect ? undefined : 'radiogroup'} className="flex flex-wrap gap-2 mb-2">
         {chips.map((chip) => {
           const active = selected.includes(chip);
           return (
@@ -110,7 +96,9 @@ function MistChipSection({ label, chips, selected, onToggle, note, onNote, noteP
               aria-checked={multiSelect ? undefined : active}
               aria-pressed={multiSelect ? active : undefined}
               onClick={() => onToggle(chip)}
-              style={chipStyle(active)}
+              className="action-btn"
+              data-active={active ? 'true' : undefined}
+              style={{ minHeight: 44, whiteSpace: 'nowrap' }}
             >
               {active ? '✓ ' : ''}{chip}
             </button>
@@ -123,12 +111,7 @@ function MistChipSection({ label, chips, selected, onToggle, note, onNote, noteP
           onChange={(e) => onNote(e.target.value)}
           placeholder={notePlaceholder}
           rows={1}
-          style={{
-            width: '100%', padding: 'var(--space-2)',
-            borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-            background: 'var(--color-input-bg)', color: 'var(--color-text)',
-            fontSize: 'var(--text-sm)', resize: 'none',
-          }}
+          className="form-textarea"
         />
       )}
     </div>
