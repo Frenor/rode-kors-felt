@@ -582,35 +582,28 @@ export function CoordinatorDashboard() {
           calcEta={calcEta}
         />
 
-        <div style={{
+        <div className="card flex-col" style={{
           position: 'sticky',
           top: 72,
           height: 'calc(100dvh - 80px)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)',
           overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--color-surface)',
         }}>
           <div
+            className="flex-between flex-wrap gap-2"
             style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              justifyContent: 'space-between',
-              gap: 'var(--space-2)',
               padding: 'var(--space-3)',
               borderBottom: '1px solid var(--color-border)',
             }}
           >
-            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            <div className="flex flex-wrap flex-align gap-2">
+              <span className="mono-xs-muted">
                 Kartmotor
               </span>
               <button
                 type="button"
                 onClick={() => setMapProvider('leaflet')}
                 aria-pressed={mapProvider === 'leaflet'}
+                className="fw-600"
                 style={{
                   minHeight: 40,
                   padding: '0 var(--space-3)',
@@ -618,7 +611,6 @@ export function CoordinatorDashboard() {
                   border: `1px solid ${mapProvider === 'leaflet' ? 'var(--color-brand)' : 'var(--color-border)'}`,
                   background: mapProvider === 'leaflet' ? 'var(--color-brand-dim)' : 'var(--color-surface)',
                   cursor: 'pointer',
-                  fontWeight: 600,
                 }}
               >
                 Leaflet
@@ -627,6 +619,7 @@ export function CoordinatorDashboard() {
                 type="button"
                 onClick={() => setMapProvider('maplibre')}
                 aria-pressed={mapProvider === 'maplibre'}
+                className="fw-600"
                 style={{
                   minHeight: 40,
                   padding: '0 var(--space-3)',
@@ -634,13 +627,12 @@ export function CoordinatorDashboard() {
                   border: `1px solid ${mapProvider === 'maplibre' ? 'var(--color-brand)' : 'var(--color-border)'}`,
                   background: mapProvider === 'maplibre' ? 'var(--color-brand-dim)' : 'var(--color-surface)',
                   cursor: 'pointer',
-                  fontWeight: 600,
                 }}
               >
                 MapLibre
               </button>
               {eventIndoorLayout && (
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                <span className="mono-xs-subtle">
                   Innendørs: {eventIndoorLayout.venueName ?? eventIndoorLayout.venueId}
                 </span>
               )}
@@ -650,6 +642,7 @@ export function CoordinatorDashboard() {
               type="button"
               onClick={() => setPresentation3d((value) => !value)}
               aria-pressed={presentation3d}
+              className="fw-600"
               style={{
                 minHeight: 40,
                 padding: '0 var(--space-3)',
@@ -657,7 +650,6 @@ export function CoordinatorDashboard() {
                 border: `1px solid ${presentation3d ? 'var(--color-brand)' : 'var(--color-border)'}`,
                 background: presentation3d ? 'var(--color-brand-dim)' : 'var(--color-surface)',
                 cursor: 'pointer',
-                fontWeight: 600,
               }}
             >
               3D-presentasjon {presentation3d ? 'på' : 'av'}

@@ -386,43 +386,30 @@ export function SickBayDashboard() {
       )}
 
       {loading ? (
-        <p style={{ color: 'var(--color-text-subtle)' }}>Laster pasienter...</p>
+        <p className="text-subtle">Laster pasienter...</p>
       ) : patients.length === 0 ? (
-        <div style={{
-          padding: 'var(--space-8)', textAlign: 'center', color: 'var(--color-text-subtle)',
-          background: 'var(--color-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)',
+        <div className="card text-subtle" style={{
+          padding: 'var(--space-8)', textAlign: 'center',
         }}>
           Ingen pasienter registrert
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <div className="flex-col gap-3">
           {groupedPatients.map((group) => {
             const isClosedGroup = CLOSED_STATUSES.has(group.status as PatientStatus);
             return (
               <section
                 key={group.status}
                 data-testid={`patient-section-${group.status}`}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--space-3)',
-                  padding: 'var(--space-3)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                }}
+                className="card card-p3 flex-col gap-3"
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
+                <div className="flex-between gap-2">
+                  <h2 className="text-base fw-700" style={{ margin: 0 }}>
                     {statusLabels[group.status] || group.status}
                   </h2>
                   <span
                     data-testid={`patient-section-count-${group.status}`}
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 'var(--text-xs)',
-                      color: 'var(--color-text-subtle)',
-                    }}
+                    className="mono-xs-subtle"
                   >
                     {group.patients.length} pasient{group.patients.length === 1 ? '' : 'er'}
                   </span>
@@ -460,13 +447,8 @@ export function SickBayDashboard() {
                       <div
                         key={patient.id}
                         data-testid={`closed-patient-${patient.id}`}
-                        style={{
-                          border: '1px solid var(--color-border)',
-                          borderRadius: 'var(--radius-md)',
-                          background: 'var(--color-surface-sunken)',
-                          overflow: 'hidden',
-                          height: 'fit-content',
-                        }}
+                        className="panel-sunken"
+                        style={{ overflow: 'hidden', height: 'fit-content' }}
                       >
                         <button
                           type="button"
@@ -474,28 +456,22 @@ export function SickBayDashboard() {
                           aria-expanded={expanded}
                           aria-controls={`closed-panel-${patient.id}`}
                           onClick={() => toggleClosedCard(patient.id)}
+                          className="w-full flex-between gap-3"
                           style={{
-                            width: '100%',
                             minHeight: 56,
                             padding: 'var(--space-3)',
                             border: 'none',
                             background: 'transparent',
                             color: 'var(--color-text)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 'var(--space-3)',
                             cursor: 'pointer',
                           textAlign: 'left',
                         }}
                       >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 600 }}>{patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
+                        <div className="flex-col" style={{ gap: 4 }}>
+                          <span className="fw-600">{patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
                           <span
+                            className="mono-xs fw-700"
                             style={{
-                              fontFamily: 'var(--font-mono)',
-                              fontSize: 'var(--text-xs)',
-                              fontWeight: 700,
                               color: patient.placementType && patient.placementNumber ? 'var(--color-status-info)' : 'var(--color-text-subtle)',
                             }}
                           >
@@ -503,10 +479,10 @@ export function SickBayDashboard() {
                               ? `Plassering: ${formatSickbayPlacement(patient.placementType, patient.placementNumber)}`
                               : 'Plassering: Ikke satt'}
                           </span>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                            {patient.presentingComplaint ? `Problemstilling: ${patient.presentingComplaint}` : 'Problemstilling ikke registrert'}
-                          </span>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                          <span className="mono-xs-subtle">
+                             {patient.presentingComplaint ? `Problemstilling: ${patient.presentingComplaint}` : 'Problemstilling ikke registrert'}
+                           </span>
+                           <span className="mono-xs-subtle">
                             {formatPatientAge({
                               birthDate: patient.birthDate ?? null,
                               ageGroup: patient.ageGroup ?? null,
@@ -516,13 +492,13 @@ export function SickBayDashboard() {
                             {' · '}{statusLabels[patient.status] || patient.status}
                           </span>
                         </div>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                        <span className="mono-xs-subtle">
                           {expanded ? 'Skjul detaljer ▲' : 'Vis detaljer ▼'}
                         </span>
                       </button>
 
                         {expanded && (
-                          <div id={`closed-panel-${patient.id}`} data-testid={`closed-panel-${patient.id}`} style={{ padding: 'var(--space-3)' }}>
+                          <div id={`closed-panel-${patient.id}`} data-testid={`closed-panel-${patient.id}`} className="card-p3">
                             <PatientCard
                               patient={patient}
                               medications={medications[patient.id] ?? []}
