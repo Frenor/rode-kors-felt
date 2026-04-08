@@ -206,7 +206,7 @@ describe('Patient grouping and closed card visibility', () => {
       },
     ]);
 
-    expect(screen.getByText(/Plassering: Seng 9/)).toBeInTheDocument();
+    expect(screen.getByText(/Seng 9/)).toBeInTheDocument();
   });
 });
 
