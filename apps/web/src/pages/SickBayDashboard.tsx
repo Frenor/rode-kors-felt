@@ -14,7 +14,7 @@ import { SickBayHeader } from './SickBay/SickBayHeader';
 import { PatientIntakeModal, type IntakeFormShape } from './SickBay/PatientIntakeModal';
 import { PatientDischargeModal, type DischargeFormShape, EMPTY_DISCHARGE_FORM, buildDischargeNote } from './SickBay/PatientDischargeModal';
 import { AmkBriefModal } from './SickBay/AmkBriefModal';
-import { PatientCard } from './SickBay/PatientCard';
+import { PatientCard, type DemographicsFormShape } from './SickBay/PatientCard';
 import { IncomingCriticalPanel } from './SickBay/IncomingCriticalPanel';
 import type { VitalsFormShape } from './SickBay/VitalsEntryForm';
 import type { MedFormShape } from './SickBay/MedicationPanel';
@@ -301,6 +301,17 @@ export function SickBayDashboard() {
     fetchPatients();
   };
 
+  const handleUpdateDemographics = async (patientId: string, form: DemographicsFormShape) => {
+    await api.updatePatient(patientId, {
+      fullName: form.fullName.trim() || null,
+      gender: form.gender || null,
+      birthDate: form.birthDate || null,
+      ageGroup: form.ageGroup,
+    });
+    addToast({ message: 'Pasientinfo oppdatert', level: 'info', autoDismissMs: 3_000 });
+    fetchPatients();
+  };
+
   const handleStartTreatment = async (patientId: string) => {
     const patient = patients.find((row) => row.id === patientId);
     await handleStatusChange(patientId, 'in_treatment', patient);
@@ -451,6 +462,7 @@ export function SickBayDashboard() {
                           onOpenAmk={() => handleOpenAmk(patient)}
                           onUpdatePlacement={(placementType, placementNumber) =>
                             handleUpdatePlacement(patient.id, placementType, placementNumber)}
+                          onUpdateDemographics={(form) => handleUpdateDemographics(patient.id, form)}
                         />
                       );
                     }
@@ -534,6 +546,7 @@ export function SickBayDashboard() {
                               onOpenAmk={() => handleOpenAmk(patient)}
                               onUpdatePlacement={(placementType, placementNumber) =>
                                 handleUpdatePlacement(patient.id, placementType, placementNumber)}
+                              onUpdateDemographics={(form) => handleUpdateDemographics(patient.id, form)}
                             />
                           </div>
                         )}

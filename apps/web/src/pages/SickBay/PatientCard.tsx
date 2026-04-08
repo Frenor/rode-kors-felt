@@ -7,9 +7,11 @@ import {
   type News2Result,
 } from '@rkf/shared-types';
 import {
+  calculateAgeYears,
   formatPatientAge,
   formatSickbayPlacement,
   GENDER_LABELS,
+  GENDER_OPTIONS,
   news2Colors,
   STATUS_TRANSITIONS,
   statusColors,
@@ -35,6 +37,13 @@ const EMPTY_NOTE_FORM: NoteFormShape = {
   text: '', author: '',
 };
 
+export interface DemographicsFormShape {
+  fullName: string;
+  gender: '' | 'male' | 'female' | 'other';
+  birthDate: string;
+  ageGroup: string;
+}
+
 interface PatientCardProps {
   patient: SickBayPatient;
   medications: MedicationRecord[];
@@ -45,6 +54,7 @@ interface PatientCardProps {
   onLoadMedications: () => void;
   onOpenAmk: () => void;
   onUpdatePlacement: (placementType: 'chair' | 'bed' | '', placementNumber: string) => void;
+  onUpdateDemographics: (form: DemographicsFormShape) => void;
 }
 
 export function PatientCard({
@@ -57,12 +67,14 @@ export function PatientCard({
   onLoadMedications,
   onOpenAmk,
   onUpdatePlacement,
+  onUpdateDemographics,
 }: PatientCardProps) {
   const [showVitals, setShowVitals] = useState(false);
   const [showMeds, setShowMeds] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showPlacementEditor, setShowPlacementEditor] = useState(false);
+  const [showDemographicsEditor, setShowDemographicsEditor] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
 
@@ -81,6 +93,12 @@ export function PatientCard({
   const [noteForm, setNoteForm] = useState<NoteFormShape>(EMPTY_NOTE_FORM);
   const [placementType, setPlacementType] = useState<'chair' | 'bed' | ''>(patient.placementType ?? '');
   const [placementNumber, setPlacementNumber] = useState(patient.placementNumber ?? '');
+  const [demoForm, setDemoForm] = useState<DemographicsFormShape>({
+    fullName: patient.fullName ?? '',
+    gender: (patient.gender as DemographicsFormShape['gender']) ?? '',
+    birthDate: patient.birthDate ?? '',
+    ageGroup: patient.ageGroup ?? 'adult',
+  });
 
   const currentStatus = patient.status as keyof typeof STATUS_TRANSITIONS;
   const nextStatuses = STATUS_TRANSITIONS[currentStatus] ?? [];
@@ -186,10 +204,24 @@ export function PatientCard({
     setShowPlacementEditor(false);
   };
 
+  const handleSubmitDemographics = () => {
+    onUpdateDemographics(demoForm);
+    setShowDemographicsEditor(false);
+  };
+
   useEffect(() => {
     setPlacementType(patient.placementType ?? '');
     setPlacementNumber(patient.placementNumber ?? '');
   }, [patient.id, patient.placementNumber, patient.placementType]);
+
+  useEffect(() => {
+    setDemoForm({
+      fullName: patient.fullName ?? '',
+      gender: (patient.gender as DemographicsFormShape['gender']) ?? '',
+      birthDate: patient.birthDate ?? '',
+      ageGroup: patient.ageGroup ?? 'adult',
+    });
+  }, [patient.id, patient.fullName, patient.gender, patient.birthDate, patient.ageGroup]);
 
   return (
     <article
@@ -414,6 +446,146 @@ export function PatientCard({
             </button>
           </div>
         )}
+
+      <button
+        type="button"
+        className="touch-target"
+        data-testid={`demographics-editor-toggle-${patient.id}`}
+        onClick={() => setShowDemographicsEditor((prev) => !prev)}
+        style={{
+          minHeight: 32,
+          borderRadius: 'var(--radius-full)',
+          border: '1px solid var(--color-border)',
+          background: 'transparent',
+          color: 'var(--color-text)',
+          fontWeight: 600,
+          fontSize: 'var(--text-xs)',
+          fontFamily: 'var(--font-mono)',
+          cursor: 'pointer',
+          alignSelf: 'flex-start',
+          padding: '0 var(--space-3)',
+        }}
+      >
+        {showDemographicsEditor ? 'Lukk pasientinfo' : 'Rediger pasientinfo'}
+      </button>
+
+      {showDemographicsEditor && (
+        <div
+          data-testid={`demographics-editor-${patient.id}`}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-3)',
+            background: 'var(--color-surface-sunken)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-3)',
+          }}
+        >
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            Fullt navn
+            <input
+              type="text"
+              value={demoForm.fullName}
+              onChange={(e) => setDemoForm((f) => ({ ...f, fullName: e.target.value }))}
+              placeholder="Fornavn Etternavn"
+              style={{
+                height: 'var(--touch-min)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)',
+                color: 'var(--color-text)',
+                padding: '0 var(--space-2)',
+                fontSize: 'var(--text-sm)',
+              }}
+            />
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            Kjønn
+            <select
+              value={demoForm.gender}
+              onChange={(e) => setDemoForm((f) => ({ ...f, gender: e.target.value as DemographicsFormShape['gender'] }))}
+              style={{
+                height: 'var(--touch-min)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)',
+                color: 'var(--color-text)',
+                padding: '0 var(--space-2)',
+              }}
+            >
+              <option value="">Ikke oppgitt</option>
+              {GENDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            Fødselsdato
+            <input
+              type="date"
+              value={demoForm.birthDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setDemoForm((f) => ({ ...f, birthDate: e.target.value }))}
+              style={{
+                height: 'var(--touch-min)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)',
+                color: 'var(--color-text)',
+                padding: '0 var(--space-2)',
+              }}
+            />
+            {demoForm.birthDate && (
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                Alder: {calculateAgeYears(demoForm.birthDate) != null ? `${calculateAgeYears(demoForm.birthDate)} år` : 'Ukjent'}
+              </span>
+            )}
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            Aldersgruppe
+            <select
+              value={demoForm.ageGroup}
+              onChange={(e) => setDemoForm((f) => ({ ...f, ageGroup: e.target.value }))}
+              style={{
+                height: 'var(--touch-min)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)',
+                color: 'var(--color-text)',
+                padding: '0 var(--space-2)',
+              }}
+            >
+              <option value="child">Barn</option>
+              <option value="adolescent">Ungdom</option>
+              <option value="adult">Voksen</option>
+              <option value="elderly">Eldre</option>
+            </select>
+          </label>
+
+          <button
+            type="button"
+            className="touch-target"
+            onClick={handleSubmitDemographics}
+            style={{
+              minHeight: 'var(--touch-min)',
+              borderRadius: 'var(--radius-md)',
+              border: 'none',
+              background: 'var(--color-brand)',
+              color: '#fff',
+              fontWeight: 700,
+              padding: '0 var(--space-3)',
+              cursor: 'pointer',
+              alignSelf: 'flex-start',
+            }}
+          >
+            Lagre pasientinfo
+          </button>
+        </div>
+      )}
 
       {showMeds && (
         <MedicationPanel
