@@ -65,8 +65,10 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await expect(amkDialog.getByRole('button', { name: 'Generer AI-forslag' })).toBeVisible();
   await amkDialog.getByRole('button', { name: 'Lukk' }).click();
   await expect(amkDialog).not.toBeVisible();
-  await expect(page.getByRole('button', { name: 'Start behandling' }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Legg til observasjon' }).first()).toBeVisible();
+  // Open the patient status dropdown to verify status-change options are available
+  await page.getByRole('button', { name: /Innkommende|I behandling|Observasjon/i }).first().click();
+  await expect(page.getByTestId('status-btn-in_treatment').first()).toBeVisible();
+  await expect(page.getByTestId('status-btn-observation').first()).toBeVisible();
 
   // Coordinator flow: verify map presentation controls in demo preview.
   if (await logoutBtn.isVisible().catch(() => false)) {
