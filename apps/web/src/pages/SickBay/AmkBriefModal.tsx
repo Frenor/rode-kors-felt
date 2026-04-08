@@ -216,16 +216,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
       aria-label="AMK-brief"
       aria-modal="true"
       data-testid="amk-brief-modal"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 'var(--z-modal)',
-        background: 'rgba(0,0,0,0.6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 'var(--space-4)',
-      }}
+      className="modal-backdrop"
     >
       <FocusTrap onEscape={onClose}>
         <div style={{
@@ -237,30 +228,25 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
           maxHeight: '92vh',
           overflow: 'auto',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-4)', alignItems: 'flex-start', marginBottom: 'var(--space-4)' }}>
+          <div className="flex-between-start gap-4 mb-4">
             <div>
-              <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-1)' }}>
+              <h2 className="text-lg fw-700 mb-1">
                 AMK-brief
               </h2>
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+              <p className="text-sm text-subtle">
                 Ordnet pasientopplysninger, ring 113 direkte og logg samtalen strukturert.
               </p>
-              <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginTop: 'var(--space-1)' }}>
+              <p className="mono-xs-subtle mt-1">
                 Pasient: {patientName} · {patientAgeLabel} · {patientGenderLabel}
               </p>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="touch-target"
+              className="btn-ghost touch-target"
               style={{
                 minHeight: 'var(--touch-min)',
                 padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border)',
-                background: 'transparent',
-                color: 'var(--color-text)',
-                cursor: 'pointer',
               }}
             >
               Lukk
@@ -268,14 +254,12 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
           </div>
 
           {(error || success) && (
-            <div style={{
-              marginBottom: 'var(--space-4)',
+            <div className="mb-4 text-sm" style={{
               padding: 'var(--space-3)',
               borderRadius: 'var(--radius-md)',
               border: `1px solid ${error ? 'var(--color-status-critical)' : 'var(--color-status-ok)'}`,
               background: error ? 'rgba(220, 38, 38, 0.08)' : 'rgba(22, 163, 74, 0.08)',
               color: 'var(--color-text)',
-              fontSize: 'var(--text-sm)',
             }}>
               {error || success}
             </div>
@@ -293,17 +277,17 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                 border: '1px solid var(--color-border)',
                 background: 'var(--color-surface-sunken)',
               }}>
-                <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                <h3 className="heading-sm">
                   Pasientoversikt
                 </h3>
                 <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)' }}>
-                  <dt style={{ color: 'var(--color-text-subtle)' }}>Problemstilling</dt>
+                  <dt className="text-subtle">Problemstilling</dt>
                   <dd>{patient.presentingComplaint || 'Ukjent'}</dd>
-                  <dt style={{ color: 'var(--color-text-subtle)' }}>Status</dt>
+                  <dt className="text-subtle">Status</dt>
                   <dd>{patient.status}</dd>
-                  <dt style={{ color: 'var(--color-text-subtle)' }}>Ansvarlig</dt>
+                  <dt className="text-subtle">Ansvarlig</dt>
                   <dd>{patient.assignedClinician || 'Ikke satt'}</dd>
-                  <dt style={{ color: 'var(--color-text-subtle)' }}>NEWS2</dt>
+                  <dt className="text-subtle">NEWS2</dt>
                   <dd>{news2 ? `${news2BadgeLabel(news2)} · ${news2MonitoringLabel(news2)}` : 'Ikke registrert'}</dd>
                 </dl>
               </article>
@@ -314,15 +298,15 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                 border: '1px solid var(--color-border)',
                 background: 'var(--color-surface-sunken)',
               }}>
-                <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                <h3 className="heading-sm">
                   Ordnet AMK-brief
                 </h3>
                 <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
                   <div>
-                    <p style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-subtle)' }}>
+                    <p className="text-xs-subtle fw-700" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       1. Pasientcontext
                     </p>
-                    <p style={{ fontSize: 'var(--text-sm)', marginTop: 4 }}>
+                    <p className="text-sm" style={{ marginTop: 4 }}>
                       {patient.presentingComplaint || 'Ukjent problemstilling'}.
                       {' '}
                       {patient.assignedClinician ? `Ansvarlig kliniker: ${patient.assignedClinician}.` : 'Ansvarlig kliniker er ikke satt.'}
@@ -330,22 +314,22 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                   </div>
 
                   <div>
-                    <p style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-subtle)' }}>
+                    <p className="text-xs-subtle fw-700" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       2. Siste NEWS2 og trend
                     </p>
-                    <p style={{ fontSize: 'var(--text-sm)', marginTop: 4 }}>
+                    <p className="text-sm" style={{ marginTop: 4 }}>
                       {news2 ? `NEWS2 ${news2.total} · ${news2BadgeLabel(news2)} · ${news2MonitoringLabel(news2)}` : 'NEWS2 er ikke tilgjengelig ennå.'}
                     </p>
-                    <p style={{ fontSize: 'var(--text-sm)', marginTop: 4, color: 'var(--color-text-subtle)' }}>
+                    <p className="text-sm text-subtle" style={{ marginTop: 4 }}>
                       {trend ? `Trend: ${trend.direction === 'rising' ? 'stigende' : trend.direction === 'falling' ? 'fallende' : 'stabil'} (${trend.ratePerHour.toFixed(1)}/time)` : 'Trend kan ikke beregnes ennå.'}
                     </p>
                   </div>
 
                   <div>
-                    <p style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-subtle)' }}>
+                    <p className="text-xs-subtle fw-700" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       3. Siste intervensjoner
                     </p>
-                    <ul style={{ margin: 'var(--space-2) 0 0', paddingLeft: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
+                    <ul className="text-sm" style={{ margin: 'var(--space-2) 0 0', paddingLeft: 'var(--space-4)' }}>
                       {latestInterventions.map((line) => (
                         <li key={line}>{line}</li>
                       ))}
@@ -353,10 +337,10 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                   </div>
 
                   <div>
-                    <p style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-subtle)' }}>
+                    <p className="text-xs-subtle fw-700" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       4. Nøkkelfunn
                     </p>
-                    <ul style={{ margin: 'var(--space-2) 0 0', paddingLeft: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
+                    <ul className="text-sm" style={{ margin: 'var(--space-2) 0 0', paddingLeft: 'var(--space-4)' }}>
                       {keyFindings.map((line) => (
                         <li key={line}>{line}</li>
                       ))}
@@ -364,10 +348,10 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                   </div>
 
                   <div>
-                    <p style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-subtle)' }}>
+                    <p className="text-xs-subtle fw-700" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       5. Anbefalt eskaleringsspråk
                     </p>
-                    <p style={{ fontSize: 'var(--text-sm)', marginTop: 4 }}>
+                    <p className="text-sm" style={{ marginTop: 4 }}>
                       {recommendedEscalation}
                     </p>
                   </div>
@@ -380,16 +364,16 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                 border: '1px solid var(--color-border)',
                 background: 'var(--color-surface-sunken)',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
+                <div className="flex-between flex-wrap gap-2 mb-2">
                   <div>
-                    <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+                    <h3 className="text-sm fw-700">
                       Ring 113
                     </h3>
-                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                    <p className="text-xs-subtle">
                       Bruk telefonlenken eller kopier nummeret dersom lenken ikke åpner.
                     </p>
                   </div>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  <div className="flex-wrap gap-2">
                     <a
                       href="tel:113"
                       className="touch-target"
@@ -411,22 +395,17 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                     <button
                       type="button"
                       onClick={handleCopyTel}
-                      className="touch-target"
+                      className="btn-ghost touch-target"
                       style={{
                         minHeight: 'var(--touch-min)',
                         padding: '0 var(--space-3)',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-border)',
-                        background: 'transparent',
-                        color: 'var(--color-text)',
-                        cursor: 'pointer',
                       }}
                     >
                       {copyState === 'copied' ? 'Kopiert 113' : 'Kopier 113'}
                     </button>
                   </div>
                 </div>
-                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                <p className="text-xs-subtle">
                   Hvis telefonlenken ikke åpner, ring 113 manuelt eller bruk enheten som har telefonfunksjon.
                 </p>
               </article>
@@ -439,12 +418,12 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                 border: '1px solid var(--color-border)',
                 background: 'var(--color-surface-sunken)',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                <div className="flex-between gap-2 mb-2">
                   <div>
-                    <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+                    <h3 className="text-sm fw-700">
                       AI-beslutningsstøtte
                     </h3>
-                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                    <p className="text-xs-subtle">
                       AI-beslutningsstøtte — kliniker avgjør
                     </p>
                   </div>
@@ -452,16 +431,10 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                     type="button"
                     onClick={handleGenerateDraft}
                     disabled={loadingDraft}
-                    className="touch-target"
+                    className="btn-brand fw-700 touch-target"
                     style={{
                       minHeight: 'var(--touch-min)',
                       padding: '0 var(--space-3)',
-                      borderRadius: 'var(--radius-md)',
-                      border: 'none',
-                      background: 'var(--color-brand)',
-                      color: 'white',
-                      fontWeight: 700,
-                      cursor: 'pointer',
                       opacity: loadingDraft ? 0.7 : 1,
                     }}
                   >
@@ -490,25 +463,25 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                         <option value="high">Høy</option>
                         <option value="critical">Kritisk</option>
                       </select>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                      <span className="text-xs-subtle">
                         Valgt: {AMK_CRITICALITY_LABELS[normalizeAmkCriticality(criticality)] ?? 'Lav'}
                       </span>
                     </label>
 
                     <div>
-                      <p style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <p className="text-xs-subtle fw-700" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         Hvorfor
                       </p>
-                      <p style={{ fontSize: 'var(--text-sm)', marginTop: 4 }}>
+                      <p className="text-sm" style={{ marginTop: 4 }}>
                         {draft.rationale}
                       </p>
                     </div>
 
                     <div>
-                      <p style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <p className="text-xs-subtle fw-700" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         Si først
                       </p>
-                      <ul style={{ margin: 'var(--space-2) 0 0', paddingLeft: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
+                      <ul className="text-sm" style={{ margin: 'var(--space-2) 0 0', paddingLeft: 'var(--space-4)' }}>
                         {draft.sayFirst.map((line) => (
                           <li key={line}>{line}</li>
                         ))}
@@ -521,17 +494,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                         value={spokenScript}
                         onChange={(e) => setSpokenScript(e.target.value)}
                         rows={8}
-                        style={{
-                          width: '100%',
-                          padding: 'var(--space-2)',
-                          borderRadius: 'var(--radius-md)',
-                          border: '1px solid var(--color-input-border)',
-                          background: 'var(--color-input-bg)',
-                          color: 'var(--color-text)',
-                          fontSize: 'var(--text-sm)',
-                          resize: 'vertical',
-                          fontFamily: 'inherit',
-                        }}
+                        className="form-textarea"
                       />
                     </label>
 
@@ -556,7 +519,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                     </button>
                   </div>
                 ) : (
-                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+                  <p className="text-sm text-subtle">
                     Generer et AI-forslag for å få et strukturert forslag til kritikalitet og formulering.
                   </p>
                 )}
@@ -568,7 +531,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                 border: '1px solid var(--color-border)',
                 background: 'var(--color-surface-sunken)',
               }}>
-                <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                <h3 className="heading-sm">
                   Samtalelogg
                 </h3>
                 <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
@@ -579,17 +542,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                       onChange={(e) => setForm((current) => ({ ...current, summaryGiven: e.target.value }))}
                       rows={3}
                       placeholder="Hva ble presentert til AMK?"
-                      style={{
-                        width: '100%',
-                        padding: 'var(--space-2)',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-input-border)',
-                        background: 'var(--color-input-bg)',
-                        color: 'var(--color-text)',
-                        fontSize: 'var(--text-sm)',
-                        resize: 'vertical',
-                        fontFamily: 'inherit',
-                      }}
+                      className="form-textarea"
                     />
                   </label>
 
@@ -600,17 +553,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                       onChange={(e) => setForm((current) => ({ ...current, amkGuidance: e.target.value }))}
                       rows={4}
                       placeholder="Hva anbefalte AMK?"
-                      style={{
-                        width: '100%',
-                        padding: 'var(--space-2)',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-input-border)',
-                        background: 'var(--color-input-bg)',
-                        color: 'var(--color-text)',
-                        fontSize: 'var(--text-sm)',
-                        resize: 'vertical',
-                        fontFamily: 'inherit',
-                      }}
+                      className="form-textarea"
                     />
                   </label>
 
@@ -632,7 +575,7 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                     />
                   </label>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+                  <div className="grid-2">
                     <label style={{ display: 'grid', gap: 'var(--space-1)', fontSize: 'var(--text-sm)', fontWeight: 600 }}>
                       Referanse / ambulansenummer
                       <input
@@ -691,16 +634,10 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                     type="button"
                     onClick={handleSubmitCallLog}
                     disabled={savingCallLog || formDisabled}
-                    className="touch-target"
+                    className="btn-brand fw-700 touch-target"
                     style={{
                       minHeight: 'var(--touch-min)',
                       padding: '0 var(--space-3)',
-                      borderRadius: 'var(--radius-md)',
-                      border: 'none',
-                      background: 'var(--color-brand)',
-                      color: 'white',
-                      fontWeight: 700,
-                      cursor: 'pointer',
                       opacity: savingCallLog || formDisabled ? 0.6 : 1,
                     }}
                   >
@@ -715,13 +652,13 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                 border: '1px solid var(--color-border)',
                 background: 'var(--color-surface-sunken)',
               }}>
-                <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                <h3 className="heading-sm">
                   Tidligere AMK-logger
                 </h3>
                 {loadingLogs ? (
-                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Laster logger...</p>
+                  <p className="text-xs-subtle">Laster logger...</p>
                 ) : callLogs.length === 0 ? (
-                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Ingen AMK-logger ennå.</p>
+                  <p className="text-xs-subtle">Ingen AMK-logger ennå.</p>
                 ) : (
                   <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
                     {callLogs.map((log) => (
@@ -732,10 +669,10 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
                         border: '1px solid var(--color-border)',
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                          <strong style={{ fontSize: 'var(--text-xs)' }}>{formatTime(log.calledAt)}</strong>
-                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>{log.recordedBy || 'Ukjent'}</span>
+                          <strong className="text-xs">{formatTime(log.calledAt)}</strong>
+                          <span className="text-xs-subtle">{log.recordedBy || 'Ukjent'}</span>
                         </div>
-                        <p style={{ marginTop: 4, fontSize: 'var(--text-xs)' }}>{log.summaryGiven}</p>
+                        <p className="text-xs" style={{ marginTop: 4 }}>{log.summaryGiven}</p>
                       </div>
                     ))}
                   </div>
