@@ -221,7 +221,8 @@ class ApiClient {
     data:
       | { type: 'team.status_set'; status: TeamOperationalStatus; incidentId?: string; note?: string; clientActionId: string }
       | { type: 'team.monitor_started'; patientId: string; clientActionId: string }
-      | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string },
+      | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string }
+      | { type: 'team.patient_status_set'; patientId: string; engagementStatus: 'en_route_to_patient' | 'monitoring'; clientActionId: string },
     options?: { skipOfflineQueue?: boolean },
   ) {
     if (DEMO) return demoStore.postTeamAction(teamId, data);

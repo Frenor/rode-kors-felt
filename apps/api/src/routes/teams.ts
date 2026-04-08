@@ -5,6 +5,7 @@ import {
   TeamActionRequest,
   TeamWorkspaceResponse,
   type TeamOperationalStatus,
+  type TeamPatientEngagementStatus,
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
 import { actionEvents, incidents, patients, teams } from '../db/schema.js';
@@ -39,6 +40,11 @@ const TeamProfileBody = z.object({
   contactPhone: z.string().max(50).nullable().optional(),
   contactRadio: z.string().max(50).nullable().optional(),
 });
+
+const ENGAGEMENT_TO_TEAM_STATUS: Record<TeamPatientEngagementStatus, TeamOperationalStatus> = {
+  en_route_to_patient: 'en_route',
+  monitoring: 'on_scene',
+};
 
 export async function teamRoutes(app: FastifyInstance) {
   app.get('/:teamId', { preHandler: requireAuth }, async (request, reply) => {
@@ -149,6 +155,9 @@ export async function teamRoutes(app: FastifyInstance) {
       actionPayload.status = payload.status;
       actionPayload.incidentId = payload.incidentId ?? null;
       actionPayload.note = payload.note ?? null;
+    } else if (payload.type === 'team.patient_status_set') {
+      actionPayload.patientId = payload.patientId;
+      actionPayload.engagementStatus = payload.engagementStatus;
     } else {
       actionPayload.patientId = payload.patientId;
     }
@@ -166,6 +175,54 @@ export async function teamRoutes(app: FastifyInstance) {
       .returning();
 
     const action = mapAction(created!);
+
+    // Auto-derive team operational status from patient engagement status.
+    // Derivation is skipped when the team's current status is `needs_assistance`
+    // to avoid silently clearing an active help request.
+    if (payload.type === 'team.patient_status_set') {
+      const derivedStatus = ENGAGEMENT_TO_TEAM_STATUS[payload.engagementStatus];
+      const [latestStatusRow] = await db
+        .select()
+        .from(actionEvents)
+        .where(and(
+          eq(actionEvents.eventId, team.eventId),
+          eq(actionEvents.entityType, 'team'),
+          eq(actionEvents.entityId, team.id),
+          eq(actionEvents.actionType, 'team.status_set'),
+        ))
+        .orderBy(desc(actionEvents.createdAt))
+        .limit(1);
+      const currentStatus = latestStatusRow
+        ? (latestStatusRow.payload as { status?: TeamOperationalStatus }).status
+        : undefined;
+      if (currentStatus !== 'needs_assistance') {
+        await db.insert(actionEvents).values({
+          eventId: team.eventId,
+          entityType: 'team',
+          entityId: team.id,
+          actionType: 'team.status_set',
+          payload: {
+            status: derivedStatus,
+            incidentId: null,
+            note: null,
+            derivedFromPatientId: payload.patientId,
+            derivedFromEngagement: payload.engagementStatus,
+          },
+          createdBy: getActor(user),
+        });
+        broadcast({
+          type: 'team.status_changed',
+          eventId: team.eventId,
+          payload: {
+            teamId: team.id,
+            actionType: 'team.status_set',
+            derivedStatus,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
     const wsType = payload.type === 'team.status_set' ? 'team.status_changed' : 'team.session_changed';
     broadcast({
       type: wsType,

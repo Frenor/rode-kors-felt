@@ -18,6 +18,12 @@ export type QueuedTeamActionPayload =
       type: 'team.monitor_stopped';
       patientId: string;
       clientActionId: string;
+    }
+  | {
+      type: 'team.patient_status_set';
+      patientId: string;
+      engagementStatus: 'en_route_to_patient' | 'monitoring';
+      clientActionId: string;
     };
 
 export interface QueuedTeamAction {

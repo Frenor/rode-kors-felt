@@ -71,6 +71,129 @@ describe('POST /api/teams/:teamId/actions', () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it('derives team status en_route when patient engagement is en_route_to_patient', async () => {
+    const token = getFirstAiderToken(eventId);
+
+    // Reset team status to available
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.status_set', status: 'available', clientActionId: randomUUID() },
+    });
+
+    const sickbayToken = getSickbayToken(eventId);
+    const patientRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${sickbayToken}` },
+      payload: { eventId, ageGroup: 'adult', presentingComplaint: 'Hodepine' },
+    });
+    const patientId = patientRes.json().patient.id as string;
+
+    const actionRes = await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        type: 'team.patient_status_set',
+        patientId,
+        engagementStatus: 'en_route_to_patient',
+        clientActionId: randomUUID(),
+      },
+    });
+    expect(actionRes.statusCode).toBe(201);
+    expect(actionRes.json().action.actionType).toBe('team.patient_status_set');
+
+    const workspaceRes = await app.inject({
+      method: 'GET',
+      url: `/api/teams/${teamId}/workspace`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(workspaceRes.statusCode).toBe(200);
+    expect(workspaceRes.json().latestStatus).toBe('en_route');
+  });
+
+  it('derives team status on_scene when patient engagement is monitoring', async () => {
+    const token = getFirstAiderToken(eventId);
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.status_set', status: 'available', clientActionId: randomUUID() },
+    });
+
+    const sickbayToken = getSickbayToken(eventId);
+    const patientRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${sickbayToken}` },
+      payload: { eventId, ageGroup: 'adult', presentingComplaint: 'Svimmelhet' },
+    });
+    const patientId = patientRes.json().patient.id as string;
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        type: 'team.patient_status_set',
+        patientId,
+        engagementStatus: 'monitoring',
+        clientActionId: randomUUID(),
+      },
+    });
+
+    const workspaceRes = await app.inject({
+      method: 'GET',
+      url: `/api/teams/${teamId}/workspace`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(workspaceRes.statusCode).toBe(200);
+    expect(workspaceRes.json().latestStatus).toBe('on_scene');
+  });
+
+  it('does not override needs_assistance status with derived team status', async () => {
+    const token = getFirstAiderToken(eventId);
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.status_set', status: 'needs_assistance', clientActionId: randomUUID() },
+    });
+
+    const sickbayToken = getSickbayToken(eventId);
+    const patientRes = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${sickbayToken}` },
+      payload: { eventId, ageGroup: 'adult', presentingComplaint: 'Brystsmerter' },
+    });
+    const patientId = patientRes.json().patient.id as string;
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        type: 'team.patient_status_set',
+        patientId,
+        engagementStatus: 'monitoring',
+        clientActionId: randomUUID(),
+      },
+    });
+
+    const workspaceRes = await app.inject({
+      method: 'GET',
+      url: `/api/teams/${teamId}/workspace`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(workspaceRes.statusCode).toBe(200);
+    expect(workspaceRes.json().latestStatus).toBe('needs_assistance');
+  });
 });
 
 describe('GET /api/teams/:teamId/workspace', () => {
