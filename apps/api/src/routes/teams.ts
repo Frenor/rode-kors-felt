@@ -3,8 +3,8 @@ import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   TeamActionRequest,
+  TeamOperationalStatus,
   TeamWorkspaceResponse,
-  type TeamOperationalStatus,
   type TeamPatientEngagementStatus,
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
@@ -192,8 +192,11 @@ export async function teamRoutes(app: FastifyInstance) {
         ))
         .orderBy(desc(actionEvents.createdAt))
         .limit(1);
-      const currentStatus = latestStatusRow
-        ? (latestStatusRow.payload as { status?: TeamOperationalStatus }).status
+      const rawStatus = latestStatusRow
+        ? (latestStatusRow.payload as Record<string, unknown>).status
+        : undefined;
+      const currentStatus = TeamOperationalStatus.safeParse(rawStatus).success
+        ? (rawStatus as TeamOperationalStatus)
         : undefined;
       if (currentStatus !== 'needs_assistance') {
         await db.insert(actionEvents).values({
@@ -205,6 +208,7 @@ export async function teamRoutes(app: FastifyInstance) {
             status: derivedStatus,
             incidentId: null,
             note: null,
+            // Audit fields: record which patient engagement triggered this derivation
             derivedFromPatientId: payload.patientId,
             derivedFromEngagement: payload.engagementStatus,
           },
