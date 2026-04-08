@@ -584,6 +584,9 @@ export function FirstAiderDashboard() {
               const posText = (p as TeamWorkspacePatient).positionText;
               const lat = (p as TeamWorkspacePatient).lat;
               const lon = (p as TeamWorkspacePatient).lon;
+              const pKey = eventId && selectedTeam ? `${eventId}:${selectedTeam}:${p.id}` : null;
+              const patientLocalStatus = pKey ? (patientStatusMap[pKey] ?? null) : null;
+              const patientServerStatus = (p as TeamWorkspacePatient).teamPatientStatus ?? null;
               return (
                 <div
                   key={p.id}
@@ -685,19 +688,12 @@ export function FirstAiderDashboard() {
                       </div>
 
                       {/* Patient status picker */}
-                      {(() => {
-                        const pKey = eventId && selectedTeam ? `${eventId}:${selectedTeam}:${p.id}` : null;
-                        const localStatus = pKey ? (patientStatusMap[pKey] ?? null) : null;
-                        const serverStatus = (p as TeamWorkspacePatient).teamPatientStatus ?? null;
-                        return (
-                          <PatientEngagementPicker
-                            patientId={p.id}
-                            localStatus={localStatus}
-                            serverStatus={serverStatus}
-                            onSetStatus={handleSetPatientStatus}
-                          />
-                        );
-                      })()}
+                      <PatientEngagementPicker
+                        patientId={p.id}
+                        localStatus={patientLocalStatus}
+                        serverStatus={patientServerStatus}
+                        onSetStatus={handleSetPatientStatus}
+                      />
 
                       {/* Trenger bistand */}
                       <button

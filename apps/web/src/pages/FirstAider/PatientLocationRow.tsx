@@ -47,9 +47,10 @@ export function PatientLocationRow({
   const hasCoords = lat != null && lon != null;
   if (!positionText && !hasCoords) return null;
 
+  const bearing = gpsPosition && hasCoords ? ` · ${bearingTo(gpsPosition, lat!, lon!)}` : '';
   const label = positionText
     ? `📍 ${positionText}`
-    : `📍 ${lat!.toFixed(4)}, ${lon!.toFixed(4)}${gpsPosition ? ` · ${bearingTo(gpsPosition, lat!, lon!)}` : ''}`;
+    : `📍 ${lat!.toFixed(4)}, ${lon!.toFixed(4)}${bearing}`;
 
   return (
     <div

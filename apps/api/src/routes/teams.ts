@@ -269,6 +269,8 @@ export async function teamRoutes(app: FastifyInstance) {
           type: 'team.status_set',
           status: derivedStatus,
           clientActionId: crypto.randomUUID(),
+          // _auto marks this action as system-derived so clients can
+          // distinguish it from explicit user status changes if needed.
           _auto: true,
         };
         const [derivedAction] = await db
