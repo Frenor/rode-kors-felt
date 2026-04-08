@@ -132,45 +132,45 @@ function PatientRow({
         }}
       >
         <TriageBadge status={patient.triageStatus} />
-        <span style={{ flex: 1, fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+        <span className="flex-1 text-sm fw-600">
           {patient.label || 'Ukjent pasient'}
         </span>
         {assignedTeam && (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+          <span className="text-xs-subtle">
             {assignedTeam.name}
           </span>
         )}
         {patient.positionText && (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span className="text-xs-subtle" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {patient.positionText}
           </span>
         )}
-        <span style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)' }}>{expanded ? '▲' : '▼'}</span>
+        <span className="text-xs-subtle">{expanded ? '▲' : '▼'}</span>
       </button>
 
       {expanded && !editing && (
-        <div style={{ padding: 'var(--space-3)', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        <div className="flex-col gap-2" style={{ padding: 'var(--space-3)', borderTop: '1px solid var(--color-border)' }}>
           {patient.description && (
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>{patient.description}</p>
+            <p className="text-sm" style={{ margin: 0, color: 'var(--color-text)' }}>{patient.description}</p>
           )}
           {patient.positionText && (
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+            <div className="text-xs-subtle">
               <strong>Posisjon:</strong> {patient.positionText}
               {patient.lat != null && patient.lon != null && ` (${patient.lat.toFixed(5)}, ${patient.lon.toFixed(5)})`}
             </div>
           )}
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+          <div className="text-xs-subtle">
             Oppdatert {new Date(patient.updatedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
           </div>
           {engagements.length > 0 && (
             <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div className="section-label fw-600 mb-1">
                 Lag responderer
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+              <div className="flex-col gap-1">
                 {engagements.map((eng) => (
-                  <div key={eng.teamId} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, minWidth: 80 }}>{eng.teamName}</span>
+                  <div key={eng.teamId} className="flex-align gap-2">
+                    <span className="text-sm fw-600" style={{ minWidth: 80 }}>{eng.teamName}</span>
                     <TeamEngagementBadge status={eng.status} />
                   </div>
                 ))}
@@ -191,23 +191,25 @@ function PatientRow({
       )}
 
       {expanded && editing && (
-        <div style={{ padding: 'var(--space-3)', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+        <div className="flex-col gap-3" style={{ padding: 'var(--space-3)', borderTop: '1px solid var(--color-border)' }}>
+          <div className="grid-2">
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Navn / ID</label>
+              <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Navn / ID</label>
               <input
                 type="text"
                 value={draft.label ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="form-input-sm"
+                style={{ fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Triage</label>
+              <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Triage</label>
               <select
                 value={draft.triageStatus ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, triageStatus: (e.target.value || null) as FieldTriageStatus | null }))}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)' }}
+                className="form-input-sm"
+                style={{ fontSize: 'var(--text-sm)' }}
               >
                 <option value="">— ingen —</option>
                 {TRIAGE_ORDER.map((t) => <option key={t} value={t}>{TRIAGE_COLORS[t].label}</option>)}
@@ -216,7 +218,7 @@ function PatientRow({
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Notater / beskrivelse</label>
+            <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Notater / beskrivelse</label>
             <textarea
               value={draft.description ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value || null }))}
@@ -226,52 +228,56 @@ function PatientRow({
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Posisjonstekst</label>
+            <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Posisjonstekst</label>
             <input
               type="text"
               value={draft.positionText ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, positionText: e.target.value || null }))}
               placeholder="f.eks. Ved hovedscenen, sektor B"
-              style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+              className="form-input-sm"
+              style={{ fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+          <div className="grid-2">
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Breddegrad (lat)</label>
+              <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Breddegrad (lat)</label>
               <input
                 type="number"
                 step="any"
                 value={draft.lat ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, lat: e.target.value ? parseFloat(e.target.value) : null }))}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="form-input-sm"
+                style={{ fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Lengdegrad (lon)</label>
+              <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Lengdegrad (lon)</label>
               <input
                 type="number"
                 step="any"
                 value={draft.lon ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, lon: e.target.value ? parseFloat(e.target.value) : null }))}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="form-input-sm"
+                style={{ fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
               />
             </div>
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Tilordnet lag</label>
+            <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Tilordnet lag</label>
             <select
               value={draft.assignedTeamId ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, assignedTeamId: e.target.value || null }))}
-              style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)' }}
+              className="form-input-sm"
+              style={{ fontSize: 'var(--text-sm)' }}
             >
               <option value="">— ikke tildelt —</option>
               {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
 
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <div className="flex gap-2">
             <button
               onClick={handleSave}
               disabled={saving || !draft.label?.trim()}
@@ -342,12 +348,14 @@ export function PatientManagementPanel({
   return (
     <section
       aria-labelledby="patients-panel-title"
-      style={{ marginBottom: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', overflow: 'hidden' }}
+      className="card mb-4"
+      style={{ overflow: 'hidden' }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
+      <div className="flex-between" style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
         <h2
           id="patients-panel-title"
-          style={{ margin: 0, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', letterSpacing: 'var(--tracking-mono)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}
+          className="section-label text-muted"
+          style={{ margin: 0 }}
         >
           Pasienter ({patients.length})
         </h2>
@@ -364,25 +372,27 @@ export function PatientManagementPanel({
       </div>
 
       {showForm && (
-        <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', background: 'var(--color-surface-sunken)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+        <div className="flex-col gap-3" style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-sunken)' }}>
+          <div className="grid-2">
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Navn / ID *</label>
+              <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Navn / ID *</label>
               <input
                 type="text"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="f.eks. Pasient 1"
                 autoFocus
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="form-input-sm"
+                style={{ fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Triage</label>
+              <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Triage</label>
               <select
                 value={newTriage}
                 onChange={(e) => setNewTriage(e.target.value as FieldTriageStatus | '')}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)' }}
+                className="form-input-sm"
+                style={{ fontSize: 'var(--text-sm)' }}
               >
                 <option value="">— ingen —</option>
                 {TRIAGE_ORDER.map((t) => <option key={t} value={t}>{TRIAGE_COLORS[t].label}</option>)}
@@ -390,32 +400,35 @@ export function PatientManagementPanel({
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Notater / beskrivelse</label>
+            <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Notater / beskrivelse</label>
             <input
               type="text"
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
               placeholder="Valgfritt"
-              style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+              className="form-input-sm"
+              style={{ fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+          <div className="grid-2">
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Posisjonstekst</label>
+              <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Posisjonstekst</label>
               <input
                 type="text"
                 value={newPositionText}
                 onChange={(e) => setNewPositionText(e.target.value)}
                 placeholder="f.eks. Nær inngangen"
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="form-input-sm"
+                style={{ fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Tilordnet lag</label>
+              <label className="text-xs-subtle" style={{ display: 'block', marginBottom: 4 }}>Tilordnet lag</label>
               <select
                 value={newTeamId}
                 onChange={(e) => setNewTeamId(e.target.value)}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)' }}
+                className="form-input-sm"
+                style={{ fontSize: 'var(--text-sm)' }}
               >
                 <option value="">— ikke tildelt —</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -439,9 +452,9 @@ export function PatientManagementPanel({
         </div>
       )}
 
-      <div style={{ padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      <div className="flex-col gap-2" style={{ padding: 'var(--space-3)' }}>
         {sortedPatients.length === 0 && (
-          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', textAlign: 'center', padding: 'var(--space-4) 0' }}>
+          <p className="text-sm text-subtle" style={{ margin: 0, textAlign: 'center', padding: 'var(--space-4) 0' }}>
             Ingen pasienter registrert
           </p>
         )}

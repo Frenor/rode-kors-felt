@@ -194,21 +194,18 @@ export function PatientCard({
   return (
     <article
       aria-label={`Pasient ${patientName}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
-      style={{
-        padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-        display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', height: '100%',
-      }}
+      className="card-p3 flex-col gap-2"
+      style={{ height: '100%' }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 'var(--space-2)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{patientName}</span>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{complaintText}</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+      <div className="flex-between-start gap-2" style={{ flexWrap: 'nowrap' }}>
+        <div className="flex-col min-w-0" style={{ gap: 2 }}>
+          <span className="text-sm fw-600" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{patientName}</span>
+          <span className="text-xs-subtle" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{complaintText}</span>
+          <span className="mono-xs-subtle">
             {`${placementLabel || 'Ikke satt'}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', flexShrink: 0 }}>
+        <div className="flex-align gap-1 flex-shrink-0">
           {news2 && n2colors && (
             <span
               title={`${news2MonitoringLabel(news2)}${news2MissingLabels.length > 0 ? ` · Mangler: ${news2MissingLabels.join(', ')}` : ''}`}
@@ -355,7 +352,7 @@ export function PatientCard({
               padding: 'var(--space-3)',
             }}
           >
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            <label className="flex-col text-xs" style={{ gap: 4 }}>
               Type
               <select
                 value={placementType}
@@ -375,7 +372,7 @@ export function PatientCard({
               </select>
             </label>
 
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            <label className="flex-col text-xs" style={{ gap: 4 }}>
               Nummer
               <input
                 type="text"

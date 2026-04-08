@@ -449,14 +449,14 @@ export function FirstAiderDashboard() {
   const teamStatusLabel = teamStatusLabels[selectedTeamStatus as TeamOperationalStatus];
 
   return (
-    <div data-testid="firstaid-patient-workspace" className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '6.25rem' }}>
+    <div data-testid="firstaid-patient-workspace" className="animate-fade-in flex-col gap-4" style={{ paddingBottom: '6.25rem' }}>
       {/* Team selection */}
       {!selectedTeam && teams.length > 0 && (
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>
+        <div className="mb-6">
+          <h2 className="text-lg fw-600 mb-3">
             Velg patrulje
           </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <div className="flex-col gap-2">
             {teams.map((team) => (
               <button
                 key={team.id}
@@ -481,7 +481,7 @@ export function FirstAiderDashboard() {
               >
                 <span>{team.name}</span>
                 {team.transport && (
-                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--color-text-subtle)', fontFamily: 'var(--font-mono)' }}>
+                  <span className="mono-xs-subtle">
                     {TRANSPORT_LABELS[team.transport as TeamTransport] ?? team.transport}
                   </span>
                 )}
@@ -501,7 +501,7 @@ export function FirstAiderDashboard() {
           background: 'var(--color-surface)',
           position: 'sticky', top: 0, zIndex: 10,
         }}>
-          <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', flex: 1 }}>
+          <span className="text-base fw-700" style={{ flex: 1 }}>
             {selectedTeamData?.name ?? 'Ukjent lag'}
           </span>
           <span style={{
@@ -583,10 +583,10 @@ export function FirstAiderDashboard() {
             background: 'var(--color-brand-dim)',
           }}
         >
-          <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-brand)' }}>
+          <div className="text-sm fw-700 text-brand">
             Tildelt sektor: {sectorAssignments[selectedTeam]!.sector}
           </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+          <div className="text-xs-subtle">
             Oppdatert {new Date(sectorAssignments[selectedTeam]!.assignedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
           </div>
         </section>
@@ -597,15 +597,11 @@ export function FirstAiderDashboard() {
         <section aria-labelledby="patient-list-heading" aria-live="polite">
           <h2
             id="patient-list-heading"
-            style={{
-              fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-              color: 'var(--color-text-muted)', textTransform: 'uppercase',
-              letterSpacing: 'var(--tracking-mono)', marginBottom: 'var(--space-3)',
-            }}
+            className="section-label mb-3"
           >
             Egne pasienter ({combinedAssignedPatients.length})
           </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <div className="flex-col gap-3">
             {combinedAssignedPatients.map((p) => {
               const isExpanded = expandedPatientId === p.id;
               const highlighted = highlightedFields.get(p.id);
@@ -649,7 +645,7 @@ export function FirstAiderDashboard() {
                         {triage.label}
                       </span>
                     )}
-                    <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', flex: 1, textAlign: 'left' }}>
+                    <span className="text-sm fw-700" style={{ flex: 1, textAlign: 'left' }}>
                       {label}
                     </span>
                     {isFlashing && (
@@ -657,7 +653,7 @@ export function FirstAiderDashboard() {
                         Oppdatert
                       </span>
                     )}
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flexShrink: 0 }}>
+                    <span className="text-xs-subtle flex-shrink-0">
                       {isExpanded ? '▲' : '▼'}
                     </span>
                   </button>
@@ -695,8 +691,8 @@ export function FirstAiderDashboard() {
                       )}
 
                       {/* Injury note */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
+                      <div className="flex-col gap-1">
+                        <div className="flex gap-2" style={{ alignItems: 'flex-start' }}>
                           <textarea
                             value={perPatientNoteText[p.id] ?? ''}
                             onChange={(e) => setPerPatientNoteText((prev) => ({ ...prev, [p.id]: e.target.value }))}
@@ -785,15 +781,9 @@ export function FirstAiderDashboard() {
                 return (
                   <div
                     key={patient.id}
-                    style={{
-                      padding: 'var(--space-3)',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-border)',
-                      background: 'var(--color-surface)',
-                      display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
-                    }}
+                    className="card-p3 flex-col gap-2"
                   >
-                    <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                    <div className="text-sm fw-600">
                       {patient.presentingComplaint || 'Ukjent problemstilling'}
                     </div>
                     <PatientLocationRow
@@ -824,7 +814,7 @@ export function FirstAiderDashboard() {
             </>
 
             {workspaceLoading && (
-              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+              <p className="text-sm text-subtle" style={{ margin: 0 }}>
                 Laster pasienter…
               </p>
             )}
@@ -861,7 +851,7 @@ export function FirstAiderDashboard() {
 
       {/* Queued (offline) incidents */}
       {queuedIncidents && queuedIncidents.length > 0 && (
-        <section aria-labelledby="queued-heading" style={{ marginBottom: 'var(--space-4)' }}>
+        <section aria-labelledby="queued-heading" className="mb-4">
           <h2
             id="queued-heading"
             style={{
