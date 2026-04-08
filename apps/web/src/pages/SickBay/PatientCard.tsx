@@ -205,8 +205,13 @@ export function PatientCard({
           <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{patientName}</span>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{complaintText}</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-            {[placementLabel, patientDemographics].filter(Boolean).join(' · ') || 'Plassering ikke satt'}
+            {placementLabel ? `Plassering: ${placementLabel}` : 'Plassering: Ikke satt'}
           </span>
+          {patientDemographics && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+              {patientDemographics}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', flexShrink: 0 }}>
           {news2 && n2colors && (
