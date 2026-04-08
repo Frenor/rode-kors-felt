@@ -61,4 +61,32 @@ describe('offline first-aider team action queue', () => {
     await removeTeamAction('act-1');
     expect(await offlineFirstAiderQueueDb.queue.get('act-1')).toBeUndefined();
   });
+
+  it('enqueues a team.patient_status_set action with a non-null status', async () => {
+    const clientActionId = await enqueueTeamAction('team-1', {
+      type: 'team.patient_status_set',
+      patientId: 'pat-1',
+      status: 'en_route_to_patient',
+      clientActionId: 'ps-act-1',
+    });
+    expect(clientActionId).toBe('ps-act-1');
+    const stored = await offlineFirstAiderQueueDb.queue.get('ps-act-1');
+    expect(stored).toBeDefined();
+    expect(stored!.payload.type).toBe('team.patient_status_set');
+    expect((stored!.payload as any).status).toBe('en_route_to_patient');
+    expect((stored!.payload as any).patientId).toBe('pat-1');
+  });
+
+  it('enqueues a team.patient_status_set action with null status (clearing engagement)', async () => {
+    const clientActionId = await enqueueTeamAction('team-1', {
+      type: 'team.patient_status_set',
+      patientId: 'pat-2',
+      status: null,
+      clientActionId: 'ps-act-2',
+    });
+    expect(clientActionId).toBe('ps-act-2');
+    const stored = await offlineFirstAiderQueueDb.queue.get('ps-act-2');
+    expect(stored).toBeDefined();
+    expect((stored!.payload as any).status).toBeNull();
+  });
 });

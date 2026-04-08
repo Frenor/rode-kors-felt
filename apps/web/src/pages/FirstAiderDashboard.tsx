@@ -16,7 +16,7 @@ import {
   type QueuedTeamActionPayload,
 } from '../lib/offline-firstaid-queue';
 import { api } from '../lib/api';
-import type { TeamOperationalStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
+import type { TeamOperationalStatus, TeamPatientStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
 import type { TeamTransport } from '../stores/auth';
 import { VitalsEntryForm, EMPTY_VITALS_FORM, type VitalsFormShape } from './SickBay/VitalsEntryForm';
 
@@ -218,13 +218,6 @@ export function FirstAiderDashboard() {
     atv: 'driving',
   };
 
-  const navigateToIncident = (incident: any) => {
-    const { lat, lng } = incident.location ?? {};
-    if (lat == null || lng == null) return;
-    const travelMode = TRANSPORT_TRAVEL_MODE[currentTeamTransport];
-    window.open(`https://maps.google.com/maps?daddr=${lat},${lng}&travelmode=${travelMode}`, '_blank', 'noopener');
-  };
-
   const handleTransportChange = async (transport: TeamTransport) => {
     if (!selectedTeam) return;
     const previous = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
@@ -288,14 +281,6 @@ export function FirstAiderDashboard() {
     return dirs[Math.round(brng / 45) % 8]!;
   };
 
-  const statusLabels: Record<string, string> = {
-    on_scene: 'På stedet',
-    transporting: 'Under transport',
-    at_sickbay: 'På sykestue',
-    handed_over: 'Overlevert',
-    resolved: 'Løst',
-  };
-
   const teamStatusLabels: Record<TeamOperationalStatus, string> = {
     available: 'Ledig',
     en_route: 'På vei',
@@ -341,18 +326,46 @@ export function FirstAiderDashboard() {
     await queueAndSyncTeamAction(selectedTeam, payload);
   };
 
-  const handleSetActivePatient = async (patientId: string) => {
+  const handleSetPatientStatus = async (patientId: string, status: TeamPatientStatus | null) => {
     if (!eventId || !selectedTeam) return;
-    setActivePatient(eventId, selectedTeam, patientId);
-    const monitored = workspace?.monitoredPatients.some((patient) => patient.id === patientId)
-      || workspace?.assignedPatients.some((patient) => patient.id === patientId);
-    if (!monitored) {
-      await queueAndSyncTeamAction(selectedTeam, {
-        type: 'team.monitor_started',
-        patientId,
-        clientActionId: crypto.randomUUID(),
-      });
+    // Optimistic update
+    if (status != null) {
+      setPatientStatus(eventId, selectedTeam, patientId, status);
+      setActivePatient(eventId, selectedTeam, patientId);
+    } else {
+      clearPatientStatus(eventId, selectedTeam, patientId);
     }
+    // Derive new team operational status from updated map
+    const key = `${eventId}:${selectedTeam}:${patientId}`;
+    const updatedMap: Record<string, TeamPatientStatus> = { ...patientStatusMap };
+    if (status != null) {
+      updatedMap[key] = status;
+    } else {
+      delete updatedMap[key];
+    }
+    const currentStatuses = Object.entries(updatedMap)
+      .filter(([k]) => k.startsWith(`${eventId}:${selectedTeam}:`))
+      .map(([, v]) => v);
+    const manualOnly = selectedTeamStatus === 'needs_assistance' || selectedTeamStatus === 'unavailable';
+    if (!manualOnly) {
+      let derived: TeamOperationalStatus = 'available';
+      if (currentStatuses.some((s) => s === 'transporting' || s === 'monitoring')) derived = 'on_scene';
+      else if (currentStatuses.some((s) => s === 'en_route_to_patient')) derived = 'en_route';
+      if (derived !== selectedTeamStatus) {
+        setTeamStatus(eventId, selectedTeam, derived);
+        await queueAndSyncTeamAction(selectedTeam, {
+          type: 'team.status_set',
+          status: derived,
+          clientActionId: crypto.randomUUID(),
+        });
+      }
+    }
+    await queueAndSyncTeamAction(selectedTeam, {
+      type: 'team.patient_status_set',
+      patientId,
+      status,
+      clientActionId: crypto.randomUUID(),
+    });
   };
 
   const getPatientVitalsForm = (patientId: string): VitalsFormShape =>
@@ -399,19 +412,25 @@ export function FirstAiderDashboard() {
     black:  { bg: '#f1f5f9', text: '#1e293b', label: 'Svart' },
   };
 
-  const typeLabels: Record<string, string> = {
-    medical: 'Medisinsk',
-    trauma: 'Traume',
-    psychiatric: 'Psykiatrisk',
-    other: 'Annet',
-  };
-
   const selectedTeamData = useMemo(() => teams.find((t) => t.id === selectedTeam) ?? null, [teams, selectedTeam]);
 
   const combinedAssignedPatients = useMemo(() => {
     const assignedIds = new Set(assignedPatients.map((p) => p.id));
-    return [...assignedPatients, ...monitoredPatients.filter((p) => !assignedIds.has(p.id))];
-  }, [assignedPatients, monitoredPatients]);
+    // Include workspace-monitored patients + any patient with a local optimistic status
+    const locallyTrackedIds = new Set(
+      Object.keys(patientStatusMap)
+        .filter((k) => eventId && selectedTeam && k.startsWith(`${eventId}:${selectedTeam}:`))
+        .map((k) => k.split(':')[2]!),
+    );
+    const extras = (workspace?.unassignedPatients ?? []).filter(
+      (p) => locallyTrackedIds.has(p.id) && !assignedIds.has(p.id),
+    );
+    return [
+      ...assignedPatients,
+      ...monitoredPatients.filter((p) => !assignedIds.has(p.id)),
+      ...extras.filter((p) => !monitoredPatients.some((m) => m.id === p.id)),
+    ];
+  }, [assignedPatients, monitoredPatients, patientStatusMap, eventId, selectedTeam, workspace?.unassignedPatients]);
 
   const currentTeamTransport = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
 
@@ -900,6 +919,68 @@ export function FirstAiderDashboard() {
                         </button>
                       </div>
 
+                      {/* Patient status picker */}
+                      {(() => {
+                        const pKey = eventId && selectedTeam ? `${eventId}:${selectedTeam}:${p.id}` : null;
+                        const localStatus = pKey ? (patientStatusMap[pKey] ?? null) : null;
+                        const serverStatus = (p as TeamWorkspacePatient).teamPatientStatus ?? null;
+                        const activeStatus = localStatus ?? serverStatus;
+                        const STATUSES: Array<{ value: TeamPatientStatus; label: string; bg: string; activeBg: string; color: string }> = [
+                          { value: 'en_route_to_patient', label: 'På vei', bg: 'transparent', activeBg: '#fef3c7', color: '#92400e' },
+                          { value: 'transporting',        label: 'Transporterer', bg: 'transparent', activeBg: '#dbeafe', color: '#1e40af' },
+                          { value: 'monitoring',          label: 'Overvåker', bg: 'transparent', activeBg: '#dcfce7', color: '#166534' },
+                        ];
+                        return (
+                          <div>
+                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              Din status på denne pasienten
+                            </div>
+                            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                              {STATUSES.map(({ value, label, activeBg, color }) => {
+                                const isActive = activeStatus === value;
+                                return (
+                                  <button
+                                    key={value}
+                                    onClick={() => handleSetPatientStatus(p.id, isActive ? null : value)}
+                                    className="touch-target"
+                                    style={{
+                                      padding: '4px 12px', minHeight: 36,
+                                      borderRadius: 'var(--radius-sm)',
+                                      border: `1.5px solid ${color}`,
+                                      background: isActive ? activeBg : 'transparent',
+                                      color,
+                                      fontSize: 'var(--text-xs)', fontWeight: 600,
+                                      cursor: 'pointer',
+                                      fontFamily: 'inherit',
+                                    }}
+                                  >
+                                    {label}{isActive ? ' ✓' : ''}
+                                  </button>
+                                );
+                              })}
+                              {activeStatus != null && (
+                                <button
+                                  onClick={() => handleSetPatientStatus(p.id, null)}
+                                  className="touch-target"
+                                  style={{
+                                    padding: '4px 12px', minHeight: 36,
+                                    borderRadius: 'var(--radius-sm)',
+                                    border: '1.5px solid var(--color-border)',
+                                    background: 'transparent',
+                                    color: 'var(--color-text-subtle)',
+                                    fontSize: 'var(--text-xs)', fontWeight: 600,
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                  }}
+                                >
+                                  Avslutt
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Trenger bistand */}
                       <button
                         onClick={async () => { await setTeamOperationalStatus('needs_assistance'); setExpandedPatientId(null); }}
@@ -983,13 +1064,16 @@ export function FirstAiderDashboard() {
                       </div>
                     )}
                     <button
-                      onClick={() => handleSetActivePatient(patient.id)}
+                      onClick={() => handleSetPatientStatus(patient.id, 'monitoring')}
                       className="touch-target"
                       style={{
-                        minHeight: 'var(--touch-min)', width: '100%',
-                        borderRadius: 'var(--radius-sm)', border: 'none',
-                        background: 'var(--color-brand)', color: 'white',
-                        fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
+                        minHeight: 32, padding: '0 var(--space-3)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-brand)',
+                        background: 'transparent',
+                        color: 'var(--color-brand)',
+                        fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
+                        alignSelf: 'flex-start',
                       }}
                     >
                       Ta over pasient →
@@ -1157,108 +1241,6 @@ export function FirstAiderDashboard() {
                 Send
               </button>
             </div>
-          </div>
-        )}
-      </section>
-
-      {/* Recent incidents */}
-      <section aria-labelledby="recent-heading">
-        <h2
-          id="recent-heading"
-          style={{
-            fontSize: 'var(--text-sm)',
-            fontFamily: 'var(--font-mono)',
-            color: 'var(--color-text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: 'var(--tracking-mono)',
-            marginBottom: 'var(--space-3)',
-          }}
-        >
-          Siste hendelser
-        </h2>
-
-        {loading ? (
-          <p style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-sm)' }}>
-            Laster...
-          </p>
-        ) : incidents.length === 0 ? (
-          <div style={{
-            padding: 'var(--space-8)',
-            textAlign: 'center',
-            color: 'var(--color-text-subtle)',
-            background: 'var(--color-surface)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border)',
-          }}>
-            <p style={{ fontSize: 'var(--text-sm)' }}>Ingen hendelser ennå</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {incidents.slice(0, 10).map((incident) => (
-              <div
-                key={incident.id}
-                style={{
-                  padding: 'var(--space-4)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                  <span style={{
-                    fontWeight: 600,
-                    fontSize: 'var(--text-sm)',
-                  }}>
-                    {typeLabels[incident.type] || incident.type}
-                  </span>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--text-xs)',
-                    padding: '2px 8px',
-                    borderRadius: 'var(--radius-full)',
-                    background: incident.status === 'resolved' ? 'var(--color-status-ok-bg)' : 'var(--color-status-warning-bg)',
-                    color: incident.status === 'resolved' ? 'var(--color-status-ok)' : 'var(--color-status-warning)',
-                  }}>
-                    {statusLabels[incident.status] || incident.status}
-                  </span>
-                </div>
-                {incident.acvpu && (
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--color-text-muted)',
-                  }}>
-                    ACVPU: {incident.acvpu.toUpperCase()}
-                  </span>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--color-text-subtle)',
-                  }}>
-                    {new Date(incident.createdAt).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' })}
-                    {incident.location && gpsPosition && (
-                      <span style={{ marginLeft: 8 }}>· {bearingTo(incident.location.lat, incident.location.lng)}</span>
-                    )}
-                  </span>
-                  {incident.location && incident.status !== 'resolved' && (
-                    <button
-                      onClick={() => navigateToIncident(incident)}
-                      className="touch-target"
-                      style={{
-                        minHeight: 36, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-brand)', background: 'transparent',
-                        color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Naviger hit
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
           </div>
         )}
       </section>

@@ -420,6 +420,8 @@ const mapWorkspacePatient = (patient: any, teamPatientStatus: TeamPatientStatus 
   positionText: null,
   teamPatientStatus,
 });
+
+const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({
   ...entity,
   actionHistory: actionEvents.filter((a) => a.entityType === entityType && a.entityId === entity.id),
 });

@@ -42,6 +42,8 @@ export function deriveTeamOperationalStatus(
   if (hasEnRoute) return 'en_route';
   return 'available';
 }
+
+type AuthUser = {
   role?: string;
   eventId?: string;
   sub?: string;
