@@ -287,6 +287,13 @@ describe('team.patient_status_set action', () => {
   it('auto-derives team status to on_scene when monitoring is set', async () => {
     const token = getFirstAiderToken(eventId);
     const patientId = await createUnassignedPatient();
+    // Reset team to available first
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.status_set', status: 'available', clientActionId: randomUUID() },
+    });
     await app.inject({
       method: 'POST',
       url: `/api/teams/${teamId}/actions`,
