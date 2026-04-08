@@ -222,6 +222,13 @@ export interface TeamWorkspaceResponse {
   updatedAt: string;
 }
 
+export interface TeamPatientEngagement {
+  teamId: string;
+  teamName: string;
+  patientId: string;
+  status: TeamPatientStatus;
+}
+
 export type SickbayIncomingCriticalReason =
   | 'needs_assistance'
   | 'open_escalation'

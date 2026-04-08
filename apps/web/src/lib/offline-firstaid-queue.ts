@@ -22,7 +22,8 @@ export type QueuedTeamActionPayload =
   | {
       type: 'team.patient_status_set';
       patientId: string;
-      status: TeamPatientStatus;
+      /** null clears the team's engagement with this patient */
+      status: TeamPatientStatus | null;
       clientActionId: string;
     };
 

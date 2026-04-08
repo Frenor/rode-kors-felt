@@ -29,8 +29,9 @@ export function FirstAiderDashboard() {
   const setActivePatient = useFirstAidWorkspaceStore((s) => s.setActivePatient);
   const setTeamStatus = useFirstAidWorkspaceStore((s) => s.setTeamStatus);
   const setTeamSyncedAt = useFirstAidWorkspaceStore((s) => s.setTeamSyncedAt);
-  const [incidents, setIncidents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const setPatientStatus = useFirstAidWorkspaceStore((s) => s.setPatientStatus);
+  const clearPatientStatus = useFirstAidWorkspaceStore((s) => s.clearPatientStatus);
+  const patientStatusMap = useFirstAidWorkspaceStore((s) => s.patientStatusMap);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspace, setWorkspace] = useState<TeamWorkspaceResponse | null>(null);
   const [teamGear, setTeamGear] = useState<string[]>([]);
@@ -74,14 +75,6 @@ export function FirstAiderDashboard() {
     [],
     [],
   );
-
-  useEffect(() => {
-    if (!eventId) return;
-    api.getIncidents(eventId).then((res) => {
-      setIncidents(res.incidents);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [eventId]);
 
   useEffect(() => {
     if (!eventId || !selectedTeam) {

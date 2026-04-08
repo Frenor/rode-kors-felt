@@ -322,7 +322,8 @@ export type TeamMonitorStoppedActionRequest = z.infer<typeof TeamMonitorStoppedA
 export const TeamPatientStatusSetActionRequest = z.object({
   type: z.literal('team.patient_status_set'),
   patientId: z.string().uuid(),
-  status: TeamPatientStatus,
+  /** null clears the team's engagement with this patient */
+  status: TeamPatientStatus.nullable(),
   clientActionId: z.string().uuid(),
 });
 export type TeamPatientStatusSetActionRequest = z.infer<typeof TeamPatientStatusSetActionRequest>;
@@ -359,6 +360,21 @@ export const TeamWorkspaceResponse = z.object({
   updatedAt: z.string().datetime(),
 });
 export type TeamWorkspaceResponse = z.infer<typeof TeamWorkspaceResponse>;
+
+/** Per-patient snapshot of all teams currently engaged with that patient. */
+export const TeamPatientEngagement = z.object({
+  teamId: z.string().uuid(),
+  teamName: z.string(),
+  patientId: z.string().uuid(),
+  status: TeamPatientStatus,
+});
+export type TeamPatientEngagement = z.infer<typeof TeamPatientEngagement>;
+
+export const TeamPatientEngagementsResponse = z.object({
+  /** map of patientId → array of active team engagements */
+  engagements: z.record(z.string().uuid(), z.array(TeamPatientEngagement)),
+});
+export type TeamPatientEngagementsResponse = z.infer<typeof TeamPatientEngagementsResponse>;
 
 export const SickbayIncomingCriticalReason = z.enum([
   'needs_assistance',

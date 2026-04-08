@@ -5,6 +5,7 @@ import {
   TeamActionRequest,
   TeamWorkspaceResponse,
   type TeamOperationalStatus,
+  type TeamPatientStatus,
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
 import { actionEvents, incidents, patients, teams } from '../db/schema.js';
@@ -12,7 +13,35 @@ import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js'
 import { mapAction } from './action-events.js';
 import { broadcast } from './ws.js';
 
-type AuthUser = {
+/**
+ * Derive a team's operational status from their active patient engagement statuses.
+ *
+ * Rules (highest priority wins, manual-only statuses preserved):
+ *  - needs_assistance / unavailable: never overridden automatically
+ *  - on_scene: any patient has 'transporting' or 'monitoring' status
+ *  - en_route: any patient has 'en_route_to_patient' status (and none have on_scene-level statuses)
+ *  - available: no active patient engagements
+ */
+export function deriveTeamOperationalStatus(
+  currentStatus: TeamOperationalStatus,
+  patientStatusMap: Map<string, TeamPatientStatus>,
+): TeamOperationalStatus {
+  // Manual-only statuses are never auto-overridden
+  if (currentStatus === 'needs_assistance' || currentStatus === 'unavailable') {
+    return currentStatus;
+  }
+
+  let hasOnScene = false;
+  let hasEnRoute = false;
+  for (const status of patientStatusMap.values()) {
+    if (status === 'transporting' || status === 'monitoring') hasOnScene = true;
+    if (status === 'en_route_to_patient') hasEnRoute = true;
+  }
+
+  if (hasOnScene) return 'on_scene';
+  if (hasEnRoute) return 'en_route';
+  return 'available';
+}
   role?: string;
   eventId?: string;
   sub?: string;
@@ -149,7 +178,11 @@ export async function teamRoutes(app: FastifyInstance) {
       actionPayload.status = payload.status;
       actionPayload.incidentId = payload.incidentId ?? null;
       actionPayload.note = payload.note ?? null;
+    } else if (payload.type === 'team.patient_status_set') {
+      actionPayload.patientId = payload.patientId;
+      actionPayload.status = payload.status;
     } else {
+      // monitor_started / monitor_stopped (legacy)
       actionPayload.patientId = payload.patientId;
     }
 
@@ -166,17 +199,110 @@ export async function teamRoutes(app: FastifyInstance) {
       .returning();
 
     const action = mapAction(created!);
-    const wsType = payload.type === 'team.status_set' ? 'team.status_changed' : 'team.session_changed';
-    broadcast({
-      type: wsType,
-      eventId: team.eventId,
-      payload: {
-        teamId: team.id,
-        actionType: payload.type,
-        action,
-      },
-      timestamp: action.createdAt,
-    });
+
+    // For team.patient_status_set: auto-derive and broadcast the team's new
+    // operational status so the coordinator always sees the correct state.
+    if (payload.type === 'team.patient_status_set') {
+      // Reload all patient-status actions for this team to compute current map
+      const allPatientStatusRows = await db
+        .select()
+        .from(actionEvents)
+        .where(and(
+          eq(actionEvents.eventId, team.eventId),
+          eq(actionEvents.entityType, 'team'),
+          eq(actionEvents.entityId, team.id),
+          eq(actionEvents.actionType, 'team.patient_status_set'),
+        ))
+        .orderBy(desc(actionEvents.createdAt));
+
+      // Replay oldest-first: latest action per patient wins
+      const patientStatusMap = new Map<string, TeamPatientStatus>();
+      const seen = new Set<string>();
+      const sorted = [...allPatientStatusRows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      for (const row of sorted) {
+        const p = row.payload as { patientId?: string; status?: TeamPatientStatus | null };
+        if (!p.patientId) continue;
+        if (p.status != null) {
+          patientStatusMap.set(p.patientId, p.status);
+        } else {
+          patientStatusMap.delete(p.patientId);
+        }
+        seen.add(p.patientId);
+      }
+
+      // Also honour legacy monitor_started/stopped actions for backward compat
+      const monitorRows = await db
+        .select()
+        .from(actionEvents)
+        .where(and(
+          eq(actionEvents.eventId, team.eventId),
+          eq(actionEvents.entityType, 'team'),
+          eq(actionEvents.entityId, team.id),
+        ))
+        .orderBy(desc(actionEvents.createdAt));
+      const monitorSorted = [...monitorRows]
+        .filter((r) => r.actionType === 'team.monitor_started' || r.actionType === 'team.monitor_stopped')
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      for (const row of monitorSorted) {
+        const p = row.payload as { patientId?: string };
+        if (!p.patientId || seen.has(p.patientId)) continue; // patient_status_set takes precedence
+        if (row.actionType === 'team.monitor_started') {
+          patientStatusMap.set(p.patientId, 'monitoring');
+        } else {
+          patientStatusMap.delete(p.patientId);
+        }
+      }
+
+      // Get current team operational status
+      const latestStatusRow = monitorRows.find((r) => r.actionType === 'team.status_set');
+      const currentTeamStatus: TeamOperationalStatus = latestStatusRow
+        ? ((latestStatusRow.payload as { status?: TeamOperationalStatus }).status ?? 'available')
+        : 'available';
+
+      const derivedStatus = deriveTeamOperationalStatus(currentTeamStatus, patientStatusMap);
+
+      // If the derived status differs from current, persist and broadcast it
+      if (derivedStatus !== currentTeamStatus) {
+        const derivedPayload = {
+          type: 'team.status_set',
+          status: derivedStatus,
+          clientActionId: crypto.randomUUID(),
+          _auto: true,
+        };
+        const [derivedAction] = await db
+          .insert(actionEvents)
+          .values({
+            eventId: team.eventId,
+            entityType: 'team',
+            entityId: team.id,
+            actionType: 'team.status_set',
+            payload: derivedPayload,
+            createdBy: 'system:auto',
+          })
+          .returning();
+        broadcast({
+          type: 'team.status_changed',
+          eventId: team.eventId,
+          payload: { teamId: team.id, actionType: 'team.status_set', action: mapAction(derivedAction!) },
+          timestamp: derivedAction!.createdAt.toISOString(),
+        });
+      }
+
+      broadcast({
+        type: 'team.session_changed',
+        eventId: team.eventId,
+        payload: { teamId: team.id, actionType: payload.type, action },
+        timestamp: action.createdAt,
+      });
+    } else {
+      const wsType = payload.type === 'team.status_set' ? 'team.status_changed' : 'team.session_changed';
+      broadcast({
+        type: wsType,
+        eventId: team.eventId,
+        payload: { teamId: team.id, actionType: payload.type, action },
+        timestamp: action.createdAt,
+      });
+    }
 
     return reply.code(201).send({ action });
   });
@@ -207,10 +333,12 @@ export async function teamRoutes(app: FastifyInstance) {
         .orderBy(desc(actionEvents.createdAt)),
     ]);
 
+    // ── Assigned patients (via incident→team assignment) ──────────────────────
     const assignedIncidentIds = new Set(incidentRows.map((row) => row.id));
     const assignedPatients = patientRows.filter((row) => row.incidentId && assignedIncidentIds.has(row.incidentId));
+    const assignedSet = new Set(assignedPatients.map((row) => row.id));
 
-    const monitorSet = new Set<string>();
+    // ── Team operational status ───────────────────────────────────────────────
     const statusAction = teamActionRows.find((row) => row.actionType === 'team.status_set');
     let latestStatus: TeamOperationalStatus = 'available';
     if (statusAction) {
@@ -218,28 +346,53 @@ export async function teamRoutes(app: FastifyInstance) {
       if (status) latestStatus = status;
     }
 
-    // Replay monitor actions oldest->newest
+    // ── Per-patient status map (team.patient_status_set, newest action wins) ──
+    const patientStatusMap = new Map<string, TeamPatientStatus>();
+    const psRows = [...teamActionRows]
+      .filter((row) => row.actionType === 'team.patient_status_set')
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const psSeen = new Set<string>();
+    for (const row of psRows) {
+      const p = row.payload as { patientId?: string; status?: TeamPatientStatus | null };
+      if (!p.patientId) continue;
+      if (p.status != null) {
+        patientStatusMap.set(p.patientId, p.status);
+      } else {
+        patientStatusMap.delete(p.patientId);
+      }
+      psSeen.add(p.patientId);
+    }
+
+    // ── Legacy monitor_started/stopped (backward compat) ─────────────────────
+    // Only applies to patients not already tracked via team.patient_status_set
     const monitorActions = [...teamActionRows]
       .filter((row) => row.actionType === 'team.monitor_started' || row.actionType === 'team.monitor_stopped')
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-
     let activePatientId: string | null = null;
     for (const row of monitorActions) {
       const patientId = (row.payload as { patientId?: string }).patientId;
       if (!patientId) continue;
-      if (row.actionType === 'team.monitor_started') {
-        monitorSet.add(patientId);
-        activePatientId = patientId;
-      } else {
-        monitorSet.delete(patientId);
-        if (activePatientId === patientId) activePatientId = null;
+      if (!psSeen.has(patientId)) {
+        if (row.actionType === 'team.monitor_started') {
+          patientStatusMap.set(patientId, 'monitoring');
+          activePatientId = patientId;
+        } else {
+          patientStatusMap.delete(patientId);
+          if (activePatientId === patientId) activePatientId = null;
+        }
       }
     }
 
-    const assignedSet = new Set(assignedPatients.map((row) => row.id));
-    const monitoredPatients = patientRows.filter((row) => monitorSet.has(row.id) && !assignedSet.has(row.id));
-    const monitoredSet = new Set(monitoredPatients.map((row) => row.id));
-    const unassignedPatients = patientRows.filter((row) => !assignedSet.has(row.id) && !monitoredSet.has(row.id));
+    // ── Engaged patients (non-assigned patients with active teamPatientStatus) ─
+    const engagedPatients = patientRows.filter(
+      (row) => patientStatusMap.has(row.id) && !assignedSet.has(row.id),
+    );
+    const engagedSet = new Set(engagedPatients.map((row) => row.id));
+
+    // ── Unassigned = all others in this event ─────────────────────────────────
+    const unassignedPatients = patientRows.filter(
+      (row) => !assignedSet.has(row.id) && !engagedSet.has(row.id),
+    );
 
     const toWorkspacePatient = (row: typeof assignedPatients[number]) => ({
       id: row.id,
@@ -250,6 +403,7 @@ export async function teamRoutes(app: FastifyInstance) {
       lat: row.lat ?? null,
       lon: row.lon ?? null,
       positionText: row.positionText ?? null,
+      teamPatientStatus: patientStatusMap.get(row.id) ?? null,
     });
 
     const response = TeamWorkspaceResponse.parse({
@@ -258,7 +412,7 @@ export async function teamRoutes(app: FastifyInstance) {
       latestStatus,
       activePatientId,
       assignedPatients: assignedPatients.map(toWorkspacePatient),
-      monitoredPatients: monitoredPatients.map(toWorkspacePatient),
+      monitoredPatients: engagedPatients.map(toWorkspacePatient),
       unassignedPatients: unassignedPatients.map(toWorkspacePatient),
       updatedAt: new Date().toISOString(),
     });

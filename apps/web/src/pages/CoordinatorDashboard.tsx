@@ -18,7 +18,7 @@ import { StatsGrid } from './Coordinator/StatsGrid';
 import { IncidentFeed } from './Coordinator/IncidentFeed';
 import { TeamMessageStreamPanel } from './Coordinator/TeamMessageStreamPanel';
 import { PatientManagementPanel, type FieldPatient } from './Coordinator/PatientManagementPanel';
-import type { EventIndoorLayout, MapRuntimeConfig } from '../lib/types';
+import type { EventIndoorLayout, MapRuntimeConfig, TeamPatientEngagement } from '../lib/types';
 
 const filterIncidentsByStatKey = (incs: Incident[], key: string): Incident[] => {
   if (key === 'activeIncidents') return incs.filter((i) => !['resolved'].includes(i.status));
@@ -57,6 +57,7 @@ export function CoordinatorDashboard() {
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [fieldPatients, setFieldPatients] = useState<FieldPatient[]>([]);
   const [creatingPatient, setCreatingPatient] = useState(false);
+  const [teamPatientEngagements, setTeamPatientEngagements] = useState<Record<string, TeamPatientEngagement[]>>({});
 
   const [teamMessages, setTeamMessages] = useState<Array<{
     id: string;
@@ -156,6 +157,10 @@ export function CoordinatorDashboard() {
     api.getPatients(eventId).then((res) => {
       setFieldPatients(res.patients as FieldPatient[]);
     }).catch((err) => console.error('[coordinator] Failed to load field patients', err));
+
+    api.getTeamPatientEngagements(eventId).then((res) => {
+      setTeamPatientEngagements(res.engagements as Record<string, TeamPatientEngagement[]>);
+    }).catch((err) => console.error('[coordinator] Failed to load team-patient engagements', err));
   }, [eventId]);
 
   useEffect(() => {
@@ -255,6 +260,13 @@ export function CoordinatorDashboard() {
       } else if (msg.type === 'patient.updated') {
         const p = (msg.payload as any)?.patient;
         if (p) setFieldPatients((prev) => prev.map((fp) => fp.id === p.id ? p as FieldPatient : fp));
+      } else if (msg.type === 'team.session_changed') {
+        // A team changed their patient engagement status — re-fetch to keep coordinator in sync
+        if (eventId) {
+          api.getTeamPatientEngagements(eventId).then((res) => {
+            setTeamPatientEngagements(res.engagements as Record<string, TeamPatientEngagement[]>);
+          }).catch(() => {});
+        }
       } else if (msg.type === 'system.connected_users') {
         const { count } = (msg.payload as any) ?? {};
         if (typeof count === 'number') setConnectedUsers(count);
@@ -532,6 +544,7 @@ export function CoordinatorDashboard() {
         creating={creatingPatient}
         onCreatePatient={handleCreatePatient}
         onUpdatePatient={handleUpdatePatient}
+        teamPatientEngagements={teamPatientEngagements}
       />
 
       <StatsGrid
