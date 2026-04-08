@@ -15,12 +15,16 @@ async function loginAsSickBay(page: import('@playwright/test').Page) {
 }
 
 async function selectTeamIfNeeded(page: import('@playwright/test').Page) {
+  // Team selection lives in the Lag tab with the new bottom tab navigation
+  await page.getByRole('button', { name: /^Lag/ }).click();
   const chooseTeam = page.getByRole('heading', { name: /Velg patrulje/i });
   if (await chooseTeam.isVisible().catch(() => false)) {
     const teamButton = page.locator('button.touch-target').first();
     await expect(teamButton).toBeVisible();
     await teamButton.click();
   }
+  // Return to Pasienter tab for subsequent patient-list assertions
+  await page.getByRole('button', { name: /^Pasienter/ }).click();
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -30,6 +34,8 @@ test.beforeEach(async ({ page }, testInfo) => {
 
 test('covers the full incident to coordinator handoff path', async ({ page }) => {
   await loginAsFirstAider(page);
+  // Navigate to Hendelser tab where "Meld hendelse" button lives
+  await page.getByRole('button', { name: /^Hendelser/ }).click();
   await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
   await selectTeamIfNeeded(page);
   const workspace = page.getByTestId('firstaid-patient-workspace');
@@ -40,6 +46,8 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
   await page.getByRole('button', { name: 'Avbryt' }).click();
 
+  // Navigate to Hendelser tab to click "Meld hendelse"
+  await page.getByRole('button', { name: /^Hendelser/ }).click();
   await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
   await page.waitForURL('**/firstaid/incident');
 

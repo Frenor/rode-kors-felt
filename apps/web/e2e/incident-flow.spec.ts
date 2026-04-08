@@ -11,6 +11,9 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Start from /firstaid (authenticated as first_aider)
   await expect(page).toHaveURL(/\/firstaid$/);
 
+  // Navigate to the Hendelser tab where "Meld hendelse" button lives
+  await page.getByRole('button', { name: /^Hendelser/ }).click();
+
   // Click "Meld hendelse"
   await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
 
@@ -54,11 +57,17 @@ test('completes 4-step incident form and returns to dashboard', async ({ page })
   // Wait for navigation back to /firstaid
   await page.waitForURL('**/firstaid');
 
+  // Navigate to the Hendelser tab to verify "Meld hendelse" button is visible again
+  await page.getByRole('button', { name: /^Hendelser/ }).click();
+
   // Verify "Meld hendelse" button is visible again
   await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
 });
 
 test('back navigation works between steps', async ({ page }) => {
+  // Navigate to the Hendelser tab where "Meld hendelse" button lives
+  await page.getByRole('button', { name: /^Hendelser/ }).click();
+
   // Navigate to /firstaid/incident (authenticated)
   await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
   await page.waitForURL('**/firstaid/incident');
