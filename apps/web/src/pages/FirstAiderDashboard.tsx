@@ -65,6 +65,8 @@ export function FirstAiderDashboard() {
   const [perPatientNoteText, setPerPatientNoteText] = useState<Record<string, string>>({});
   const [showSettings, setShowSettings] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
+  const [perPatientVitalsError, setPerPatientVitalsError] = useState<Record<string, string>>({});
+  const [perPatientNoteError, setPerPatientNoteError] = useState<Record<string, string>>({});
 
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
@@ -90,6 +92,11 @@ export function FirstAiderDashboard() {
     api.getTeamWorkspace(selectedTeam)
       .then((res) => {
         setWorkspace(res);
+        // Seed assignedPatients from workspace so the list is immediately
+        // visible while the separate getPatients fetch is still in flight.
+        if (res.assignedPatients.length > 0) {
+          setAssignedPatients((prev) => (prev.length === 0 ? res.assignedPatients : prev));
+        }
       })
       .finally(() => setWorkspaceLoading(false));
   }, [eventId, selectedTeam]);
@@ -170,13 +177,15 @@ export function FirstAiderDashboard() {
     const off = onMessage((msg) => {
       if (msg.type === 'team.message') {
         const payload = (msg.payload as any) ?? {};
+        // Skip server echo of our own messages — they were added optimistically in sendMessage.
+        if (payload.fromTeamId === selectedTeam) return;
         setMessages((prev) => [
           ...prev,
           {
             id: payload.id ?? crypto.randomUUID(),
             text: payload.text ?? '',
             fromTeamId: payload.fromTeamId,
-            fromSelf: payload.fromTeamId === selectedTeam,
+            fromSelf: false,
             sentAt: payload.sentAt ?? new Date().toISOString(),
           },
         ]);
@@ -207,10 +216,23 @@ export function FirstAiderDashboard() {
 
   const sendMessage = () => {
     if (!messageText.trim() || !eventId) return;
+    const text = messageText.trim();
+    // Add optimistically so the sender sees the message immediately.
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        text,
+        fromTeamId: selectedTeam ?? undefined,
+        fromSelf: true,
+        sentAt: new Date().toISOString(),
+      },
+    ]);
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     wsSend({
       type: 'team.message',
       eventId,
-      payload: { fromTeamId: selectedTeam ?? undefined, text: messageText.trim() },
+      payload: { fromTeamId: selectedTeam ?? undefined, text },
       timestamp: new Date().toISOString(),
     });
     setMessageText('');
@@ -364,16 +386,26 @@ export function FirstAiderDashboard() {
       temperature: form.temp ? parseFloat(form.temp) : undefined,
       acvpu: form.acvpu || undefined,
     };
-    await api.recordVitals(patientId, payload as Record<string, number | undefined>);
-    setPerPatientVitalsForm((prev) => ({ ...prev, [patientId]: EMPTY_VITALS_FORM }));
+    try {
+      await api.recordVitals(patientId, payload as Record<string, number | undefined>);
+      setPerPatientVitalsForm((prev) => ({ ...prev, [patientId]: EMPTY_VITALS_FORM }));
+      setPerPatientVitalsError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    } catch {
+      setPerPatientVitalsError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre vitals — prøv igjen.' }));
+    }
   };
 
   const handleSubmitNote = async (patientId: string) => {
     const text = perPatientNoteText[patientId]?.trim();
     if (!text) return;
     const author = selectedTeamData?.name ?? 'Ukjent lag';
-    await api.addPatientNote(patientId, text, author);
-    setPerPatientNoteText((prev) => ({ ...prev, [patientId]: '' }));
+    try {
+      await api.addPatientNote(patientId, text, author);
+      setPerPatientNoteText((prev) => ({ ...prev, [patientId]: '' }));
+      setPerPatientNoteError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    } catch {
+      setPerPatientNoteError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre notat — prøv igjen.' }));
+    }
   };
 
   const togglePatientExpand = (patientId: string) => {
@@ -656,35 +688,47 @@ export function FirstAiderDashboard() {
                         }))}
                         onSubmit={() => handleSubmitVitals(p.id)}
                       />
+                      {perPatientVitalsError[p.id] && (
+                        <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)', marginTop: 'calc(-1 * var(--space-2))' }}>
+                          {perPatientVitalsError[p.id]}
+                        </div>
+                      )}
 
                       {/* Injury note */}
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
-                        <textarea
-                          value={perPatientNoteText[p.id] ?? ''}
-                          onChange={(e) => setPerPatientNoteText((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                          placeholder="Skadenotater…"
-                          rows={2}
-                          style={{
-                            flex: 1, padding: 'var(--space-2)',
-                            borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                            background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                            fontSize: 'var(--text-sm)', resize: 'none', fontFamily: 'inherit',
-                          }}
-                        />
-                        <button
-                          onClick={() => handleSubmitNote(p.id)}
-                          disabled={!perPatientNoteText[p.id]?.trim()}
-                          className="touch-target"
-                          style={{
-                            minHeight: 44, padding: '0 var(--space-3)',
-                            borderRadius: 'var(--radius-sm)', border: 'none',
-                            background: perPatientNoteText[p.id]?.trim() ? 'var(--color-brand)' : 'var(--color-border)',
-                            color: perPatientNoteText[p.id]?.trim() ? 'white' : 'var(--color-text-subtle)',
-                            fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                          }}
-                        >
-                          Lagre
-                        </button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
+                          <textarea
+                            value={perPatientNoteText[p.id] ?? ''}
+                            onChange={(e) => setPerPatientNoteText((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            placeholder="Skadenotater…"
+                            rows={2}
+                            style={{
+                              flex: 1, padding: 'var(--space-2)',
+                              borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                              background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                              fontSize: 'var(--text-sm)', resize: 'none', fontFamily: 'inherit',
+                            }}
+                          />
+                          <button
+                            onClick={() => handleSubmitNote(p.id)}
+                            disabled={!perPatientNoteText[p.id]?.trim()}
+                            className="touch-target"
+                            style={{
+                              minHeight: 44, padding: '0 var(--space-3)',
+                              borderRadius: 'var(--radius-sm)', border: 'none',
+                              background: perPatientNoteText[p.id]?.trim() ? 'var(--color-brand)' : 'var(--color-border)',
+                              color: perPatientNoteText[p.id]?.trim() ? 'white' : 'var(--color-text-subtle)',
+                              fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                            }}
+                          >
+                            Lagre
+                          </button>
+                        </div>
+                        {perPatientNoteError[p.id] && (
+                          <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}>
+                            {perPatientNoteError[p.id]}
+                          </div>
+                        )}
                       </div>
 
                       {/* Patient status picker */}
@@ -760,7 +804,7 @@ export function FirstAiderDashboard() {
                       onNavigate={openMapsNav}
                     />
                     <button
-                      onClick={() => handleSetPatientStatus(patient.id, 'monitoring')}
+                      onClick={() => handleSetPatientStatus(patient.id, 'en_route_to_patient')}
                       className="touch-target"
                       style={{
                         minHeight: 32, padding: '0 var(--space-3)',
@@ -772,7 +816,7 @@ export function FirstAiderDashboard() {
                         alignSelf: 'flex-start',
                       }}
                     >
-                      Ta over pasient →
+                      På vei til pasient →
                     </button>
                   </div>
                 );
@@ -787,7 +831,7 @@ export function FirstAiderDashboard() {
           </div>
         </section>
       )}
-      <button
+      {selectedTeam && <button
         onClick={() => navigate('/firstaid/incident', {
           state: { teamId: selectedTeam, eventId },
         })}
@@ -813,7 +857,7 @@ export function FirstAiderDashboard() {
       >
         <span style={{ fontSize: '1.5em' }} aria-hidden="true">+</span>
         Meld hendelse
-      </button>
+      </button>}
 
       {/* Queued (offline) incidents */}
       {queuedIncidents && queuedIncidents.length > 0 && (

@@ -216,14 +216,18 @@ Side-effect: if derived != current, queues a 'team.status_set' action.
 `combinedAssignedPatients` (the main patient list) is built from three sources:
 
 ```
-1. assignedPatients        ← api.getPatients({assignedTeamId}) + WS patches
+1. assignedPatients        ← workspace.assignedPatients (initial seed on workspace load)
+                              then kept live by api.getPatients({assignedTeamId})
+                              and WS patient.updated / patient.created patches
 2. monitoredPatients       ← workspace.monitoredPatients, deduped against (1)
 3. extras                  ← workspace.unassignedPatients WHERE patientStatusMap
                               has a local entry for this patient AND not in (1)
-
-Note: workspace.assignedPatients is fetched but NOT used in this merge.
-      It is only used to seed latestStatus. This may be an oversight.
 ```
+
+When workspace loads, `workspace.assignedPatients` seeds the `assignedPatients` state
+if it is currently empty — this prevents the list from showing blank while the separate
+`api.getPatients()` call is still in flight. Once `getPatients` resolves, it takes over
+as the authoritative source.
 
 ---
 
@@ -262,7 +266,7 @@ Failures are surfaced in the sticky header (`!` indicator). Failed actions are N
 |----------|--------|
 | `patient.updated` | Upserts/removes from `assignedPatients`; sets `highlightedFields` for changed fields (clears after 3 s) |
 | `patient.created` | Prepends to `assignedPatients` if `assignedTeamId` matches |
-| `team.message` | Appends to `messages`; scrolls chat to bottom |
+| `team.message` | Appends to `messages` for messages from **other** teams; own-team echoes are dropped (message was already added optimistically on send) |
 | `team.sector_assigned` | Sets/clears `sectorAssignments[teamId]`; displayed as a banner |
 
 ---
@@ -286,6 +290,7 @@ Team selected
        └─ Note submitted  →  api.addPatientNote() (no offline queue)
 
 Unassigned patient section
-  └─ "Ta over pasient →"  →  handleSetPatientStatus(id, 'monitoring')
+  └─ "På vei til pasient →"  →  handleSetPatientStatus(id, 'en_route_to_patient')
+       → team status auto-derives to 'en_route'
        → patient promoted into combinedAssignedPatients via extras filter
 ```
