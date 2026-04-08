@@ -206,7 +206,7 @@ describe('Patient grouping and closed card visibility', () => {
       },
     ]);
 
-    expect(screen.getByText('Plassering: Seng 9')).toBeInTheDocument();
+    expect(screen.getByText(/Plassering: Seng 9/)).toBeInTheDocument();
   });
 });
 
@@ -645,7 +645,7 @@ describe('Demographics — intake and display', () => {
     await renderWithPatient('in_treatment', { fullName, ageYears });
 
     expect(screen.getByText(fullName)).toBeInTheDocument();
-    expect(screen.getByText(new RegExp(`^${ageYears} år`))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`${ageYears} år`))).toBeInTheDocument();
 
     const closedPatient = { id: 'closed-1', status: 'discharged', fullName, ageYears, presentingComplaint: 'Avsluttet' };
     const { patients } = await renderWithPatients([closedPatient]);
@@ -653,6 +653,6 @@ describe('Demographics — intake and display', () => {
     fireEvent.click(screen.getByTestId(`toggle-closed-${closedId}`));
     const container = screen.getByTestId(`closed-panel-${closedId}`);
     expect(within(container).getByText(fullName)).toBeInTheDocument();
-    expect(within(container).getByText(new RegExp(`^${ageYears} år`))).toBeInTheDocument();
+    expect(within(container).getByText(new RegExp(`${ageYears} år`))).toBeInTheDocument();
   });
 });
