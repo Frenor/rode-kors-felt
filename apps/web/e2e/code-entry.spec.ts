@@ -45,6 +45,10 @@ test('valid first aider code navigates to /firstaid', async ({ page }) => {
   // Wait for navigation to /firstaid
   await page.waitForURL('**/firstaid');
 
+  // Select a team — the "Meld hendelse" button is only shown once a team is active
+  await page.getByRole('heading', { name: 'Velg patrulje' }).waitFor();
+  await page.getByRole('button', { name: 'Alpha' }).click();
+
   // Verify "Meld hendelse" button is visible
   await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
 });
