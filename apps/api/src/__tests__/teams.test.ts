@@ -145,6 +145,17 @@ describe('GET /api/teams/:teamId/workspace', () => {
     expect(Array.isArray(body.unassignedPatients)).toBe(true);
     expect(body.assignedPatients.some((p: { id: string }) => p.id === assignedPatientId)).toBe(true);
     expect(body.monitoredPatients.some((p: { id: string }) => p.id === unassignedPatientId)).toBe(true);
+    // Clean up monitor_started so it doesn't bleed into team status derivation tests
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${firstAiderToken}` },
+      payload: {
+        type: 'team.monitor_stopped',
+        patientId: unassignedPatientId,
+        clientActionId: randomUUID(),
+      },
+    });
   });
 });
 
