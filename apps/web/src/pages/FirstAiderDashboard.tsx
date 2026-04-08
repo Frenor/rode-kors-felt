@@ -927,87 +927,85 @@ export function FirstAiderDashboard() {
               );
             })}
 
-            {/* Unassigned patients */}
-            {(workspace?.unassignedPatients ?? []).length > 0 && (
-              <>
-                <h3
-                  id="unassigned-patients-heading"
-                  style={{
-                    margin: 'var(--space-2) 0 0',
-                    fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-                    color: 'var(--color-text-muted)', textTransform: 'uppercase',
-                    letterSpacing: 'var(--tracking-mono)',
-                  }}
-                >
-                  Utildelte pasienter ({workspace!.unassignedPatients.length})
-                </h3>
-                {workspace!.unassignedPatients.map((patient) => {
-                  const hasCoords = patient.lat != null && patient.lon != null;
-                  return (
-                    <div
-                      key={patient.id}
+            {/* Unassigned patients — always rendered so the section is always discoverable */}
+            <>
+              <h3
+                id="unassigned-patients-heading"
+                style={{
+                  margin: 'var(--space-2) 0 0',
+                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-text-muted)', textTransform: 'uppercase',
+                  letterSpacing: 'var(--tracking-mono)',
+                }}
+              >
+                Utildelte pasienter ({(workspace?.unassignedPatients ?? []).length})
+              </h3>
+              {(workspace?.unassignedPatients ?? []).length === 0 && !workspaceLoading && (
+                <div style={{
+                  padding: 'var(--space-4)', textAlign: 'center',
+                  color: 'var(--color-text-subtle)', fontSize: 'var(--text-sm)',
+                  background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
+                }}>
+                  Ingen utildelte pasienter
+                </div>
+              )}
+              {(workspace?.unassignedPatients ?? []).map((patient) => {
+                const hasCoords = patient.lat != null && patient.lon != null;
+                return (
+                  <div
+                    key={patient.id}
+                    style={{
+                      padding: 'var(--space-3)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-surface)',
+                      display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                      {patient.presentingComplaint || 'Ukjent problemstilling'}
+                    </div>
+                    {(patient.positionText || hasCoords) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flex: 1 }}>
+                          {patient.positionText
+                            ? `📍 ${patient.positionText}`
+                            : `📍 ${patient.lat!.toFixed(4)}, ${patient.lon!.toFixed(4)}${gpsPosition ? ` · ${bearingTo(patient.lat!, patient.lon!)}` : ''}`}
+                        </span>
+                        {hasCoords && (
+                          <button
+                            onClick={() => openMapsNav(patient.lat!, patient.lon!)}
+                            className="touch-target"
+                            style={{
+                              minHeight: 36, padding: '0 var(--space-3)',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--color-brand)', background: 'transparent',
+                              color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600,
+                              cursor: 'pointer', flexShrink: 0,
+                            }}
+                          >
+                            Naviger hit
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleSetActivePatient(patient.id)}
+                      className="touch-target"
                       style={{
-                        padding: 'var(--space-3)',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--color-border)',
-                        background: 'var(--color-surface)',
-                        display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+                        minHeight: 'var(--touch-min)', width: '100%',
+                        borderRadius: 'var(--radius-sm)', border: 'none',
+                        background: 'var(--color-brand)', color: 'white',
+                        fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
                       }}
                     >
-                      <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                        {patient.presentingComplaint || 'Ukjent problemstilling'}
-                      </div>
-                      {(patient.positionText || hasCoords) && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flex: 1 }}>
-                            {patient.positionText
-                              ? `📍 ${patient.positionText}`
-                              : `📍 ${patient.lat!.toFixed(4)}, ${patient.lon!.toFixed(4)}${gpsPosition ? ` · ${bearingTo(patient.lat!, patient.lon!)}` : ''}`}
-                          </span>
-                          {hasCoords && (
-                            <button
-                              onClick={() => openMapsNav(patient.lat!, patient.lon!)}
-                              className="touch-target"
-                              style={{
-                                minHeight: 36, padding: '0 var(--space-3)',
-                                borderRadius: 'var(--radius-sm)',
-                                border: '1px solid var(--color-brand)', background: 'transparent',
-                                color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600,
-                                cursor: 'pointer', flexShrink: 0,
-                              }}
-                            >
-                              Naviger hit
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      <button
-                        onClick={() => handleSetActivePatient(patient.id)}
-                        className="touch-target"
-                        style={{
-                          minHeight: 'var(--touch-min)', width: '100%',
-                          borderRadius: 'var(--radius-sm)', border: 'none',
-                          background: 'var(--color-brand)', color: 'white',
-                          fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
-                        }}
-                      >
-                        Ta over pasient →
-                      </button>
-                    </div>
-                  );
-                })}
-              </>
-            )}
+                      Ta over pasient →
+                    </button>
+                  </div>
+                );
+              })}
+            </>
 
-            {combinedAssignedPatients.length === 0 && (workspace?.unassignedPatients ?? []).length === 0 && !workspaceLoading && (
-              <div style={{
-                padding: 'var(--space-6)', textAlign: 'center',
-                color: 'var(--color-text-subtle)', fontSize: 'var(--text-sm)',
-                background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
-              }}>
-                Ingen pasienter ennå
-              </div>
-            )}
             {workspaceLoading && (
               <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
                 Laster pasienter…
