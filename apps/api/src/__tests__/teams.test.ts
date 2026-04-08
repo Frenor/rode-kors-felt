@@ -299,6 +299,13 @@ describe('team.patient_status_set action', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(ws.json().latestStatus).toBe('on_scene');
+    // Clear the patient status so it doesn't affect subsequent tests
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.patient_status_set', patientId, status: null, clientActionId: randomUUID() },
+    });
   });
 
   it('auto-derives team status to en_route when en_route_to_patient is set', async () => {
@@ -323,6 +330,13 @@ describe('team.patient_status_set action', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(ws.json().latestStatus).toBe('en_route');
+    // Clear the patient status so it doesn't affect subsequent tests
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { type: 'team.patient_status_set', patientId, status: null, clientActionId: randomUUID() },
+    });
   });
 
   it('does NOT override needs_assistance when a patient status is set', async () => {
