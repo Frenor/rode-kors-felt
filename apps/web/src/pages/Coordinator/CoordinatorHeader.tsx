@@ -24,16 +24,12 @@ export function CoordinatorHeader({
   connectedUsers,
 }: CoordinatorHeaderProps) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
-      <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}>Koordinator</h1>
+    <div className="flex-between mb-6">
+      <h1 className="text-2xl fw-700">Koordinator</h1>
 
-      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+      <div className="flex-align gap-2">
         {connectedUsers !== undefined && (
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-subtle)',
-          }}>
+          <span className="mono-xs-subtle">
             {connectedUsers} tilkoblet
           </span>
         )}

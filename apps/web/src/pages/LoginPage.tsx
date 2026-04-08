@@ -35,38 +35,21 @@ export function LoginPage() {
 
   return (
     <div
-      style={{
-        minHeight: '100dvh',
-        background: 'var(--color-bg)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 'var(--space-6)',
-      }}
+      className="page-center"
     >
       <div style={{ width: '100%', maxWidth: 400 }}>
-        <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+        <h1 className="text-xl fw-700 mb-2">
           Koordinator-innlogging
         </h1>
-        <p style={{
-          color: 'var(--color-text-muted)',
-          fontSize: 'var(--text-sm)',
-          marginBottom: 'var(--space-6)',
-        }}>
+        <p className="text-sm text-muted mb-6">
           For koordinatorer og administratorer
         </p>
 
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 'var(--space-4)' }}>
+          <div className="mb-4">
             <label
               htmlFor="email"
-              style={{
-                display: 'block',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 500,
-                marginBottom: 'var(--space-1)',
-                color: 'var(--color-text)',
-              }}
+              className="field-label"
             >
               E-post
             </label>
@@ -78,30 +61,15 @@ export function LoginPage() {
               required
               autoComplete="email"
               placeholder="admin@rkf.no"
-              style={{
-                width: '100%',
-                height: 'var(--touch-min)',
-                padding: '0 var(--space-4)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                fontFamily: 'var(--font-sans)',
-                fontSize: 'var(--text-base)',
-              }}
+              className="form-input"
+              style={{ padding: '0 var(--space-4)', fontFamily: 'var(--font-sans)' }}
             />
           </div>
 
-          <div style={{ marginBottom: 'var(--space-6)' }}>
+          <div className="mb-6">
             <label
               htmlFor="password"
-              style={{
-                display: 'block',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 500,
-                marginBottom: 'var(--space-1)',
-                color: 'var(--color-text)',
-              }}
+              className="field-label"
             >
               Passord
             </label>
@@ -112,17 +80,8 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              style={{
-                width: '100%',
-                height: 'var(--touch-min)',
-                padding: '0 var(--space-4)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                fontFamily: 'var(--font-sans)',
-                fontSize: 'var(--text-base)',
-              }}
+              className="form-input"
+              style={{ padding: '0 var(--space-4)', fontFamily: 'var(--font-sans)' }}
             />
           </div>
 
@@ -162,15 +121,8 @@ export function LoginPage() {
 
         <Link
           to="/"
-          style={{
-            display: 'block',
-            textAlign: 'center',
-            marginTop: 'var(--space-6)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-subtle)',
-            textDecoration: 'none',
-          }}
+          className="mono-xs-subtle mt-6"
+          style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
         >
           ← Tilbake til arrangementskode
         </Link>

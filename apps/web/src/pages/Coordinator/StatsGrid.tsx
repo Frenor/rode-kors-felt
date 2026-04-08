@@ -63,29 +63,22 @@ function StatCard({
     <div
       onDoubleClick={() => onFilter?.(statKey)}
       title={onFilter ? 'Dobbeltklikk for å filtrere' : undefined}
-      style={{
-        padding: 'var(--space-4)', borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-        cursor: onFilter ? 'pointer' : undefined,
-      }}
+      className="card-p4"
+      style={{ cursor: onFilter ? 'pointer' : undefined }}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-1)' }}>
+      <div className="flex-align gap-1">
         <div
-          className={pop ? 'animate-count-pop' : undefined}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3xl)', fontWeight: 700 }}
+          className={`mono fw-700 text-3xl${pop ? ' animate-count-pop' : ''}`}
         >
           {value ?? 0}
         </div>
         {trend && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: trendColor, fontWeight: 700 }}>
+          <span className="mono-sm fw-700" style={{ color: trendColor }}>
             {trend}
           </span>
         )}
       </div>
-      <div style={{
-        fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-        color: 'var(--color-text-subtle)', textTransform: 'uppercase',
-      }}>
+      <div className="section-label">
         {label}
       </div>
     </div>
@@ -106,7 +99,7 @@ export function StatsGrid({ stats, lastUpdatedAt, prevStats, onFilter }: StatsGr
   if (!stats) return null;
 
   return (
-    <div style={{ marginBottom: 'var(--space-6)' }}>
+    <div className="mb-6">
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
         gap: 'var(--space-3)',
@@ -123,10 +116,7 @@ export function StatsGrid({ stats, lastUpdatedAt, prevStats, onFilter }: StatsGr
         ))}
       </div>
       {secondsAgo !== null && (
-        <p style={{
-          fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-subtle)', marginTop: 'var(--space-1)', marginBottom: 0,
-        }}>
+        <p className="mono-xs-subtle mt-1" style={{ marginBottom: 0 }}>
           Oppdatert {secondsAgo}s siden
         </p>
       )}

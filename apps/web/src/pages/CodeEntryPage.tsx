@@ -54,15 +54,7 @@ export function CodeEntryPage() {
 
   return (
     <div
-      style={{
-        minHeight: '100dvh',
-        background: 'var(--color-bg)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 'var(--space-6)',
-      }}
+      className="page-center flex-col"
     >
       {/* Logo */}
       <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
@@ -85,15 +77,10 @@ export function CodeEntryPage() {
             background: 'white', borderRadius: 2, top: 23, left: 14,
           }} />
         </div>
-        <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700 }}>
+        <h1 className="text-xl fw-700">
           Rødt Kors Felt
         </h1>
-        <p style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 'var(--text-sm)',
-          color: 'var(--color-text-muted)',
-          marginTop: 'var(--space-2)',
-        }}>
+        <p className="mono-sm text-muted mt-2">
           Tast inn arrangementskoden
         </p>
       </div>
@@ -104,12 +91,8 @@ export function CodeEntryPage() {
           role="status"
           aria-live="polite"
           aria-label={`Kode: ${code || 'Tom'}`}
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: 'var(--space-2)',
-            marginBottom: 'var(--space-6)',
-          }}
+          className="flex gap-2 mb-6"
+          style={{ justifyContent: 'center' }}
         >
           {Array.from({ length: 6 }).map((_, i) => (
             <div
@@ -154,12 +137,7 @@ export function CodeEntryPage() {
         <div
           role="group"
           aria-label="Talltastatur for arrangementskode"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 'var(--space-2)',
-            marginBottom: 'var(--space-4)',
-          }}
+          className="grid-3 mb-4"
         >
           {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'].map((key) => {
             if (key === '') return <div key="empty" />;
@@ -236,18 +214,8 @@ export function CodeEntryPage() {
       {/* Demo mode hint */}
       {import.meta.env.VITE_DEMO_MODE === 'true' && (
         <div
-          style={{
-            marginTop: 'var(--space-6)',
-            padding: 'var(--space-3) var(--space-4)',
-            borderRadius: 'var(--radius-md)',
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-muted)',
-            lineHeight: 1.6,
-          }}
+          className="card-p3 mono-xs-muted mt-6"
+          style={{ textAlign: 'center', lineHeight: 1.6 }}
         >
           Demo-modus &mdash; bruk kode<br />
           <strong>123456</strong> (førstehjelper) &nbsp;·&nbsp; <strong>654321</strong> (sykestue)
@@ -257,13 +225,8 @@ export function CodeEntryPage() {
       {/* Admin login link */}
       <Link
         to="/login"
-        style={{
-          marginTop: 'var(--space-8)',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-subtle)',
-          textDecoration: 'none',
-        }}
+        className="mono-xs-subtle mt-8"
+        style={{ textDecoration: 'none' }}
       >
         Koordinator / Admin innlogging →
       </Link>

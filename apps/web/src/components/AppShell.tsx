@@ -95,7 +95,7 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+    <div className="page-fill-col">
       {/* Demo banner — shown above everything when in demo mode */}
       {IS_DEMO && <DemoBanner eventName={eventName ?? 'Holmenkollen Skimaraton 2026'} />}
       {/* Top bar */}
@@ -118,7 +118,7 @@ export function AppShell({ children }: AppShellProps) {
         }}
       >
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexShrink: 0 }}>
+        <div className="flex-align gap-3 flex-shrink-0">
           <div
             aria-hidden="true"
             style={{
@@ -144,11 +144,7 @@ export function AppShell({ children }: AppShellProps) {
             <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', letterSpacing: 'var(--tracking-wide)' }}>
               RKF
             </div>
-            <div style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-muted)',
-            }}>
+            <div className="mono-xs-muted">
               {roleLabels[role || ''] || role}
             </div>
           </div>
@@ -156,21 +152,12 @@ export function AppShell({ children }: AppShellProps) {
 
         {/* Event name */}
         {eventName && (
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-subtle)',
-            marginLeft: 'var(--space-2)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            minWidth: 0,
-          }}>
+          <span className="mono-xs-subtle min-w-0" style={{ marginLeft: 'var(--space-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {eventName}
           </span>
         )}
 
-        <div style={{ flex: 1 }} />
+        <div className="flex-1" />
 
         {/* Connection indicator */}
         {(() => {
@@ -255,15 +242,7 @@ export function AppShell({ children }: AppShellProps) {
         <div
           role="alert"
           aria-live="assertive"
-          style={{
-            background: 'var(--color-status-warning-bg)',
-            borderBottom: '1px solid var(--color-status-warning-border)',
-            padding: 'var(--space-2) var(--space-4)',
-            textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-sm)',
-            color: 'var(--color-status-warning)',
-          }}
+          className="banner-strip banner-warning"
         >
           Frakoblet — hendelser lagres lokalt og synkroniseres når tilkoblingen er tilbake
           {queueCount > 0 && ` (${queueCount} i kø)`}
@@ -275,19 +254,7 @@ export function AppShell({ children }: AppShellProps) {
         <div
           role="status"
           aria-live="polite"
-          style={{
-            background: 'var(--color-status-warning-bg)',
-            borderBottom: '1px solid var(--color-status-warning-border)',
-            padding: 'var(--space-2) var(--space-4)',
-            textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-sm)',
-            color: 'var(--color-status-warning)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 'var(--space-2)',
-          }}
+          className="banner-strip banner-warning flex-center gap-2"
         >
           <span
             aria-hidden="true"
@@ -308,13 +275,10 @@ export function AppShell({ children }: AppShellProps) {
         <div
           role="status"
           aria-live="polite"
+          className="banner-strip"
           style={{
             background: 'var(--color-surface-sunken)',
             borderBottom: '1px solid var(--color-border)',
-            padding: 'var(--space-2) var(--space-4)',
-            textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-sm)',
             color: firstAidSyncLabel === 'Ikke synkronisert'
               ? 'var(--color-status-critical)'
               : firstAidSyncLabel === 'Synkroniserer' || firstAidSyncLabel === 'Laget lokalt'

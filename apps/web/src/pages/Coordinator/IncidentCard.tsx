@@ -51,14 +51,12 @@ export function IncidentCard({
         background: 'var(--color-surface)',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="flex-between-start">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <div className="flex-align gap-2 flex-wrap">
             <strong>{typeLabels[inc.type] || inc.type}</strong>
             {inc.source === 'coordinator' && (
-              <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-                fontWeight: 700, color: 'var(--color-brand)',
+              <span className="mono-xs fw-700 text-brand" style={{
                 border: '1px solid var(--color-brand)',
                 borderRadius: 'var(--radius-sm)', padding: '0 4px',
               }}>
@@ -66,27 +64,23 @@ export function IncidentCard({
               </span>
             )}
             {inc.status === 'dispatched' && assignedTeam && (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              <span className="mono-xs-muted">
                 Tildelt: {assignedTeam.name}{eta ? ` · ETA ${eta}` : ''}
               </span>
             )}
             {inc.status === 'dispatched' && !assignedTeam && (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              <span className="mono-xs-muted">
                 Tildelt
               </span>
             )}
             {inc.acvpu && (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+              <span className="mono-xs">
                 ACVPU: {inc.acvpu.toUpperCase()}
               </span>
             )}
           </div>
           {inc.activeEscalation && (
-            <span style={{
-              display: 'inline-block', marginTop: 4,
-              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-              fontWeight: 700, color: 'var(--color-status-critical)',
-            }}>
+            <span className="mono-xs fw-700 text-critical" style={{ display: 'inline-block', marginTop: 4 }}>
               ⚠ ESKALERT: {PATH_LABELS[inc.activeEscalation.path] ?? inc.activeEscalation.path}
             </span>
           )}
