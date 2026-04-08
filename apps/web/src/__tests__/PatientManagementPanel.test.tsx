@@ -5,7 +5,7 @@
  * are responding to a patient and their Norwegian status labels.
  */
 import { describe, expect, it } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { PatientManagementPanel, type FieldPatient } from '../pages/Coordinator/PatientManagementPanel';
 import type { TeamPatientEngagement } from '../lib/types';
 
