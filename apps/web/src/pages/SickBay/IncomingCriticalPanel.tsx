@@ -9,28 +9,20 @@ interface IncomingCriticalPanelProps {
 
 const reasonLabels: Record<string, string> = {
   needs_assistance: 'Trenger bistand',
-  open_escalation: 'Aktiv eskalering',
-  triage_immediate: 'START umiddelbar',
+  triage_red: 'Triage rød',
   news2_high: 'NEWS2 høy',
 };
 
-const progressLabels: Record<string, string> = {
-  dispatched: 'Utsendt',
-  on_scene: 'På stedet',
-  transporting: 'Under transport',
-  at_sickbay: 'Ved sykestue',
-};
-
 const triageLabels: Record<string, string> = {
-  immediate: 'Umiddelbar',
-  delayed: 'Utsatt',
-  minor: 'Mindre',
-  expectant: 'Forventet',
+  red: 'Rød',
+  yellow: 'Gul',
+  green: 'Grønn',
+  black: 'Svart',
 };
 
 export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlacement }: IncomingCriticalPanelProps) {
   const [expandedPlacementRows, setExpandedPlacementRows] = useState<Record<string, boolean>>({});
-  const [placementFormByIncident, setPlacementFormByIncident] = useState<Record<string, {
+  const [placementFormByPatient, setPlacementFormByPatient] = useState<Record<string, {
     placementType: 'chair' | 'bed' | '';
     placementNumber: string;
   }>>({});
@@ -43,19 +35,19 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
   });
 
-  const togglePlacementRow = (incidentId: string) => {
-    setExpandedPlacementRows((prev) => ({ ...prev, [incidentId]: !prev[incidentId] }));
+  const togglePlacementRow = (patientId: string) => {
+    setExpandedPlacementRows((prev) => ({ ...prev, [patientId]: !prev[patientId] }));
   };
 
   const updatePlacementForm = (
-    incidentId: string,
+    patientId: string,
     patch: Partial<{ placementType: 'chair' | 'bed' | ''; placementNumber: string }>,
   ) => {
-    setPlacementFormByIncident((prev) => ({
+    setPlacementFormByPatient((prev) => ({
       ...prev,
-      [incidentId]: {
-        placementType: prev[incidentId]?.placementType ?? '',
-        placementNumber: prev[incidentId]?.placementNumber ?? '',
+      [patientId]: {
+        placementType: prev[patientId]?.placementType ?? '',
+        placementNumber: prev[patientId]?.placementNumber ?? '',
         ...patch,
       },
     }));
@@ -89,8 +81,8 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
       <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         {sortedItems.map((item) => (
           <article
-            key={item.incidentId}
-            data-testid={`sickbay-critical-patient-${item.incidentId}`}
+            key={item.patientId}
+            data-testid={`sickbay-critical-patient-${item.patientId}`}
             style={{
               padding: 'var(--space-2)',
               borderRadius: 'var(--radius-sm)',
@@ -103,14 +95,13 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
-                Hendelse {item.incidentId.slice(0, 8)}
+                {item.label ?? `Pasient ${item.patientId.slice(0, 8)}`}
               </div>
               <div
-                aria-label="Progresjon i forløpet"
+                aria-label="Triage og NEWS2"
                 style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}
               >
-                Forløp: {progressLabels[item.progressStage] ?? item.progressStage}
-                {item.triageTag ? ` · START ${triageLabels[item.triageTag] ?? item.triageTag}` : ''}
+                {item.triageStatus ? `Triage ${triageLabels[item.triageStatus] ?? item.triageStatus}` : ''}
                 {item.news2 ? ` · NEWS2 ${item.news2.total}` : ''}
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
@@ -126,118 +117,116 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
                   : 'Vitalia ikke registrert ennå'}
               </div>
             </div>
-            {item.patientId ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'stretch' }}>
-                <button
-                  onClick={() => onStartTreatment(item.patientId!)}
-                  className="touch-target"
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'stretch' }}>
+              <button
+                onClick={() => onStartTreatment(item.patientId)}
+                className="touch-target"
+                style={{
+                  minHeight: 'var(--touch-min)',
+                  padding: '0 var(--space-3)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-status-critical)',
+                  background: 'var(--color-status-critical)',
+                  color: 'white',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Start behandling
+              </button>
+
+              <button
+                type="button"
+                className="touch-target"
+                data-testid={`assign-placement-toggle-${item.patientId}`}
+                onClick={() => togglePlacementRow(item.patientId)}
+                style={{
+                  minHeight: 'var(--touch-min)',
+                  padding: '0 var(--space-3)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-border)',
+                  background: 'transparent',
+                  color: 'var(--color-text)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Tildel stol/seng
+              </button>
+
+              {expandedPlacementRows[item.patientId] && (
+                <div
+                  data-testid={`assign-placement-form-${item.patientId}`}
                   style={{
-                    minHeight: 'var(--touch-min)',
-                    padding: '0 var(--space-3)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--color-status-critical)',
-                    background: 'var(--color-status-critical)',
-                    color: 'white',
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
+                    display: 'grid',
+                    gap: 'var(--space-2)',
+                    minWidth: 220,
                   }}
                 >
-                  Start behandling
-                </button>
-
-                <button
-                  type="button"
-                  className="touch-target"
-                  data-testid={`assign-placement-toggle-${item.incidentId}`}
-                  onClick={() => togglePlacementRow(item.incidentId)}
-                  style={{
-                    minHeight: 'var(--touch-min)',
-                    padding: '0 var(--space-3)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--color-border)',
-                    background: 'transparent',
-                    color: 'var(--color-text)',
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Tildel stol/seng
-                </button>
-
-                {expandedPlacementRows[item.incidentId] && (
-                  <div
-                    data-testid={`assign-placement-form-${item.incidentId}`}
+                  <select
+                    value={placementFormByPatient[item.patientId]?.placementType ?? ''}
+                    onChange={(e) => updatePlacementForm(item.patientId, {
+                      placementType: e.target.value as 'chair' | 'bed' | '',
+                    })}
                     style={{
-                      display: 'grid',
-                      gap: 'var(--space-2)',
-                      minWidth: 220,
+                      height: 'var(--touch-min)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-input-border)',
+                      background: 'var(--color-input-bg)',
+                      color: 'var(--color-text)',
+                      padding: '0 var(--space-2)',
                     }}
                   >
-                    <select
-                      value={placementFormByIncident[item.incidentId]?.placementType ?? ''}
-                      onChange={(e) => updatePlacementForm(item.incidentId, {
-                        placementType: e.target.value as 'chair' | 'bed' | '',
-                      })}
-                      style={{
-                        height: 'var(--touch-min)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-input-border)',
-                        background: 'var(--color-input-bg)',
-                        color: 'var(--color-text)',
-                        padding: '0 var(--space-2)',
-                      }}
-                    >
-                      <option value="">Velg type</option>
-                      <option value="chair">Stol</option>
-                      <option value="bed">Seng</option>
-                    </select>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="Nummer"
-                      value={placementFormByIncident[item.incidentId]?.placementNumber ?? ''}
-                      onChange={(e) => updatePlacementForm(item.incidentId, {
-                        placementNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 4),
-                      })}
-                      style={{
-                        height: 'var(--touch-min)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-input-border)',
-                        background: 'var(--color-input-bg)',
-                        color: 'var(--color-text)',
-                        padding: '0 var(--space-2)',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="touch-target"
-                      onClick={() => {
-                        const placementType = placementFormByIncident[item.incidentId]?.placementType ?? '';
-                        const placementNumber = placementFormByIncident[item.incidentId]?.placementNumber ?? '';
-                        onAssignPlacement(item.patientId!, placementType, placementNumber);
-                        setExpandedPlacementRows((prev) => ({ ...prev, [item.incidentId]: false }));
-                      }}
-                      style={{
-                        minHeight: 'var(--touch-min)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: 'none',
-                        background: 'var(--color-brand)',
-                        color: '#fff',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Lagre plassering
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : null}
+                    <option value="">Velg type</option>
+                    <option value="chair">Stol</option>
+                    <option value="bed">Seng</option>
+                  </select>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="Nummer"
+                    value={placementFormByPatient[item.patientId]?.placementNumber ?? ''}
+                    onChange={(e) => updatePlacementForm(item.patientId, {
+                      placementNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 4),
+                    })}
+                    style={{
+                      height: 'var(--touch-min)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-input-border)',
+                      background: 'var(--color-input-bg)',
+                      color: 'var(--color-text)',
+                      padding: '0 var(--space-2)',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="touch-target"
+                    onClick={() => {
+                      const placementType = placementFormByPatient[item.patientId]?.placementType ?? '';
+                      const placementNumber = placementFormByPatient[item.patientId]?.placementNumber ?? '';
+                      onAssignPlacement(item.patientId, placementType, placementNumber);
+                      setExpandedPlacementRows((prev) => ({ ...prev, [item.patientId]: false }));
+                    }}
+                    style={{
+                      minHeight: 'var(--touch-min)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: 'none',
+                      background: 'var(--color-brand)',
+                      color: '#fff',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Lagre plassering
+                  </button>
+                </div>
+              )}
+            </div>
           </article>
         ))}
       </div>

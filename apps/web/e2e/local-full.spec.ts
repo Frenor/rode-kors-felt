@@ -28,9 +28,8 @@ test.beforeEach(async ({ page }, testInfo) => {
   await resetBrowserState(page);
 });
 
-test('covers the full incident to coordinator handoff path', async ({ page }) => {
+test('covers the full first aider → sickbay → coordinator flow', async ({ page }) => {
   await loginAsFirstAider(page);
-  await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
   await selectTeamIfNeeded(page);
   const workspace = page.getByTestId('firstaid-patient-workspace');
   await expect(workspace).toBeVisible();
@@ -39,42 +38,6 @@ test('covers the full incident to coordinator handoff path', async ({ page }) =>
   await workspace.getByTestId('firstaid-field-status-pill').click();
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
   await page.getByRole('button', { name: 'Avbryt' }).click();
-
-  await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
-  await page.waitForURL('**/firstaid/incident');
-
-  await page.getByRole('button', { name: 'Medisinsk' }).click();
-
-  let expectedMode: 'gps' | 'indoor_zone' = 'gps';
-  const indoorRegion = page.getByRole('region', { name: /Innendørs lokasjon/i });
-  if (await indoorRegion.isVisible().catch(() => false)) {
-    expectedMode = 'indoor_zone';
-    await expect(indoorRegion).toBeVisible();
-    await page.getByRole('button', { name: /GPS-fallback/i }).click();
-    await page.getByRole('button', { name: /Innendørs lokasjon/i }).click();
-  }
-
-  await page.getByRole('radio', { name: /Alert/i }).click();
-  await page.getByRole('button', { name: /Neste: MIST/i }).click();
-  await page.getByRole('radio', { name: 'Fall' }).click();
-  await page.getByRole('button', { name: /Forhåndsvis/i }).click();
-
-  const incidentRequestPromise = page.waitForRequest((request) => {
-    return request.method() === 'POST' && request.url().includes('/incidents');
-  });
-  await page.getByRole('button', { name: /Send hendelse/i }).click();
-  const incidentRequest = await incidentRequestPromise;
-  const payload = incidentRequest.postDataJSON() as Record<string, unknown>;
-  const location = payload.location as { lat?: number; lng?: number };
-  const locationContext = payload.locationContext as { mode?: string } | undefined;
-  expect(typeof location?.lat).toBe('number');
-  expect(typeof location?.lng).toBe('number');
-  if (expectedMode === 'indoor_zone') {
-    expect(locationContext?.mode).toBe('indoor_zone');
-  } else {
-    expect(locationContext?.mode === undefined || locationContext.mode === 'gps').toBe(true);
-  }
-  await page.waitForURL('**/firstaid');
 
   await loginAsSickBay(page);
   await expect(page.getByRole('heading', { name: 'Sykestue' })).toBeVisible();

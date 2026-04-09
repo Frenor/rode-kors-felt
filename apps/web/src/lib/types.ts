@@ -38,7 +38,7 @@ export interface MedicationRecord {
 export interface ActionHistoryEntry {
   id: string;
   eventId: string;
-  entityType: 'incident' | 'patient' | 'event' | 'team';
+  entityType: 'patient' | 'event' | 'team';
   entityId: string;
   actionType: string;
   payload: Record<string, unknown>;
@@ -150,45 +150,6 @@ export interface GeoPoint {
   lng: number;
 }
 
-export interface IncidentEscalation {
-  id?: string;
-  path: string;
-  reason?: string;
-  createdAt?: string;
-}
-
-export interface IncidentMist {
-  mechanism: string;
-  injury: string;
-  signs: string;
-  treatment: string;
-}
-
-export interface Incident {
-  id: string;
-  eventId: string;
-  type: string;
-  status: string;
-  acvpu?: string;
-  triageTag?: string;
-  teamId?: string;
-  source?: string;
-  location: GeoPoint;
-  locationContext?: {
-    mode: 'gps' | 'indoor_zone';
-    venueId?: string;
-    floorId?: string;
-    zoneId?: string;
-    zoneLabel?: string;
-  };
-  notes?: string;
-  activeEscalation?: IncidentEscalation | null;
-  actionHistory?: ActionHistoryEntry[];
-  mist?: IncidentMist;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface Team {
   id: string;
   name: string;
@@ -201,7 +162,6 @@ export interface Team {
 
 export interface TeamWorkspacePatient {
   id: string;
-  incidentId: string | null;
   status: string;
   presentingComplaint: string | null;
   label?: string | null;
@@ -233,20 +193,18 @@ export interface TeamPatientEngagement {
 
 export type SickbayIncomingCriticalReason =
   | 'needs_assistance'
-  | 'open_escalation'
-  | 'triage_immediate'
+  | 'triage_red'
   | 'news2_high';
 
 export interface SickbayIncomingItem {
-  incidentId: string;
-  patientId: string | null;
+  patientId: string;
+  label: string | null;
+  triageStatus: 'green' | 'yellow' | 'red' | 'black' | null;
   teamId: string | null;
-  progressStage: string;
   critical: boolean;
   criticalReasons: SickbayIncomingCriticalReason[];
   latestVitals?: VitalsReading | null;
   news2?: { total: number; alertLevel: 'routine' | 'low' | 'medium' | 'high' } | null;
-  triageTag?: string | null;
   updatedAt: string;
 }
 
@@ -256,13 +214,12 @@ export interface DeteriorationAlert {
   ratePerHour: number;
   receivedAt: string;
 }
-
 export interface EventStats {
-  totalIncidents: number;
-  activeIncidents: number;
-  resolvedIncidents: number;
   totalPatients: number;
+  patientsIncoming: number;
   patientsInTreatment: number;
+  patientsObservation: number;
   discharged: number;
+  transferred: number;
   [key: string]: number;
 }

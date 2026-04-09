@@ -344,15 +344,14 @@ describe('Incoming panel placement assignment', () => {
     vi.mocked(api.getSickbayIncoming).mockResolvedValue({
       items: [
         {
-          incidentId: 'inc-placement-1',
           patientId: 'pat-incoming-placement',
+          label: 'Pasient A',
+          triageStatus: 'red',
           teamId: 'team-a',
-          progressStage: 'transporting',
           critical: true,
-          criticalReasons: ['open_escalation'],
+          criticalReasons: ['triage_red'],
           latestVitals: null,
           news2: null,
-          triageTag: null,
           updatedAt: new Date().toISOString(),
         },
       ],
@@ -361,8 +360,8 @@ describe('Incoming panel placement assignment', () => {
     render(<SickBayDashboard />);
     await screen.findByTestId('sickbay-critical-banner');
 
-    fireEvent.click(screen.getByTestId('assign-placement-toggle-inc-placement-1'));
-    const form = screen.getByTestId('assign-placement-form-inc-placement-1');
+    fireEvent.click(screen.getByTestId('assign-placement-toggle-pat-incoming-placement'));
+    const form = screen.getByTestId('assign-placement-form-pat-incoming-placement');
 
     fireEvent.change(within(form).getByRole('combobox'), { target: { value: 'chair' } });
     fireEvent.change(within(form).getByPlaceholderText('Nummer'), { target: { value: '14' } });

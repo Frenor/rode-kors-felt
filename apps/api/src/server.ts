@@ -10,7 +10,6 @@ import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
 import { authRoutes } from './routes/auth.js';
 import { eventRoutes } from './routes/events.js';
-import { incidentRoutes } from './routes/incidents.js';
 import { patientRoutes } from './routes/patients.js';
 import { actionRoutes } from './routes/action-events.js';
 import { wsHandler } from './routes/ws.js';
@@ -108,7 +107,6 @@ async function buildServer() {
   // Routes
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(eventRoutes, { prefix: '/api/events' });
-  await app.register(incidentRoutes, { prefix: '/api/incidents' });
   await app.register(patientRoutes, { prefix: '/api/patients' });
   await app.register(teamRoutes, { prefix: '/api/teams' });
   await app.register(actionRoutes, { prefix: '/api/actions' });

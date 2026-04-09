@@ -19,21 +19,7 @@ beforeEach(() => {
 });
 
 describe('ApiClient offline queue integration', () => {
-  it('queues incident creation when offline', async () => {
-    mocks.enqueue.mockResolvedValue('inc-offline-1');
-    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-
-    vi.resetModules();
-    const { api } = await import('../lib/api');
-    const result = await api.createIncident({ type: 'medical', eventId: 'evt-1' });
-
-    expect(mocks.enqueue).toHaveBeenCalledWith({ type: 'medical', eventId: 'evt-1' });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(result).toEqual({
-      incident: { id: 'inc-offline-1', _queued: true, type: 'medical', eventId: 'evt-1' },
-    });
-  });
+  // createIncident has been removed; incident offline queue test removed
 
   it('queues team action when offline unless skipOfflineQueue is set', async () => {
     vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);

@@ -12,11 +12,11 @@ interface StatsGridProps {
 }
 
 const STAT_ENTRIES: { key: string; label: string }[] = [
-  { key: 'totalIncidents',      label: 'Totalt' },
-  { key: 'activeIncidents',     label: 'Aktive' },
-  { key: 'resolvedIncidents',   label: 'Løste' },
-  { key: 'totalPatients',       label: 'Pasienter' },
+  { key: 'totalPatients',       label: 'Pasienter totalt' },
+  { key: 'patientsIncoming',    label: 'Innkommende' },
   { key: 'patientsInTreatment', label: 'I behandling' },
+  { key: 'patientsObservation', label: 'Observasjon' },
+  { key: 'transferred',         label: 'Overført' },
   { key: 'discharged',          label: 'Utskrevet' },
 ];
 

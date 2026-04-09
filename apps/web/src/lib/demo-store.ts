@@ -93,6 +93,9 @@ let patients: any[] = [
   {
     id: 'demo-pat-1',
     eventId: 'demo-event',
+    label: null,
+    triageStatus: 'yellow',
+    assignedTeamId: 'team-bravo',
     fullName: 'Lea Hansen',
     gender: 'female',
     birthDate: '1993-09-14',
@@ -169,6 +172,9 @@ let patients: any[] = [
   {
     id: 'demo-pat-2',
     eventId: 'demo-event',
+    label: null,
+    triageStatus: 'green',
+    assignedTeamId: null,
     fullName: 'Karianne Strøm',
     gender: 'female',
     birthDate: '1957-04-21',
@@ -228,6 +234,9 @@ let patients: any[] = [
   {
     id: 'demo-pat-3',
     eventId: 'demo-event',
+    label: null,
+    triageStatus: 'green',
+    assignedTeamId: null,
     fullName: 'Aksel Berg',
     gender: 'male',
     birthDate: '2007-02-14',
@@ -276,6 +285,9 @@ let patients: any[] = [
   {
     id: 'demo-pat-4',
     eventId: 'demo-event',
+    label: null,
+    triageStatus: 'yellow',
+    assignedTeamId: 'team-delta',
     fullName: 'Sofia Nilsen',
     gender: 'female',
     birthDate: '1988-11-05',
@@ -411,7 +423,6 @@ const deriveTeamStatusFromPatients = (
 
 const mapWorkspacePatient = (patient: any, teamPatientStatus: TeamPatientStatus | null) => ({
   id: patient.id,
-  incidentId: patient.incidentId ?? null,
   status: patient.status,
   presentingComplaint: patient.presentingComplaint ?? null,
   updatedAt: patient.updatedAt,
@@ -479,7 +490,7 @@ export const demoStore = {
   postTeamAction: (
     teamId: string,
     data:
-      | { type: 'team.status_set'; status: TeamOperationalStatus; incidentId?: string; note?: string; clientActionId: string }
+      | { type: 'team.status_set'; status: TeamOperationalStatus; note?: string; clientActionId: string }
       | { type: 'team.monitor_started'; patientId: string; clientActionId: string }
       | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string }
       | { type: 'team.patient_status_set'; patientId: string; status: TeamPatientStatus | null; clientActionId: string },
@@ -521,8 +532,7 @@ export const demoStore = {
 
   getTeamWorkspace: (teamId: string): TeamWorkspaceResponse => {
     const teamState = ensureTeamState(teamId);
-    const teamIncidentIds = incidents.filter((incident) => incident.teamId === teamId).map((incident) => incident.id);
-    const assignedPatients = patients.filter((patient) => patient.incidentId && teamIncidentIds.includes(patient.incidentId));
+    const assignedPatients = patients.filter((patient) => patient.assignedTeamId === teamId);
     const assignedSet = new Set(assignedPatients.map((patient) => patient.id));
     const engagedPatients = patients.filter(
       (patient) => teamState.patientStatusMap.has(patient.id) && !assignedSet.has(patient.id),
@@ -561,34 +571,30 @@ export const demoStore = {
   },
 
   getSickbayIncoming: (_eventId: string) => {
-    const incomingStatuses = new Set(['dispatched', 'on_scene', 'transporting', 'at_sickbay']);
-    const items = incidents
-      .filter((incident) => incomingStatuses.has(incident.status))
-      .map((incident) => {
-        const patient = patients.find((row) => row.incidentId === incident.id) ?? null;
+    const incomingStatuses = new Set(['incoming', 'in_treatment']);
+    const items = patients
+      .filter((patient) => incomingStatuses.has(patient.status))
+      .map((patient) => {
         const latestVitals = patient?.latestVitals ?? null;
         const news2 = latestVitals ? calculateNEWS2(latestVitals) : null;
-        const teamState = incident.teamId ? ensureTeamState(incident.teamId) : null;
-        const criticalReasons: Array<'needs_assistance' | 'open_escalation' | 'triage_immediate' | 'news2_high'> = [];
-        if (teamState?.latestStatus === 'needs_assistance') criticalReasons.push('needs_assistance');
-        if (incident.activeEscalation) criticalReasons.push('open_escalation');
-        if (incident.triageTag === 'immediate') criticalReasons.push('triage_immediate');
+        const criticalReasons: Array<'needs_assistance' | 'triage_red' | 'news2_high'> = [];
+        if (patient.triageStatus === 'red') criticalReasons.push('triage_red');
         if (news2?.alertLevel === 'high') criticalReasons.push('news2_high');
 
         return {
-          incidentId: incident.id,
-          patientId: patient?.id ?? null,
-          teamId: incident.teamId ?? null,
-          progressStage: incident.status,
+          patientId: patient.id,
+          label: patient.label ?? null,
+          triageStatus: patient.triageStatus ?? null,
+          teamId: patient.assignedTeamId ?? null,
           critical: criticalReasons.length > 0,
           criticalReasons,
           latestVitals,
           news2: news2 ? { total: news2.total, alertLevel: news2.alertLevel } : null,
-          triageTag: incident.triageTag ?? null,
-          updatedAt: incident.updatedAt,
+          updatedAt: patient.updatedAt,
         };
       })
-      .sort((a, b) => Number(b.critical) - Number(a.critical) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      .filter((item) => item.critical)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     return { items };
   },
 
@@ -937,12 +943,12 @@ export const demoStore = {
   },
 
   getEventStats: (_eventId: string) => ({
-    totalIncidents: incidents.length,
-    activeIncidents: incidents.filter((i) => i.status !== 'resolved').length,
-    resolvedIncidents: incidents.filter((i) => i.status === 'resolved').length,
     totalPatients: patients.length,
+    patientsIncoming: patients.filter((p) => p.status === 'incoming').length,
     patientsInTreatment: patients.filter((p) => p.status === 'in_treatment').length,
-    discharged: patients.filter((p) => p.status === 'discharged' || p.status === 'transferred').length,
+    patientsObservation: patients.filter((p) => p.status === 'observation').length,
+    transferred: patients.filter((p) => p.status === 'transferred').length,
+    discharged: patients.filter((p) => p.status === 'discharged').length,
   }),
 
   getEvent: (_id: string) => ({

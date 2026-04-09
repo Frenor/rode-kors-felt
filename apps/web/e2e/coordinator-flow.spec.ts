@@ -22,49 +22,20 @@ test('coordinator can log in and see dashboard', async ({ page }) => {
   // Verify "Koordinator" heading is visible
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
 
-  // Verify core coordinator UI is visible (feed and/or map controls)
-  const hasFeedHeading = await page.getByText('Hendelsesfeed').isVisible().catch(() => false);
-  const hasLeafletToggle = await page.getByRole('button', { name: /Leaflet/i }).isVisible().catch(() => false);
-  const hasMapLibreToggle = await page.getByRole('button', { name: /MapLibre/i }).isVisible().catch(() => false);
-  expect(hasFeedHeading || hasLeafletToggle || hasMapLibreToggle).toBeTruthy();
+  // Verify core coordinator UI is visible (patient panel + map controls)
+  await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /MapLibre/i })).toBeVisible();
 });
 
-test('coordinator can update incident status', async ({ page }) => {
+test('coordinator can see patient management panel and map', async ({ page }) => {
   await loginAsCoordinator(page);
 
-  // Wait for dashboard section to render, then allow feed/empty state to settle
-  await expect(page.getByText('Hendelsesfeed')).toBeVisible();
-  await page.waitForTimeout(1000);
+  // Patient management panel heading should be visible
+  await expect(page.getByRole('heading', { name: /Pasienter/i })).toBeVisible();
 
-  const feed = page.getByRole('feed', { name: 'Hendelser' });
-  const emptyState = page.getByText('Ingen aktive hendelser');
-  const hasFeed = await feed.isVisible().catch(() => false);
-  const hasEmptyState = await emptyState.isVisible().catch(() => false);
-
-  if (!hasFeed && !hasEmptyState) {
-    test.info().annotations.push({
-      type: 'note',
-      description: 'Incident feed not visible yet; skipping status update assertion to avoid flaky timeout',
-    });
-    return;
-  }
-  // If any incidents exist with status "på stedet", click the "→ Transport" button
-  const transportButton = page.getByRole('button', { name: '→ Transport' }).first();
-  const hasTransportButton = await transportButton.isVisible({ timeout: 2000 }).catch(() => false);
-
-  if (hasTransportButton) {
-    await transportButton.click();
-
-    // Verify the button disappears (the incident status has changed away from on_scene)
-    // Give the UI time to re-render after the API call
-    await page.waitForTimeout(500);
-    const articleCount = await page.getByRole('feed', { name: 'Hendelser' }).getByRole('article').count();
-    // The feed should still render (either the button is gone or incident moved to resolved)
-    expect(articleCount).toBeGreaterThanOrEqual(0);
-  } else {
-    // No incidents with on_scene status — test passes trivially
-    test.info().annotations.push({ type: 'note', description: 'No on_scene incidents found; skipping status update assertion' });
-  }
+  // Map engine toggle buttons should be visible
+  await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /MapLibre/i })).toBeVisible();
 });
 
 test('unauthenticated user is redirected from /coordinator to /', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, getFirstAiderToken, getSickbayToken, getCoordinatorToken, getEventId } from './helpers.js';
+import { buildApp, getFirstAiderToken, getSickbayToken, getEventId } from './helpers.js';
 
 let app: FastifyInstance;
 let eventId: string;
@@ -14,23 +14,8 @@ afterAll(async () => {
   await app.close();
 });
 
-async function createIncident() {
+async function createPatientForActions() {
   const token = getFirstAiderToken(eventId);
-  const res = await app.inject({
-    method: 'POST',
-    url: '/api/incidents',
-    headers: { Authorization: `Bearer ${token}` },
-    payload: {
-      eventId,
-      type: 'medical',
-      location: { lat: 59.964, lng: 10.776 },
-    },
-  });
-  return res.json().incident;
-}
-
-async function createPatient() {
-  const token = getSickbayToken(eventId);
   const res = await app.inject({
     method: 'POST',
     url: '/api/patients',
@@ -41,30 +26,30 @@ async function createPatient() {
 }
 
 describe('Reversible action APIs', () => {
-  it('POST /api/incidents/:id/actions writes action + status update', async () => {
-    const incident = await createIncident();
-    const token = getCoordinatorToken();
+  it('POST /api/patients/:id/actions writes action + status update', async () => {
+    const patient = await createPatientForActions();
+    const token = getSickbayToken(eventId);
     const actionRes = await app.inject({
       method: 'POST',
-      url: `/api/incidents/${incident.id}/actions`,
+      url: `/api/patients/${patient.id}/actions`,
       headers: { Authorization: `Bearer ${token}` },
-      payload: { type: 'status.set', status: 'transporting' },
+      payload: { type: 'status.set', status: 'in_treatment' },
     });
 
     expect(actionRes.statusCode).toBe(200);
     const body = actionRes.json();
-    expect(body.incident.status).toBe('transporting');
-    expect(body.action.actionType).toBe('incident.status_set');
+    expect(body.patient.status).toBe('in_treatment');
+    expect(body.action.actionType).toBe('patient.status_set');
   });
 
-  it('POST /api/actions/:id/undo reverts incident status', async () => {
-    const incident = await createIncident();
-    const token = getCoordinatorToken();
+  it('POST /api/actions/:id/undo reverts patient status', async () => {
+    const patient = await createPatientForActions();
+    const token = getSickbayToken(eventId);
     const updateRes = await app.inject({
       method: 'POST',
-      url: `/api/incidents/${incident.id}/actions`,
+      url: `/api/patients/${patient.id}/actions`,
       headers: { Authorization: `Bearer ${token}` },
-      payload: { type: 'status.set', status: 'resolved' },
+      payload: { type: 'status.set', status: 'observation' },
     });
     const actionId = updateRes.json().action.id;
 
@@ -75,41 +60,41 @@ describe('Reversible action APIs', () => {
       payload: { reason: 'test undo' },
     });
     expect(undoRes.statusCode).toBe(200);
-    expect(undoRes.json().undoAction.actionType).toBe('incident.status_undo');
+    expect(undoRes.json().undoAction.actionType).toBe('patient.status_undo');
 
     const readRes = await app.inject({
       method: 'GET',
-      url: `/api/incidents/${incident.id}`,
+      url: `/api/patients/${patient.id}`,
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(readRes.statusCode).toBe(200);
-    expect(readRes.json().incident.status).toBe('on_scene');
+    expect(readRes.json().patient.status).toBe('incoming');
   });
 
-  it('POST /api/incidents/:id/actions resolves escalation and emits action metadata', async () => {
-    const incident = await createIncident();
-    const token = getCoordinatorToken();
+  it('POST /api/patients/:id/actions supports multiple sequential status changes', async () => {
+    const patient = await createPatientForActions();
+    const token = getSickbayToken(eventId);
 
-    await app.inject({
+    const firstRes = await app.inject({
       method: 'POST',
-      url: `/api/incidents/${incident.id}/actions`,
+      url: `/api/patients/${patient.id}/actions`,
       headers: { Authorization: `Bearer ${token}` },
-      payload: { type: 'escalation.raise', path: 'path_a_rk_ambulance' },
+      payload: { type: 'status.set', status: 'in_treatment' },
     });
+    expect(firstRes.statusCode).toBe(200);
 
-    const res = await app.inject({
+    const secondRes = await app.inject({
       method: 'POST',
-      url: `/api/incidents/${incident.id}/actions`,
+      url: `/api/patients/${patient.id}/actions`,
       headers: { Authorization: `Bearer ${token}` },
-      payload: { type: 'escalation.resolve' },
+      payload: { type: 'status.set', status: 'observation' },
     });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.json().action.actionType).toBe('incident.escalation_resolved');
+    expect(secondRes.statusCode).toBe(200);
+    expect(secondRes.json().action.actionType).toBe('patient.status_set');
   });
 
   it('POST /api/patients/:id/actions writes action and can be undone', async () => {
-    const patient = await createPatient();
+    const patient = await createPatientForActions();
     const token = getSickbayToken(eventId);
 
     const actionRes = await app.inject({

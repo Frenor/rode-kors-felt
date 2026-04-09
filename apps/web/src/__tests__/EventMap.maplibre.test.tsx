@@ -74,16 +74,6 @@ function createMapLibreRuntime() {
   };
 }
 
-const incidents = [
-  {
-    id: 'inc-1',
-    type: 'fall',
-    status: 'active',
-    location: { lat: 59.91, lng: 10.75 },
-    createdAt: '2026-04-04T10:00:00.000Z',
-  },
-];
-
 describe('EventMap MapLibre hardening', () => {
   beforeEach(() => {
     delete (window as Window & { maplibregl?: unknown }).maplibregl;
@@ -96,13 +86,10 @@ describe('EventMap MapLibre hardening', () => {
 
   it('loads MapLibre runtime when window.maplibregl is not preloaded', async () => {
     const { runtime } = createMapLibreRuntime();
-    const onIncidentClick = vi.fn();
 
     render(
       <EventMap
-        incidents={incidents}
         teams={[]}
-        onIncidentClick={onIncidentClick}
         mapRuntimeConfig={{ provider: 'maplibre' }}
       />,
     );
@@ -125,9 +112,7 @@ describe('EventMap MapLibre hardening', () => {
 
     render(
       <EventMap
-        incidents={incidents}
         teams={[]}
-        onIncidentClick={vi.fn()}
         mapRuntimeConfig={{
           provider: 'maplibre',
           layers: [{ id: 'overlay', type: 'xyz', url: 'https://tiles.example.com/{z}/{x}/{y}.png' }],
@@ -160,9 +145,7 @@ describe('EventMap MapLibre hardening', () => {
 
     const { rerender } = render(
       <EventMap
-        incidents={incidents}
         teams={[]}
-        onIncidentClick={vi.fn()}
         presentation3d={false}
         mapRuntimeConfig={{ provider: 'maplibre' }}
       />,
@@ -172,9 +155,7 @@ describe('EventMap MapLibre hardening', () => {
 
     rerender(
       <EventMap
-        incidents={incidents}
         teams={[]}
-        onIncidentClick={vi.fn()}
         presentation3d
         mapRuntimeConfig={{ provider: 'maplibre' }}
       />,

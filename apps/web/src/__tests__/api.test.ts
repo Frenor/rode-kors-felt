@@ -103,18 +103,4 @@ describe('ApiClient — redeemCode()', () => {
   });
 });
 
-describe('ApiClient — createIncident()', () => {
-  it('calls POST /api/incidents with the provided data', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      makeFetchResponse({ incident: { id: 'inc-1' } })
-    );
-
-    await api.createIncident({ type: 'medical', eventId: 'evt-1' });
-
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/api/incidents');
-    expect(init?.method).toBe('POST');
-    expect(JSON.parse(init?.body as string)).toEqual({ type: 'medical', eventId: 'evt-1' });
-  });
-});
+// createIncident has been removed (incident management removed from the app)

@@ -1,5 +1,4 @@
 import { useAuthStore } from '../stores/auth';
-import { enqueue } from './offline-queue';
 import { enqueueTeamAction } from './offline-firstaid-queue';
 import { demoStore } from './demo-store';
 import type {
@@ -152,24 +151,6 @@ class ApiClient {
     return this.request<Record<string, number>>(`/events/${eventId}/stats`);
   }
 
-  // Incidents
-  async getIncidents(eventId: string) {
-    if (DEMO) return demoStore.getIncidents(eventId);
-    return this.request<{ incidents: any[] }>(`/incidents?eventId=${eventId}`);
-  }
-
-  async createIncident(data: Record<string, unknown>) {
-    if (DEMO) return demoStore.createIncident(data);
-    if (!navigator.onLine) {
-      const clientId = await enqueue(data);
-      return { incident: { id: clientId, _queued: true, ...data } };
-    }
-    return this.request<{ incident: any }>('/incidents', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
   async downloadReport(_eventId: string): Promise<Blob> {
     if (DEMO) {
       const text = 'Demo-rapport: ingen ekte data tilgjengelig i demomodus.';
@@ -183,45 +164,10 @@ class ApiClient {
     return res.blob();
   }
 
-  async downloadMciSummary(eventId: string): Promise<Blob> {
-    if (DEMO) {
-      return demoStore.downloadMciSummary(eventId);
-    }
-    const token = this.getToken();
-    const res = await fetch(`${API_BASE}/events/${eventId}/mci-summary`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) throw new Error('Kunne ikke laste ned MCI-overlevering');
-    return res.blob();
-  }
-
-  async toggleMci(eventId: string, mciActive: boolean, mciSectors?: string[]) {
-    if (DEMO) return demoStore.toggleMci(eventId, mciActive, mciSectors);
-    return this.request<{ event: any }>(`/events/${eventId}/mci`, {
-      method: 'PATCH',
-      body: JSON.stringify({ mciActive, mciSectors }),
-    });
-  }
-
-  async executeIncidentAction(
-    incidentId: string,
-    data:
-      | { type: 'status.set'; status: string }
-      | { type: 'escalation.raise'; path: string; reason?: string }
-      | { type: 'escalation.resolve' }
-      | { type: 'escalation.reopen'; escalationId?: string },
-  ) {
-    if (DEMO) return demoStore.executeIncidentAction(incidentId, data);
-    return this.request<{ incident?: any; escalation?: any; action: any; ok?: boolean }>(`/incidents/${incidentId}/actions`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
   async postTeamAction(
     teamId: string,
     data:
-      | { type: 'team.status_set'; status: TeamOperationalStatus; incidentId?: string; note?: string; clientActionId: string }
+      | { type: 'team.status_set'; status: TeamOperationalStatus; note?: string; clientActionId: string }
       | { type: 'team.monitor_started'; patientId: string; clientActionId: string }
       | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string }
       | { type: 'team.patient_status_set'; patientId: string; status: TeamPatientStatus | null; clientActionId: string },

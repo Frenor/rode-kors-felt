@@ -9,16 +9,6 @@ interface GeoPoint {
   lng: number;
 }
 
-interface Incident {
-  id: string;
-  type: string;
-  status: string;
-  location: GeoPoint;
-  createdAt: string;
-  acvpu?: string;
-  activeEscalation?: { path: string } | null;
-}
-
 interface Team {
   id: string;
   name: string;
@@ -26,10 +16,8 @@ interface Team {
 }
 
 interface EventMapProps {
-  incidents: Incident[];
   teams: Team[];
   center?: GeoPoint;
-  onIncidentClick: (incidentId: string) => void;
   provider?: 'leaflet' | 'maplibre';
   presentation3d?: boolean;
   mapRuntimeConfig?: MapRuntimeConfig | null;
@@ -67,33 +55,6 @@ type MapLibrePopup = {
   setHTML: (html: string) => MapLibrePopup;
 };
 
-function incidentColor(incident: Incident): string {
-  if (incident.activeEscalation) return '#dc2626';
-  if (incident.status === 'resolved') return '#6b7280';
-  if (incident.status === 'transporting') return '#f59e0b';
-  return '#f97316';
-}
-
-function makeIncidentIcon(incident: Incident) {
-  const color = incidentColor(incident);
-  const hasEscalation = !!incident.activeEscalation;
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
-      <path d="M14 0C6.27 0 0 6.27 0 14c0 9.33 14 22 14 22S28 23.33 28 14C28 6.27 21.73 0 14 0z" fill="${color}"/>
-      ${hasEscalation
-        ? `<text x="14" y="19" text-anchor="middle" font-size="14" fill="white" font-weight="bold">!</text>`
-        : `<circle cx="14" cy="14" r="5" fill="white" opacity="0.8"/>`
-      }
-    </svg>`;
-  return L.divIcon({
-    html: svg,
-    className: '',
-    iconSize: [28, 36],
-    iconAnchor: [14, 36],
-    popupAnchor: [0, -36],
-  });
-}
-
 function makeTeamIcon() {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
@@ -112,18 +73,17 @@ function makeTeamIcon() {
 
 const TEAM_ICON = makeTeamIcon();
 
-function BoundsFitter({ incidents, teams }: { incidents: Incident[]; teams: Team[] }) {
+function BoundsFitter({ teams }: { teams: Team[] }) {
   const map = useMap();
 
   useEffect(() => {
     const points: [number, number][] = [
-      ...incidents.map((i) => [i.location.lat, i.location.lng] as [number, number]),
       ...teams.filter((t) => t.currentPosition).map((t) => [t.currentPosition!.lat, t.currentPosition!.lng] as [number, number]),
     ];
     if (points.length > 0) {
       map.fitBounds(points, { padding: [32, 32], maxZoom: 15 });
     }
-  }, [incidents, teams, map]);
+  }, [teams, map]);
 
   return null;
 }
@@ -178,32 +138,15 @@ function layerToTileUrl(layerUrl: string, token?: string): string {
   return `${layerUrl}${separator}token=${encodeURIComponent(token)}`;
 }
 
-function toPopupHtml(incident: Incident): string {
-  const escalation = incident.activeEscalation ? '<span style="color:#dc2626;margin-left:6px">⚠ ESKALERT</span>' : '';
-  const acvpu = incident.acvpu ? `<div>ACVPU: ${incident.acvpu}</div>` : '';
-  return `
-    <div style="font-family: var(--font-mono); font-size: 12px; min-width: 160px">
-      <div style="font-weight:700; margin-bottom:4px">${incident.type.toUpperCase()}${escalation}</div>
-      <div>Status: ${incident.status}</div>
-      ${acvpu}
-      <div style="color:#6b7280; margin-top:4px">${new Date(incident.createdAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}</div>
-    </div>
-  `;
-}
-
 function MapLibreCanvas({
-  incidents,
   teams,
   center,
-  onIncidentClick,
   runtime,
   mapRuntimeConfig,
   presentation3d,
 }: {
-  incidents: Incident[];
   teams: Team[];
   center: GeoPoint;
-  onIncidentClick: (incidentId: string) => void;
   runtime: MapLibreModule;
   mapRuntimeConfig?: MapRuntimeConfig | null;
   presentation3d: boolean;
@@ -216,12 +159,10 @@ function MapLibreCanvas({
   const configuredLayers = mapRuntimeConfig?.layers ?? [];
 
   const points = useMemo(() => {
-    const incidentPoints = incidents.map((i) => [i.location.lng, i.location.lat] as [number, number]);
-    const teamPoints = teams
+    return teams
       .filter((team) => team.currentPosition)
       .map((team) => [team.currentPosition!.lng, team.currentPosition!.lat] as [number, number]);
-    return [...incidentPoints, ...teamPoints];
-  }, [incidents, teams]);
+  }, [teams]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -258,26 +199,6 @@ function MapLibreCanvas({
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current = [];
 
-    incidents.forEach((incident) => {
-      const markerEl = document.createElement('div');
-      markerEl.style.width = '16px';
-      markerEl.style.height = '16px';
-      markerEl.style.borderRadius = '999px';
-      markerEl.style.cursor = 'pointer';
-      markerEl.style.border = '2px solid white';
-      markerEl.style.background = incidentColor(incident);
-      markerEl.title = incident.type.toUpperCase();
-      markerEl.addEventListener('click', () => onIncidentClick(incident.id));
-
-      const popup = new runtime.Popup({ offset: 12 }).setHTML(toPopupHtml(incident));
-      const marker = new runtime.Marker({ element: markerEl })
-        .setLngLat([incident.location.lng, incident.location.lat])
-        .setPopup(popup)
-        .addTo(map);
-
-      markersRef.current.push(marker);
-    });
-
     teams
       .filter((team) => team.currentPosition)
       .forEach((team) => {
@@ -302,7 +223,7 @@ function MapLibreCanvas({
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
     };
-  }, [incidents, teams, runtime, onIncidentClick]);
+  }, [teams, runtime]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -359,10 +280,8 @@ function MapLibreCanvas({
 }
 
 export function EventMap({
-  incidents,
   teams,
   center,
-  onIncidentClick,
   provider = 'leaflet',
   presentation3d = false,
   mapRuntimeConfig,
@@ -371,7 +290,6 @@ export function EventMap({
   const [mapLibreLoadAttempted, setMapLibreLoadAttempted] = useState(false);
 
   const mapCenter = center ?? NORWAY_CENTER;
-  const activeIncidents = incidents.filter((i) => i.status !== 'resolved');
   const requestedProvider = mapRuntimeConfig?.provider ?? provider;
   const configuredLayers = mapRuntimeConfig?.layers ?? [];
   const hasMapLibreRuntime = Boolean(mapLibreRuntime);
@@ -428,10 +346,8 @@ export function EventMap({
       <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {requestedProvider === 'maplibre' && hasMapLibreRuntime ? (
           <MapLibreCanvas
-            incidents={incidents}
             teams={teams}
             center={mapCenter}
-            onIncidentClick={onIncidentClick}
             runtime={mapLibreRuntime!}
             mapRuntimeConfig={mapRuntimeConfig}
             presentation3d={presentation3d}
@@ -458,34 +374,7 @@ export function EventMap({
               />
             ))}
 
-            <BoundsFitter incidents={activeIncidents} teams={teams} />
-
-            {incidents.map((incident) => (
-              <Marker
-                key={incident.id}
-                position={[incident.location.lat, incident.location.lng]}
-                icon={makeIncidentIcon(incident)}
-                eventHandlers={{ click: () => onIncidentClick(incident.id) }}
-              >
-                <Popup>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, minWidth: 160 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                      {incident.type.toUpperCase()}
-                      {incident.activeEscalation && (
-                        <span style={{ color: '#dc2626', marginLeft: 6 }}>
-                          ⚠ ESKALERT
-                        </span>
-                      )}
-                    </div>
-                    <div>Status: {incident.status}</div>
-                    {incident.acvpu && <div>ACVPU: {incident.acvpu}</div>}
-                    <div style={{ color: '#6b7280', marginTop: 4 }}>
-                      {new Date(incident.createdAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+            <BoundsFitter teams={teams} />
 
             {teams
               .filter((t) => t.currentPosition)

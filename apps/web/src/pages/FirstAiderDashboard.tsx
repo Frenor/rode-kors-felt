@@ -6,7 +6,6 @@ import { useGeolocation } from '../hooks/useGeolocation';
 import { useTeamPositionBroadcast } from '../hooks/useTeamPositionBroadcast';
 import { useWsStore } from '../stores/ws';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { offlineQueueDb } from '../lib/offline-queue';
 import { offlineFirstAiderQueueDb } from '../lib/offline-firstaid-queue';
 import {
   enqueueTeamAction,
@@ -76,11 +75,6 @@ export function FirstAiderDashboard() {
   useTeamPositionBroadcast(selectedTeam);
 
   // Live offline queue count from IndexedDB
-  const queuedIncidents = useLiveQuery(
-    () => offlineQueueDb.queue.toArray(),
-    [],
-    [],
-  );
   const queuedTeamActions = useLiveQuery(
     () => offlineFirstAiderQueueDb.queue.toArray(),
     [],
@@ -1013,37 +1007,7 @@ export function FirstAiderDashboard() {
         Meld hendelse
       </button>}
 
-      {/* Queued (offline) incidents */}
-      {queuedIncidents && queuedIncidents.length > 0 && (
-        <section aria-labelledby="queued-heading" style={{ marginBottom: 'var(--space-4)' }}>
-          <h2
-            id="queued-heading"
-            style={{
-              fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-              color: 'var(--color-status-warning)', textTransform: 'uppercase',
-              letterSpacing: 'var(--tracking-mono)', marginBottom: 'var(--space-3)',
-            }}
-          >
-            Venter på nettverk ({queuedIncidents.length})
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {queuedIncidents.map((item) => (
-              <div key={item.clientId} style={{
-                padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-status-warning-border)',
-                background: 'var(--color-status-warning-bg)',
-              }}>
-                <span style={{
-                  fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-                  color: 'var(--color-status-warning)',
-                }}>
-                  ⏳ Lagret lokalt — synkroniseres automatisk
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Queued (offline) team actions section handled by useOfflineTeamSync */}
 
       {/* Team chat */}
       <TeamChatSection
