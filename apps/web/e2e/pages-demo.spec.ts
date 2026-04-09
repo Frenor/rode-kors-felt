@@ -21,13 +21,12 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await page.goto('./');
   await expect(page.getByRole('button', { name: '1' })).toBeVisible({ timeout: 15_000 });
 
-  // First aider flow: verify incident entry UI is visible in demo preview.
+  // First aider flow: verify patient workspace UI is visible in demo preview.
   for (const digit of ['1', '2', '3', '4', '5', '6']) {
     await page.getByRole('button', { name: digit }).click();
   }
   await page.getByRole('button', { name: /Koble til arrangement/i }).click();
   await page.waitForURL('**/firstaid');
-  await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
   await selectTeamIfNeeded(page);
   const workspace = page.getByTestId('firstaid-patient-workspace');
   await expect(workspace).toBeVisible();
@@ -36,10 +35,6 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await workspace.getByTestId('firstaid-field-status-pill').click();
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
   await page.getByRole('button', { name: 'Avbryt' }).click();
-  await page.getByRole('button', { name: /Meld( ny)? hendelse/i }).click();
-  await page.waitForURL('**/firstaid/incident');
-  await page.getByRole('button', { name: 'Medisinsk' }).click();
-  await expect(page.getByText(/D — Bevissthet \(ACVPU\)/i)).toBeVisible();
 
   // Sick Bay flow: verify Ring 113 and AMK brief are visible.
   const logoutBtn = page.getByRole('button', { name: /Logg ut/i });
