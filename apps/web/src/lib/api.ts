@@ -9,6 +9,8 @@ import type {
   MapRuntimeConfig,
   SickbayIncomingItem,
   TeamOperationalStatus,
+  TeamPatientEngagement,
+  TeamPatientStatus,
   TeamWorkspaceResponse,
 } from './types';
 
@@ -221,7 +223,8 @@ class ApiClient {
     data:
       | { type: 'team.status_set'; status: TeamOperationalStatus; incidentId?: string; note?: string; clientActionId: string }
       | { type: 'team.monitor_started'; patientId: string; clientActionId: string }
-      | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string },
+      | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string }
+      | { type: 'team.patient_status_set'; patientId: string; status: TeamPatientStatus | null; clientActionId: string },
     options?: { skipOfflineQueue?: boolean },
   ) {
     if (DEMO) return demoStore.postTeamAction(teamId, data);
@@ -272,6 +275,11 @@ class ApiClient {
   async getTeamWorkspace(teamId: string) {
     if (DEMO) return demoStore.getTeamWorkspace(teamId);
     return this.request<TeamWorkspaceResponse>(`/teams/${teamId}/workspace`);
+  }
+
+  async getTeamPatientEngagements(eventId: string) {
+    if (DEMO) return demoStore.getTeamPatientEngagements(eventId);
+    return this.request<{ engagements: Record<string, TeamPatientEngagement[]> }>(`/events/${eventId}/team-patient-engagements`);
   }
 
   async getSickbayIncoming(eventId: string) {

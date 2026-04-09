@@ -28,6 +28,10 @@ export async function loginAsFirstAider(page: Page) {
   }
   await page.getByRole('button', { name: /Koble til arrangement/i }).click();
   await page.waitForURL('**/firstaid');
+  // Select the first available team so the full workspace UI is visible.
+  // The "Meld hendelse" button and other controls require a team to be active.
+  await page.getByRole('heading', { name: 'Velg patrulje' }).waitFor();
+  await page.getByRole('button', { name: 'Alpha' }).click();
 }
 
 export async function loginAsCoordinator(page: Page) {

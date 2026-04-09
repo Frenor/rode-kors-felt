@@ -149,4 +149,50 @@ describe('useOfflineTeamSync', () => {
       );
     });
   });
+
+  it('syncs a team.patient_status_set action with a non-null status', async () => {
+    mocks.getRetryableTeamActions.mockResolvedValue([
+      {
+        clientActionId: 'ps-1',
+        teamId: 'team-1',
+        payload: { type: 'team.patient_status_set', patientId: 'pat-1', status: 'monitoring', clientActionId: 'ps-1' },
+      },
+    ]);
+    mocks.postTeamAction.mockResolvedValue({ action: { id: 'server-action' } });
+
+    renderHook(() => useOfflineTeamSync());
+    window.dispatchEvent(new Event('online'));
+
+    await waitFor(() => {
+      expect(mocks.postTeamAction).toHaveBeenCalledWith(
+        'team-1',
+        { type: 'team.patient_status_set', patientId: 'pat-1', status: 'monitoring', clientActionId: 'ps-1' },
+        { skipOfflineQueue: true },
+      );
+      expect(mocks.removeTeamAction).toHaveBeenCalledWith('ps-1');
+    });
+  });
+
+  it('syncs a team.patient_status_set action with null status (clearing)', async () => {
+    mocks.getRetryableTeamActions.mockResolvedValue([
+      {
+        clientActionId: 'ps-2',
+        teamId: 'team-1',
+        payload: { type: 'team.patient_status_set', patientId: 'pat-1', status: null, clientActionId: 'ps-2' },
+      },
+    ]);
+    mocks.postTeamAction.mockResolvedValue({ action: { id: 'server-action' } });
+
+    renderHook(() => useOfflineTeamSync());
+    window.dispatchEvent(new Event('online'));
+
+    await waitFor(() => {
+      expect(mocks.postTeamAction).toHaveBeenCalledWith(
+        'team-1',
+        { type: 'team.patient_status_set', patientId: 'pat-1', status: null, clientActionId: 'ps-2' },
+        { skipOfflineQueue: true },
+      );
+      expect(mocks.removeTeamAction).toHaveBeenCalledWith('ps-2');
+    });
+  });
 });

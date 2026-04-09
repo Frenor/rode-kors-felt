@@ -656,3 +656,83 @@ describe('Demographics — intake and display', () => {
     expect(within(container).getByText(new RegExp(`${ageYears} år`))).toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7. Demographics editor — edit name, gender, birthDate on existing patient
+// ---------------------------------------------------------------------------
+
+describe('Demographics editor — edit patient info from PatientCard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUpdatePatient.mockResolvedValue({ patient: makePatient() });
+  });
+
+  it('opens the demographics editor panel when toggled', async () => {
+    const { patient } = await renderWithPatient('in_treatment', {
+      id: 'pat-demo',
+      fullName: 'Ola Nordmann',
+      gender: 'male',
+      birthDate: '1990-06-15',
+    });
+
+    const toggle = screen.getByTestId(`demographics-editor-toggle-${patient.id}`);
+    expect(screen.queryByTestId(`demographics-editor-${patient.id}`)).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+
+    expect(screen.getByTestId(`demographics-editor-${patient.id}`)).toBeInTheDocument();
+  });
+
+  it('calls updatePatient with updated name, gender, and birthDate', async () => {
+    const { patient } = await renderWithPatient('in_treatment', {
+      id: 'pat-demo-update',
+      fullName: 'Ola Nordmann',
+      gender: 'male',
+      birthDate: '',
+    });
+
+    fireEvent.click(screen.getByTestId(`demographics-editor-toggle-${patient.id}`));
+
+    const editor = screen.getByTestId(`demographics-editor-${patient.id}`);
+
+    fireEvent.change(within(editor).getByPlaceholderText('Fornavn Etternavn'), {
+      target: { value: 'Kari Nordmann' },
+    });
+    fireEvent.change(within(editor).getByRole('combobox', { name: 'Kjønn' }), {
+      target: { value: 'female' },
+    });
+    fireEvent.change(within(editor).getByDisplayValue(''), {
+      target: { value: '1985-03-20' },
+    });
+
+    fireEvent.click(within(editor).getByRole('button', { name: 'Lagre pasientinfo' }));
+
+    await waitFor(() => {
+      expect(mockUpdatePatient).toHaveBeenCalledWith(
+        patient.id,
+        expect.objectContaining({
+          fullName: 'Kari Nordmann',
+          gender: 'female',
+          birthDate: '1985-03-20',
+        }),
+      );
+    });
+  });
+
+  it('closes the demographics editor after saving', async () => {
+    const { patient } = await renderWithPatient('incoming', { id: 'pat-close-demo' });
+
+    fireEvent.click(screen.getByTestId(`demographics-editor-toggle-${patient.id}`));
+    expect(screen.getByTestId(`demographics-editor-${patient.id}`)).toBeInTheDocument();
+
+    fireEvent.click(
+      within(screen.getByTestId(`demographics-editor-${patient.id}`)).getByRole('button', {
+        name: 'Lagre pasientinfo',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId(`demographics-editor-${patient.id}`)).not.toBeInTheDocument();
+    });
+  });
+});

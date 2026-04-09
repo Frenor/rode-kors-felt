@@ -75,6 +75,7 @@
   - Centralized shared AI operating rules in `docs/ai/COMPACT-PLAYBOOK.md`.
   - Rewrote `AGENTS.md` and `CLAUDE.md` to compact pointer-based versions.
   - Compressed all specialist prompts in `prompts/agents/*.md` to minimal role briefs.
+  - Added mandatory `pages-demo` e2e update gate for user-visible web flow changes across playbook + agent overlays.
   - Goal: lower prompt/token overhead while preserving execution guardrails.
 - `52f3a81` `feat(web): add sickbay chair-bed placement capture and incoming assignment`
   - Sykestue kan registrere plassering (stol/seng + nummer) ved pasientinntak.

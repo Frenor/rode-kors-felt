@@ -15,6 +15,7 @@ Single source of truth for AI agents in RKF. Keep prompts short, deterministic, 
 6. Keep commits small, self-contained, rollback-safe.
 7. Push frequently for demo visibility.
 8. Update `PLAN.md` at milestone boundaries.
+9. Any web feature touching user-visible flows must update `apps/web/e2e/pages-demo.spec.ts` (or explicitly log why no change is needed in `PLAN.md`).
 
 ## Execution Loop
 1. Read `PLAN.md` and pick one smallest complete task.
@@ -40,6 +41,7 @@ Single source of truth for AI agents in RKF. Keep prompts short, deterministic, 
 ## Validation Baseline
 - API: scoped tests for auth/scope/realtime and touched routes.
 - Web: store/client tests for auth/ws and touched UI.
+- Web flows: when flow/UI behavior changes, update or extend `pages-demo` Playwright coverage.
 - Typecheck must pass in touched packages.
 
 ## File Map

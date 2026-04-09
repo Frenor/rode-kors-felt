@@ -572,6 +572,84 @@ export async function eventRoutes(app: FastifyInstance) {
 
     return reply.code(201).send({ patient: mapped });
   });
+
+  // Team-patient engagements: all active team→patient statuses in this event
+  // Used by the coordinator to see which teams are responding to each patient.
+  app.get('/:id/team-patient-engagements', { preHandler: requireAuth }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id: eventId } = request.params as { id: string };
+
+    const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, eventId)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    if (!canAccessEvent(user, eventId)) return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+
+    // All team.patient_status_set actions for this event, oldest first
+    const psRows = await db
+      .select()
+      .from(actionEvents)
+      .where(and(
+        eq(actionEvents.eventId, eventId),
+        eq(actionEvents.entityType, 'team'),
+        eq(actionEvents.actionType, 'team.patient_status_set'),
+      ))
+      .orderBy(desc(actionEvents.createdAt));
+
+    // Also legacy monitor_started/stopped for backward compat
+    const monitorRows = await db
+      .select()
+      .from(actionEvents)
+      .where(and(
+        eq(actionEvents.eventId, eventId),
+        eq(actionEvents.entityType, 'team'),
+      ))
+      .orderBy(desc(actionEvents.createdAt));
+
+    const eventTeams = await db.select({ id: teams.id, name: teams.name }).from(teams).where(eq(teams.eventId, eventId));
+    const teamNameMap = new Map(eventTeams.map((t) => [t.id, t.name]));
+
+    // Build engagement map: teamId+patientId → status (latest wins, oldest-first sort)
+    type EngagementKey = string; // `${teamId}:${patientId}`
+    const engagementMap = new Map<EngagementKey, { teamId: string; patientId: string; status: string }>();
+    const psSeen = new Set<EngagementKey>(); // patient-status-set actions take precedence
+
+    const sorted = [...psRows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    for (const row of sorted) {
+      const p = row.payload as { patientId?: string; status?: string | null };
+      if (!p.patientId) continue;
+      const key: EngagementKey = `${row.entityId}:${p.patientId}`;
+      psSeen.add(key);
+      if (p.status != null) {
+        engagementMap.set(key, { teamId: row.entityId, patientId: p.patientId, status: p.status });
+      } else {
+        engagementMap.delete(key);
+      }
+    }
+
+    // Legacy monitor_started/stopped
+    const monitorSorted = [...monitorRows]
+      .filter((r) => r.actionType === 'team.monitor_started' || r.actionType === 'team.monitor_stopped')
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    for (const row of monitorSorted) {
+      const p = row.payload as { patientId?: string };
+      if (!p.patientId) continue;
+      const key: EngagementKey = `${row.entityId}:${p.patientId}`;
+      if (psSeen.has(key)) continue;
+      if (row.actionType === 'team.monitor_started') {
+        engagementMap.set(key, { teamId: row.entityId, patientId: p.patientId, status: 'monitoring' });
+      } else {
+        engagementMap.delete(key);
+      }
+    }
+
+    // Group by patientId
+    const result: Record<string, Array<{ teamId: string; teamName: string; patientId: string; status: string }>> = {};
+    for (const { teamId, patientId, status } of engagementMap.values()) {
+      if (!result[patientId]) result[patientId] = [];
+      result[patientId]!.push({ teamId, teamName: teamNameMap.get(teamId) ?? teamId, patientId, status });
+    }
+
+    return { engagements: result };
+  });
 }
 
 async function buildMciSummaryAttachment(input: {

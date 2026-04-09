@@ -7,6 +7,7 @@ Use [docs/ai/COMPACT-PLAYBOOK.md](/Users/fredrik/Developer/rode-kors-felt/docs/a
 2. Use canonical target-state implementation (no compatibility layers unless requested).
 3. Keep one logical change per commit and push frequently.
 4. Update `PLAN.md` checkpoints for milestone-level changes.
+5. For user-visible web flow changes, update `apps/web/e2e/pages-demo.spec.ts` or document no-impact rationale in `PLAN.md`.
 
 ## Environment Setup
 

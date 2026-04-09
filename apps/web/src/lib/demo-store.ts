@@ -4,6 +4,7 @@ import type {
   AmkCallLog,
   AmkCriticality,
   TeamOperationalStatus,
+  TeamPatientStatus,
   TeamWorkspaceResponse,
 } from './types';
 import { calculateAgeYears, normalizeAmkCriticality } from './constants';
@@ -337,10 +338,11 @@ const teamWorkspaceState: Record<string, {
   latestStatus: TeamOperationalStatus;
   monitoredPatientIds: string[];
   activePatientId: string | null;
+  patientStatusMap: Map<string, TeamPatientStatus>;
 }> = Object.fromEntries(
   DEMO_TEAMS.map((team) => [
     team.id,
-    { latestStatus: 'available' as TeamOperationalStatus, monitoredPatientIds: [], activePatientId: null },
+    { latestStatus: 'available' as TeamOperationalStatus, monitoredPatientIds: [], activePatientId: null, patientStatusMap: new Map<string, TeamPatientStatus>() },
   ]),
 );
 
@@ -384,10 +386,40 @@ const ensureTeamState = (teamId: string) => {
       latestStatus: 'available',
       monitoredPatientIds: [],
       activePatientId: null,
+      patientStatusMap: new Map<string, TeamPatientStatus>(),
     };
   }
   return teamWorkspaceState[teamId]!;
 };
+
+/** Mirrors deriveTeamOperationalStatus from the API for demo mode */
+const deriveTeamStatusFromPatients = (
+  current: TeamOperationalStatus,
+  map: Map<string, TeamPatientStatus>,
+): TeamOperationalStatus => {
+  if (current === 'needs_assistance' || current === 'unavailable') return current;
+  let hasOnScene = false;
+  let hasEnRoute = false;
+  for (const s of map.values()) {
+    if (s === 'transporting' || s === 'monitoring') hasOnScene = true;
+    if (s === 'en_route_to_patient') hasEnRoute = true;
+  }
+  if (hasOnScene) return 'on_scene';
+  if (hasEnRoute) return 'en_route';
+  return 'available';
+};
+
+const mapWorkspacePatient = (patient: any, teamPatientStatus: TeamPatientStatus | null) => ({
+  id: patient.id,
+  incidentId: patient.incidentId ?? null,
+  status: patient.status,
+  presentingComplaint: patient.presentingComplaint ?? null,
+  updatedAt: patient.updatedAt,
+  lat: null,
+  lon: null,
+  positionText: null,
+  teamPatientStatus,
+});
 
 const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({
   ...entity,
@@ -449,21 +481,32 @@ export const demoStore = {
     data:
       | { type: 'team.status_set'; status: TeamOperationalStatus; incidentId?: string; note?: string; clientActionId: string }
       | { type: 'team.monitor_started'; patientId: string; clientActionId: string }
-      | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string },
+      | { type: 'team.monitor_stopped'; patientId: string; clientActionId: string }
+      | { type: 'team.patient_status_set'; patientId: string; status: TeamPatientStatus | null; clientActionId: string },
   ) => {
     const teamState = ensureTeamState(teamId);
     if (data.type === 'team.status_set') {
       teamState.latestStatus = data.status;
     } else if (data.type === 'team.monitor_started') {
-      if (!teamState.monitoredPatientIds.includes(data.patientId)) {
-        teamState.monitoredPatientIds.push(data.patientId);
-      }
+      // Legacy: map to monitoring status
+      teamState.patientStatusMap.set(data.patientId, 'monitoring');
       teamState.activePatientId = data.patientId;
+      // Derive team status
+      teamState.latestStatus = deriveTeamStatusFromPatients(teamState.latestStatus, teamState.patientStatusMap);
     } else if (data.type === 'team.monitor_stopped') {
-      teamState.monitoredPatientIds = teamState.monitoredPatientIds.filter((id) => id !== data.patientId);
-      if (teamState.activePatientId === data.patientId) {
-        teamState.activePatientId = null;
+      // Legacy
+      teamState.patientStatusMap.delete(data.patientId);
+      if (teamState.activePatientId === data.patientId) teamState.activePatientId = null;
+      teamState.latestStatus = deriveTeamStatusFromPatients(teamState.latestStatus, teamState.patientStatusMap);
+    } else if (data.type === 'team.patient_status_set') {
+      if (data.status != null) {
+        teamState.patientStatusMap.set(data.patientId, data.status);
+        teamState.activePatientId = data.patientId;
+      } else {
+        teamState.patientStatusMap.delete(data.patientId);
+        if (teamState.activePatientId === data.patientId) teamState.activePatientId = null;
       }
+      teamState.latestStatus = deriveTeamStatusFromPatients(teamState.latestStatus, teamState.patientStatusMap);
     }
 
     const action = createAction({
@@ -481,49 +524,40 @@ export const demoStore = {
     const teamIncidentIds = incidents.filter((incident) => incident.teamId === teamId).map((incident) => incident.id);
     const assignedPatients = patients.filter((patient) => patient.incidentId && teamIncidentIds.includes(patient.incidentId));
     const assignedSet = new Set(assignedPatients.map((patient) => patient.id));
-    const monitoredPatients = patients.filter(
-      (patient) => teamState.monitoredPatientIds.includes(patient.id) && !assignedSet.has(patient.id),
+    const engagedPatients = patients.filter(
+      (patient) => teamState.patientStatusMap.has(patient.id) && !assignedSet.has(patient.id),
     );
-    const monitoredSet = new Set(monitoredPatients.map((patient) => patient.id));
-    const unassignedPatients = patients.filter((patient) => !assignedSet.has(patient.id) && !monitoredSet.has(patient.id));
+    const engagedSet = new Set(engagedPatients.map((patient) => patient.id));
+    const unassignedPatients = patients.filter((patient) => !assignedSet.has(patient.id) && !engagedSet.has(patient.id));
 
     return {
       teamId,
       eventId: 'demo-event',
       latestStatus: teamState.latestStatus,
       activePatientId: teamState.activePatientId,
-      assignedPatients: assignedPatients.map((patient) => ({
-        id: patient.id,
-        incidentId: patient.incidentId ?? null,
-        status: patient.status,
-        presentingComplaint: patient.presentingComplaint ?? null,
-        updatedAt: patient.updatedAt,
-        lat: null,
-        lon: null,
-        positionText: null,
-      })),
-      monitoredPatients: monitoredPatients.map((patient) => ({
-        id: patient.id,
-        incidentId: patient.incidentId ?? null,
-        status: patient.status,
-        presentingComplaint: patient.presentingComplaint ?? null,
-        updatedAt: patient.updatedAt,
-        lat: null,
-        lon: null,
-        positionText: null,
-      })),
-      unassignedPatients: unassignedPatients.map((patient) => ({
-        id: patient.id,
-        incidentId: patient.incidentId ?? null,
-        status: patient.status,
-        presentingComplaint: patient.presentingComplaint ?? null,
-        updatedAt: patient.updatedAt,
-        lat: null,
-        lon: null,
-        positionText: null,
-      })),
+      assignedPatients: assignedPatients.map((patient) =>
+        mapWorkspacePatient(patient, teamState.patientStatusMap.get(patient.id) ?? null),
+      ),
+      monitoredPatients: engagedPatients.map((patient) =>
+        mapWorkspacePatient(patient, teamState.patientStatusMap.get(patient.id) ?? null),
+      ),
+      unassignedPatients: unassignedPatients.map((patient) =>
+        mapWorkspacePatient(patient, null),
+      ),
       updatedAt: new Date().toISOString(),
     };
+  },
+
+  getTeamPatientEngagements: (_eventId: string): { engagements: Record<string, Array<{ teamId: string; teamName: string; patientId: string; status: string }>> } => {
+    const result: Record<string, Array<{ teamId: string; teamName: string; patientId: string; status: string }>> = {};
+    for (const [teamId, state] of Object.entries(teamWorkspaceState)) {
+      const teamName = DEMO_TEAMS.find((t) => t.id === teamId)?.name ?? teamId;
+      for (const [patientId, status] of state.patientStatusMap.entries()) {
+        if (!result[patientId]) result[patientId] = [];
+        result[patientId]!.push({ teamId, teamName, patientId, status });
+      }
+    }
+    return { engagements: result };
   },
 
   getSickbayIncoming: (_eventId: string) => {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { TeamPatientEngagement } from '../../lib/types';
 
 export type FieldTriageStatus = 'red' | 'yellow' | 'green' | 'black';
 
@@ -25,6 +26,7 @@ interface PatientManagementPanelProps {
   creating: boolean;
   onCreatePatient: (data: Omit<FieldPatient, 'id' | 'updatedAt'>) => Promise<void>;
   onUpdatePatient: (id: string, data: Partial<Omit<FieldPatient, 'id' | 'updatedAt'>>) => Promise<void>;
+  teamPatientEngagements?: Record<string, TeamPatientEngagement[]>;
 }
 
 const TRIAGE_COLORS: Record<FieldTriageStatus, { bg: string; text: string; label: string }> = {
@@ -35,6 +37,31 @@ const TRIAGE_COLORS: Record<FieldTriageStatus, { bg: string; text: string; label
 };
 
 const TRIAGE_ORDER: FieldTriageStatus[] = ['red', 'yellow', 'green', 'black'];
+
+const TEAM_PATIENT_STATUS_CONFIG = {
+  en_route_to_patient: { label: 'På vei', bg: '#fef3c7', text: '#92400e', border: '#f59e0b' },
+  transporting:        { label: 'Transporterer', bg: '#dbeafe', text: '#1e40af', border: '#3b82f6' },
+  monitoring:          { label: 'Overvåker', bg: '#dcfce7', text: '#166534', border: '#22c55e' },
+} as const;
+
+function TeamEngagementBadge({ status }: { status: string }) {
+  const cfg = TEAM_PATIENT_STATUS_CONFIG[status as keyof typeof TEAM_PATIENT_STATUS_CONFIG];
+  if (!cfg) return null;
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '1px 7px',
+      borderRadius: 'var(--radius-full)',
+      background: cfg.bg,
+      color: cfg.text,
+      border: `1px solid ${cfg.border}`,
+      fontSize: 'var(--text-xs)',
+      fontWeight: 600,
+    }}>
+      {cfg.label}
+    </span>
+  );
+}
 
 function TriageBadge({ status }: { status: FieldTriageStatus | null }) {
   if (!status) return null;
@@ -58,10 +85,12 @@ function TriageBadge({ status }: { status: FieldTriageStatus | null }) {
 function PatientRow({
   patient,
   teams,
+  engagements,
   onUpdate,
 }: {
   patient: FieldPatient;
   teams: Team[];
+  engagements: TeamPatientEngagement[];
   onUpdate: (data: Partial<Omit<FieldPatient, 'id' | 'updatedAt'>>) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -133,6 +162,21 @@ function PatientRow({
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
             Oppdatert {new Date(patient.updatedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
           </div>
+          {engagements.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Lag responderer
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                {engagements.map((eng) => (
+                  <div key={eng.teamId} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, minWidth: 80 }}>{eng.teamName}</span>
+                    <TeamEngagementBadge status={eng.status} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <button
             onClick={() => { setDraft({ ...patient }); setEditing(true); }}
             style={{
@@ -262,6 +306,7 @@ export function PatientManagementPanel({
   creating,
   onCreatePatient,
   onUpdatePatient,
+  teamPatientEngagements = {},
 }: PatientManagementPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [newLabel, setNewLabel] = useState('');
@@ -405,6 +450,7 @@ export function PatientManagementPanel({
             key={p.id}
             patient={p}
             teams={teams}
+            engagements={teamPatientEngagements[p.id] ?? []}
             onUpdate={(data) => onUpdatePatient(p.id, data)}
           />
         ))}
