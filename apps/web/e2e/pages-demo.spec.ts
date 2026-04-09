@@ -27,9 +27,9 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   }
   await page.getByRole('button', { name: /Koble til arrangement/i }).click();
   await page.waitForURL('**/firstaid');
-  await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
   await selectTeamIfNeeded(page);
   const workspace = page.getByTestId('firstaid-patient-workspace');
+  await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
   await expect(workspace).toBeVisible();
   await expect(workspace.getByText(/^Egne pasienter/)).toBeVisible();
   await expect(workspace.getByText(/^Utildelte pasienter/)).toBeVisible();
