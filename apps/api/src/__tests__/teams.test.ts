@@ -6,7 +6,6 @@ import {
   getCoordinatorToken,
   getEventId,
   getFirstAiderToken,
-  getSickbayToken,
 } from './helpers.js';
 
 let app: FastifyInstance;
@@ -76,31 +75,16 @@ describe('POST /api/teams/:teamId/actions', () => {
 describe('GET /api/teams/:teamId/workspace', () => {
   it('returns assigned, monitored and unassigned patient buckets', async () => {
     const firstAiderToken = getFirstAiderToken(eventId);
-    const sickbayToken = getSickbayToken(eventId);
+    const coordinatorToken = getCoordinatorToken();
 
-    const incidentRes = await app.inject({
-      method: 'POST',
-      url: '/api/incidents',
-      headers: { authorization: `Bearer ${firstAiderToken}` },
-      payload: {
-        eventId,
-        teamId,
-        type: 'medical',
-        location: { lat: 59.91, lng: 10.75 },
-      },
-    });
-    expect(incidentRes.statusCode).toBe(201);
-    const incidentId = incidentRes.json().incident.id as string;
-
+    // Create patient directly assigned to the team (via /api/events/:id/patients with assignedTeamId)
     const assignedPatientRes = await app.inject({
       method: 'POST',
-      url: '/api/patients',
-      headers: { authorization: `Bearer ${sickbayToken}` },
+      url: `/api/events/${eventId}/patients`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
       payload: {
-        eventId,
-        incidentId,
-        ageGroup: 'adult',
-        presentingComplaint: 'Smerter',
+        label: 'Testpasient-tildelt',
+        assignedTeamId: teamId,
       },
     });
     expect(assignedPatientRes.statusCode).toBe(201);
@@ -108,12 +92,10 @@ describe('GET /api/teams/:teamId/workspace', () => {
 
     const unassignedPatientRes = await app.inject({
       method: 'POST',
-      url: '/api/patients',
-      headers: { authorization: `Bearer ${sickbayToken}` },
+      url: `/api/events/${eventId}/patients`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
       payload: {
-        eventId,
-        ageGroup: 'adult',
-        presentingComplaint: 'Kontroll',
+        label: 'Testpasient-utildelt',
       },
     });
     expect(unassignedPatientRes.statusCode).toBe(201);

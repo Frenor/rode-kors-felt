@@ -85,36 +85,23 @@ describe('GET /api/events/:id/stats', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body).toHaveProperty('totalIncidents');
-    expect(body).toHaveProperty('activeIncidents');
-    expect(body).toHaveProperty('resolvedIncidents');
     expect(body).toHaveProperty('totalPatients');
-    expect(typeof body.totalIncidents).toBe('number');
-    expect(typeof body.activeIncidents).toBe('number');
-    expect(typeof body.resolvedIncidents).toBe('number');
+    expect(body).toHaveProperty('patientsIncoming');
+    expect(body).toHaveProperty('patientsInTreatment');
+    expect(body).toHaveProperty('patientsObservation');
+    expect(body).toHaveProperty('discharged');
+    expect(body).toHaveProperty('transferred');
     expect(typeof body.totalPatients).toBe('number');
+    expect(typeof body.patientsIncoming).toBe('number');
+    expect(typeof body.patientsInTreatment).toBe('number');
+    expect(typeof body.discharged).toBe('number');
+    expect(typeof body.transferred).toBe('number');
   });
 });
 
-describe('MCI deactivation summary', () => {
-  it('generates downloadable MCI handover summary when deactivated', async () => {
+describe('Event debrief report', () => {
+  it('downloads a markdown report for the event', async () => {
     const token = getCoordinatorToken();
-
-    const incidentRes = await app.inject({
-      method: 'POST',
-      url: '/api/incidents',
-      headers: { authorization: `Bearer ${token}` },
-      payload: {
-        eventId,
-        type: 'medical',
-        source: 'coordinator',
-        teamId: null,
-        location: { lat: 59.9139, lng: 10.7522 },
-        triageTag: 'immediate',
-      },
-    });
-    expect(incidentRes.statusCode).toBe(201);
-    const incidentId = incidentRes.json().incident.id as string;
 
     const patientRes = await app.inject({
       method: 'POST',
@@ -122,40 +109,22 @@ describe('MCI deactivation summary', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         eventId,
-        incidentId,
         ageGroup: 'adult',
         presentingComplaint: 'Brystsmerter',
       },
     });
     expect(patientRes.statusCode).toBe(201);
 
-    const activateRes = await app.inject({
-      method: 'PATCH',
-      url: `/api/events/${eventId}/mci`,
-      headers: { authorization: `Bearer ${token}` },
-      payload: { mciActive: true },
-    });
-    expect(activateRes.statusCode).toBe(200);
-
-    const deactivateRes = await app.inject({
-      method: 'PATCH',
-      url: `/api/events/${eventId}/mci`,
-      headers: { authorization: `Bearer ${token}` },
-      payload: { mciActive: false },
-    });
-    expect(deactivateRes.statusCode).toBe(200);
-
-    const summaryRes = await app.inject({
+    const reportRes = await app.inject({
       method: 'GET',
-      url: `/api/events/${eventId}/mci-summary`,
+      url: `/api/events/${eventId}/report`,
       headers: { authorization: `Bearer ${token}` },
     });
 
-    expect(summaryRes.statusCode).toBe(200);
-    expect(summaryRes.headers['content-type']).toContain('text/html');
-    expect(summaryRes.headers['content-disposition']).toContain('rkf-mci-overlevering-');
-    expect(summaryRes.body).toContain('MCI-overlevering');
-    expect(summaryRes.body).toContain('Umiddelbar (rød)');
+    expect(reportRes.statusCode).toBe(200);
+    expect(reportRes.headers['content-type']).toContain('text/markdown');
+    expect(reportRes.headers['content-disposition']).toContain('rkf-rapport-');
+    expect(reportRes.body).toContain('Pasienter totalt');
   });
 });
 
@@ -263,21 +232,20 @@ describe('GET /api/events/:id/sickbay-incoming', () => {
     const firstAiderToken = getFirstAiderToken(eventId);
     const coordinatorToken = getCoordinatorToken();
 
-    const incidentRes = await app.inject({
+    // Create a patient assigned to the team so needs_assistance applies
+    const patientRes = await app.inject({
       method: 'POST',
-      url: '/api/incidents',
-      headers: { authorization: `Bearer ${firstAiderToken}` },
+      url: `/api/events/${eventId}/patients`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
       payload: {
-        eventId,
-        teamId,
-        type: 'medical',
-        location: { lat: 59.9139, lng: 10.7522 },
-        triageTag: 'immediate',
+        label: 'Innkommende-testpasient',
+        assignedTeamId: teamId,
       },
     });
-    expect(incidentRes.statusCode).toBe(201);
-    const incidentId = incidentRes.json().incident.id as string;
+    expect(patientRes.statusCode).toBe(201);
+    const patientId = patientRes.json().patient.id as string;
 
+    // Set team status to needs_assistance
     const statusActionRes = await app.inject({
       method: 'POST',
       url: `/api/teams/${teamId}/actions`,
@@ -299,10 +267,9 @@ describe('GET /api/events/:id/sickbay-incoming', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(Array.isArray(body.items)).toBe(true);
-    const item = body.items.find((row: { incidentId: string }) => row.incidentId === incidentId);
+    const item = body.items.find((row: { patientId: string }) => row.patientId === patientId);
     expect(item).toBeTruthy();
     expect(item.critical).toBe(true);
     expect(item.criticalReasons).toContain('needs_assistance');
-    expect(item.criticalReasons).toContain('triage_immediate');
   });
 });
