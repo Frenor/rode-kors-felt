@@ -67,7 +67,11 @@ export function FirstAiderDashboard() {
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [perPatientVitalsError, setPerPatientVitalsError] = useState<Record<string, string>>({});
   const [perPatientNoteError, setPerPatientNoteError] = useState<Record<string, string>>({});
-
+  const [perPatientSummaryEdit, setPerPatientSummaryEdit] = useState<Record<string, string>>({});
+  const [perPatientSummaryError, setPerPatientSummaryError] = useState<Record<string, string>>({});
+  const [perPatientPosEdit, setPerPatientPosEdit] = useState<Record<string, string>>({});
+  const [perPatientPosError, setPerPatientPosError] = useState<Record<string, string>>({});
+  const [geoLookupLoading, setGeoLookupLoading] = useState<Record<string, boolean>>({});
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
 
@@ -412,11 +416,56 @@ export function FirstAiderDashboard() {
     setExpandedPatientId((prev) => (prev === patientId ? null : patientId));
   };
 
+  const handleSaveSummary = async (patientId: string, currentLabel: string) => {
+    const text = (perPatientSummaryEdit[patientId] ?? currentLabel).trim();
+    try {
+      await api.updatePatient(patientId, { label: text || null });
+      setPerPatientSummaryError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    } catch {
+      setPerPatientSummaryError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre — prøv igjen.' }));
+    }
+  };
+
+  const handleSavePosition = async (patientId: string) => {
+    const text = (perPatientPosEdit[patientId] ?? '').trim();
+    try {
+      await api.updatePatient(patientId, { positionText: text || null });
+      setPerPatientPosError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    } catch {
+      setPerPatientPosError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre posisjon — prøv igjen.' }));
+    }
+  };
+
+  const handleGeoLookup = async (patientId: string, lat: number, lon: number) => {
+    setGeoLookupLoading((prev) => ({ ...prev, [patientId]: true }));
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+        { headers: { 'Accept-Language': 'nb' } },
+      );
+      if (res.ok) {
+        const data = await res.json() as { display_name?: string };
+        const addr = data.display_name ?? `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+        setPerPatientPosEdit((prev) => ({ ...prev, [patientId]: addr }));
+      }
+    } catch {
+      // ignore — user can type manually
+    } finally {
+      setGeoLookupLoading((prev) => ({ ...prev, [patientId]: false }));
+    }
+  };
+
   const TRIAGE_STYLE: Record<string, { bg: string; text: string; label: string }> = {
     red:    { bg: '#fee2e2', text: '#b91c1c', label: 'Rød' },
     yellow: { bg: '#fef9c3', text: '#854d0e', label: 'Gul' },
     green:  { bg: '#dcfce7', text: '#166534', label: 'Grønn' },
     black:  { bg: '#f1f5f9', text: '#1e293b', label: 'Svart' },
+  };
+
+  const PATIENT_STATUS_STYLE: Record<string, { label: string; bg: string; color: string }> = {
+    en_route_to_patient: { label: 'På vei',       bg: '#fef3c7', color: '#92400e' },
+    transporting:        { label: 'Transporterer', bg: '#dbeafe', color: '#1e40af' },
+    monitoring:          { label: 'Overvåker',     bg: '#dcfce7', color: '#166534' },
   };
 
   const selectedTeamData = useMemo(() => teams.find((t) => t.id === selectedTeam) ?? null, [teams, selectedTeam]);
@@ -610,15 +659,18 @@ export function FirstAiderDashboard() {
               const isExpanded = expandedPatientId === p.id;
               const highlighted = highlightedFields.get(p.id);
               const isFlashing = highlighted && highlighted.size > 0;
-              const triageStatus = (p as any).triageStatus as string | undefined;
+              const triageStatus = (p as TeamWorkspacePatient).triageStatus ?? ((p as any).triageStatus as string | undefined);
               const triage = triageStatus ? TRIAGE_STYLE[triageStatus] : null;
-              const label = (p as any).label || (p as TeamWorkspacePatient).presentingComplaint || `Pasient ${p.id.slice(0, 8)}`;
+              const label = (p as TeamWorkspacePatient).label || (p as any).label || (p as TeamWorkspacePatient).presentingComplaint || `Pasient ${p.id.slice(0, 8)}`;
               const posText = (p as TeamWorkspacePatient).positionText;
               const lat = (p as TeamWorkspacePatient).lat;
               const lon = (p as TeamWorkspacePatient).lon;
               const pKey = eventId && selectedTeam ? `${eventId}:${selectedTeam}:${p.id}` : null;
               const patientLocalStatus = pKey ? (patientStatusMap[pKey] ?? null) : null;
               const patientServerStatus = (p as TeamWorkspacePatient).teamPatientStatus ?? null;
+              const activePatientStatus = patientLocalStatus ?? patientServerStatus;
+              const statusStyle = activePatientStatus ? PATIENT_STATUS_STYLE[activePatientStatus] : null;
+              const hasPosition = posText || (lat != null && lon != null);
               return (
                 <div
                   key={p.id}
@@ -635,31 +687,48 @@ export function FirstAiderDashboard() {
                     style={{
                       width: '100%', minHeight: 'var(--touch-min)',
                       padding: 'var(--space-3)',
-                      display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 'var(--space-1)',
                       background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
                     }}
                   >
-                    {triage && (
-                      <span style={{
-                        flexShrink: 0, display: 'inline-block', padding: '2px 10px',
-                        borderRadius: 'var(--radius-full)',
-                        background: triage.bg, color: triage.text,
-                        fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                      }}>
-                        {triage.label}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      {triage && (
+                        <span style={{
+                          flexShrink: 0, display: 'inline-block', padding: '2px 10px',
+                          borderRadius: 'var(--radius-full)',
+                          background: triage.bg, color: triage.text,
+                          fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
+                        }}>
+                          {triage.label}
+                        </span>
+                      )}
+                      {statusStyle && (
+                        <span style={{
+                          flexShrink: 0, display: 'inline-block', padding: '2px 10px',
+                          borderRadius: 'var(--radius-full)',
+                          background: statusStyle.bg, color: statusStyle.color,
+                          fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
+                        }}>
+                          {statusStyle.label}
+                        </span>
+                      )}
+                      <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', flex: 1, textAlign: 'left' }}>
+                        {label}
+                      </span>
+                      {isFlashing && (
+                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-status-warning)', flexShrink: 0 }}>
+                          Oppdatert
+                        </span>
+                      )}
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flexShrink: 0 }}>
+                        {isExpanded ? '▲' : '▼'}
+                      </span>
+                    </div>
+                    {hasPosition && (
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', textAlign: 'left' }}>
+                        {'📍 '}{posText ?? `${lat!.toFixed(4)}, ${lon!.toFixed(4)}`}
                       </span>
                     )}
-                    <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', flex: 1, textAlign: 'left' }}>
-                      {label}
-                    </span>
-                    {isFlashing && (
-                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-status-warning)', flexShrink: 0 }}>
-                        Oppdatert
-                      </span>
-                    )}
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flexShrink: 0 }}>
-                      {isExpanded ? '▲' : '▼'}
-                    </span>
                   </button>
 
                   {/* Expanded content */}
@@ -669,14 +738,99 @@ export function FirstAiderDashboard() {
                       borderTop: '1px solid var(--color-border)',
                       display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
                     }}>
-                      {/* Position + navigate */}
-                      <PatientLocationRow
-                        positionText={posText ?? null}
-                        lat={lat ?? null}
-                        lon={lon ?? null}
-                        gpsPosition={gpsPosition}
-                        onNavigate={openMapsNav}
-                      />
+                      {/* Editable summary */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Sammendrag
+                        </div>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                          <input
+                            value={perPatientSummaryEdit[p.id] ?? label}
+                            onChange={(e) => setPerPatientSummaryEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            placeholder="Sammendrag…"
+                            style={{
+                              flex: 1, padding: 'var(--space-2)',
+                              borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                              background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                              fontSize: 'var(--text-sm)', fontFamily: 'inherit',
+                            }}
+                          />
+                          <button
+                            onClick={() => handleSaveSummary(p.id, label)}
+                            className="touch-target"
+                            style={{
+                              minHeight: 44, padding: '0 var(--space-3)',
+                              borderRadius: 'var(--radius-sm)', border: 'none',
+                              background: 'var(--color-brand)', color: 'white',
+                              fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                            }}
+                          >
+                            Lagre
+                          </button>
+                        </div>
+                        {perPatientSummaryError[p.id] && (
+                          <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}>
+                            {perPatientSummaryError[p.id]}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Position + navigate + editable positionText */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                        <PatientLocationRow
+                          positionText={posText ?? null}
+                          lat={lat ?? null}
+                          lon={lon ?? null}
+                          gpsPosition={gpsPosition}
+                          onNavigate={openMapsNav}
+                        />
+                        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                          <input
+                            value={perPatientPosEdit[p.id] ?? (posText ?? '')}
+                            onChange={(e) => setPerPatientPosEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            placeholder="Tekstlig posisjon (f.eks. Sektor B, rad 5)…"
+                            style={{
+                              flex: 1, padding: 'var(--space-2)',
+                              borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                              background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                              fontSize: 'var(--text-sm)', fontFamily: 'inherit',
+                            }}
+                          />
+                          {lat != null && lon != null && (
+                            <button
+                              onClick={() => handleGeoLookup(p.id, lat!, lon!)}
+                              disabled={geoLookupLoading[p.id]}
+                              className="touch-target"
+                              style={{
+                                minHeight: 44, padding: '0 var(--space-3)',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px solid var(--color-brand)',
+                                background: 'transparent', color: 'var(--color-brand)',
+                                fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                              }}
+                            >
+                              {geoLookupLoading[p.id] ? '…' : '📍 Slå opp'}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleSavePosition(p.id)}
+                            className="touch-target"
+                            style={{
+                              minHeight: 44, padding: '0 var(--space-3)',
+                              borderRadius: 'var(--radius-sm)', border: 'none',
+                              background: 'var(--color-brand)', color: 'white',
+                              fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                            }}
+                          >
+                            Lagre
+                          </button>
+                        </div>
+                        {perPatientPosError[p.id] && (
+                          <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}>
+                            {perPatientPosError[p.id]}
+                          </div>
+                        )}
+                      </div>
 
                       {/* Vitals entry */}
                       <VitalsEntryForm

@@ -341,6 +341,8 @@ export const TeamWorkspacePatient = z.object({
   incidentId: z.string().uuid().nullable(),
   status: PatientStatus,
   presentingComplaint: z.string().nullable(),
+  label: z.string().nullable().optional(),
+  triageStatus: z.enum(['green', 'yellow', 'red', 'black']).nullable().optional(),
   updatedAt: z.string().datetime(),
   lat: z.number().nullable(),
   lon: z.number().nullable(),

@@ -403,6 +403,8 @@ export async function teamRoutes(app: FastifyInstance) {
       incidentId: row.incidentId ?? null,
       status: row.status,
       presentingComplaint: row.presentingComplaint ?? null,
+      label: row.label ?? null,
+      triageStatus: row.triageStatus ?? null,
       updatedAt: row.updatedAt.toISOString(),
       lat: row.lat ?? null,
       lon: row.lon ?? null,
