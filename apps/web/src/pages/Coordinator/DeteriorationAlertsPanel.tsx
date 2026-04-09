@@ -6,14 +6,12 @@ import type { DeteriorationAlert } from '../../lib/types';
 
 interface DeteriorationAlertsPanelProps {
   alerts: DeteriorationAlert[];
-  onEscalate: (patientId: string) => void;
   onDismiss: (patientId: string) => void;
   onDismissAll: () => void;
 }
 
 export function DeteriorationAlertsPanel({
   alerts,
-  onEscalate,
   onDismiss,
   onDismissAll,
 }: DeteriorationAlertsPanelProps) {
@@ -59,26 +57,13 @@ export function DeteriorationAlertsPanel({
                 +{alert.ratePerHour.toFixed(1)} poeng/t
               </span>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-              <button
-                onClick={() => onEscalate(alert.patientId)}
-                aria-label={`Eskalér pasient med NEWS2 ${alert.news2Score}`}
-                style={{
-                  fontSize: 'var(--text-xs)', padding: '4px 10px', borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--color-status-critical)', background: 'transparent',
-                  color: 'var(--color-status-critical)', cursor: 'pointer', fontWeight: 600,
-                }}
-              >
-                Eskalér
-              </button>
-              <button
-                onClick={() => onDismiss(alert.patientId)}
-                aria-label={`Fjern varsel for pasient med NEWS2 ${alert.news2Score}`}
-                style={{ fontSize: 'var(--text-xs)', background: 'transparent', border: 'none', color: 'var(--color-text-subtle)', cursor: 'pointer' }}
-              >
-                <span aria-hidden="true">✕</span>
-              </button>
-            </div>
+            <button
+              onClick={() => onDismiss(alert.patientId)}
+              aria-label={`Fjern varsel for pasient med NEWS2 ${alert.news2Score}`}
+              style={{ fontSize: 'var(--text-xs)', background: 'transparent', border: 'none', color: 'var(--color-text-subtle)', cursor: 'pointer' }}
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
           </div>
         ))}
       </div>

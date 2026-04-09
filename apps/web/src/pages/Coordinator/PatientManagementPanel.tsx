@@ -24,6 +24,7 @@ interface PatientManagementPanelProps {
   patients: FieldPatient[];
   teams: Team[];
   creating: boolean;
+  loading?: boolean;
   onCreatePatient: (data: Omit<FieldPatient, 'id' | 'updatedAt'>) => Promise<void>;
   onUpdatePatient: (id: string, data: Partial<Omit<FieldPatient, 'id' | 'updatedAt'>>) => Promise<void>;
   teamPatientEngagements?: Record<string, TeamPatientEngagement[]>;
@@ -304,6 +305,7 @@ export function PatientManagementPanel({
   patients,
   teams,
   creating,
+  loading,
   onCreatePatient,
   onUpdatePatient,
   teamPatientEngagements = {},
@@ -440,7 +442,12 @@ export function PatientManagementPanel({
       )}
 
       <div style={{ padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-        {sortedPatients.length === 0 && (
+        {loading && sortedPatients.length === 0 && (
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', textAlign: 'center', padding: 'var(--space-4) 0' }}>
+            Laster pasienter…
+          </p>
+        )}
+        {!loading && sortedPatients.length === 0 && (
           <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', textAlign: 'center', padding: 'var(--space-4) 0' }}>
             Ingen pasienter registrert
           </p>

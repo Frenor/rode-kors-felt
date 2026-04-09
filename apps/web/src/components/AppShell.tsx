@@ -1,14 +1,12 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { useAuthStore } from '../stores/auth';
 import { useWsStore } from '../stores/ws';
-import { useOfflineSync } from '../hooks/useOfflineSync';
 import { useOfflineTeamSync } from '../hooks/useOfflineTeamSync';
 import { useNavigate } from 'react-router-dom';
 import { ToastContainer } from './ToastContainer';
 import { DemoBanner } from './DemoBanner';
 import { DemoWalkthrough } from './DemoWalkthrough';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { offlineQueueDb } from '../lib/offline-queue';
 import { offlineFirstAiderQueueDb } from '../lib/offline-firstaid-queue';
 
 const IS_DEMO =
@@ -29,15 +27,9 @@ export function AppShell({ children }: AppShellProps) {
   const [theme, setTheme] = useState<'auto' | 'light' | 'dark'>('auto');
 
   // Offline sync for first aiders
-  useOfflineSync();
   useOfflineTeamSync();
 
   // Pending queue count for banner
-  const queueCount = useLiveQuery(
-    () => offlineQueueDb.queue.where('status').equals('pending').count(),
-    [],
-    0,
-  );
   const firstAidQueueCounts = useLiveQuery(
     async () => {
       const [pending, syncing, failed] = await Promise.all([
@@ -266,7 +258,6 @@ export function AppShell({ children }: AppShellProps) {
           }}
         >
           Frakoblet — hendelser lagres lokalt og synkroniseres når tilkoblingen er tilbake
-          {queueCount > 0 && ` (${queueCount} i kø)`}
         </div>
       )}
 

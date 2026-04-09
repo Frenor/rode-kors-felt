@@ -260,7 +260,6 @@ export async function patientRoutes(app: FastifyInstance) {
       .insert(patients)
       .values({
         eventId,
-        incidentId: body.incidentId,
         ageGroup: body.ageGroup,
         gender: normalizedGender,
         fullName,
@@ -273,14 +272,6 @@ export async function patientRoutes(app: FastifyInstance) {
         diagnosisFlags: [],
       })
       .returning();
-
-    // If linked to incident, update incident status
-    if (body.incidentId) {
-      await db
-        .update(incidents)
-        .set({ status: 'at_sickbay', updatedAt: new Date() })
-        .where(eq(incidents.id, body.incidentId));
-    }
 
     return reply.code(201).send({ patient: mapPatient(patient!) });
   });

@@ -1,12 +1,9 @@
 /**
- * CoordinatorHeader — top bar with title, rapport, MCI toggle and API-key button.
+ * CoordinatorHeader — top bar with title, rapport and API-key button.
  */
 
 interface CoordinatorHeaderProps {
   onDownloadReport: () => void;
-  mciActive: boolean;
-  togglingMci: boolean;
-  onToggleMci: () => void;
   hasKey: boolean;
   isDemo: boolean;
   onOpenApiKey: () => void;
@@ -15,9 +12,6 @@ interface CoordinatorHeaderProps {
 
 export function CoordinatorHeader({
   onDownloadReport,
-  mciActive,
-  togglingMci,
-  onToggleMci,
   hasKey,
   isDemo,
   onOpenApiKey,
@@ -49,21 +43,6 @@ export function CoordinatorHeader({
           }}
         >
           ⬇ Rapport
-        </button>
-
-        <button
-          onClick={onToggleMci}
-          disabled={togglingMci}
-          style={{
-            padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)',
-            border: `2px solid ${mciActive ? 'var(--color-status-critical)' : 'var(--color-border)'}`,
-            background: mciActive ? 'var(--color-status-critical)' : 'transparent',
-            color: mciActive ? 'white' : 'var(--color-text-muted)',
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
-            cursor: 'pointer',
-          }}
-        >
-          {mciActive ? '⚠ MCI AKTIV' : 'MCI-modus'}
         </button>
 
         {!isDemo && (

@@ -8,7 +8,7 @@ import {
   type TeamPatientStatus,
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
-import { actionEvents, incidents, patients, teams } from '../db/schema.js';
+import { actionEvents, patients, teams } from '../db/schema.js';
 import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { mapAction } from './action-events.js';
 import { broadcast } from './ws.js';
@@ -178,7 +178,6 @@ export async function teamRoutes(app: FastifyInstance) {
     const actionPayload: Record<string, unknown> = { clientActionId: payload.clientActionId };
     if (payload.type === 'team.status_set') {
       actionPayload.status = payload.status;
-      actionPayload.incidentId = payload.incidentId ?? null;
       actionPayload.note = payload.note ?? null;
     } else if (payload.type === 'team.patient_status_set') {
       actionPayload.patientId = payload.patientId;
@@ -323,8 +322,7 @@ export async function teamRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
-    const [incidentRows, patientRows, teamActionRows] = await Promise.all([
-      db.select().from(incidents).where(and(eq(incidents.eventId, team.eventId), eq(incidents.teamId, team.id))).orderBy(desc(incidents.updatedAt)),
+    const [patientRows, teamActionRows] = await Promise.all([
       db.select().from(patients).where(eq(patients.eventId, team.eventId)).orderBy(desc(patients.updatedAt)),
       db
         .select()
@@ -337,9 +335,8 @@ export async function teamRoutes(app: FastifyInstance) {
         .orderBy(desc(actionEvents.createdAt)),
     ]);
 
-    // ── Assigned patients (via incident→team assignment) ──────────────────────
-    const assignedIncidentIds = new Set(incidentRows.map((row) => row.id));
-    const assignedPatients = patientRows.filter((row) => row.incidentId && assignedIncidentIds.has(row.incidentId));
+    // ── Assigned patients (directly assigned to this team) ────────────────────
+    const assignedPatients = patientRows.filter((row) => row.assignedTeamId === team.id);
     const assignedSet = new Set(assignedPatients.map((row) => row.id));
 
     // ── Team operational status ───────────────────────────────────────────────
@@ -400,7 +397,6 @@ export async function teamRoutes(app: FastifyInstance) {
 
     const toWorkspacePatient = (row: typeof assignedPatients[number]) => ({
       id: row.id,
-      incidentId: row.incidentId ?? null,
       status: row.status,
       presentingComplaint: row.presentingComplaint ?? null,
       label: row.label ?? null,

@@ -3,7 +3,6 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { actionEvents, patients } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
-import { broadcast } from './ws.js';
 
 type AuthUser = {
   sub?: string;

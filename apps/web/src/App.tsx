@@ -3,7 +3,6 @@ import { useAuthStore } from './stores/auth';
 import { LoginPage } from './pages/LoginPage';
 import { CodeEntryPage } from './pages/CodeEntryPage';
 import { FirstAiderDashboard } from './pages/FirstAiderDashboard';
-import { IncidentForm } from './pages/IncidentForm';
 import { SickBayDashboard } from './pages/SickBayDashboard';
 import { CoordinatorDashboard } from './pages/CoordinatorDashboard';
 import { AppShell } from './components/AppShell';
@@ -51,13 +50,6 @@ export default function App() {
           <ProtectedRoute allowedRoles={['first_aider']}>
             <AppShell>
               <FirstAiderDashboard />
-            </AppShell>
-          </ProtectedRoute>
-        } />
-        <Route path="/firstaid/incident" element={
-          <ProtectedRoute allowedRoles={['first_aider']}>
-            <AppShell>
-              <IncidentForm />
             </AppShell>
           </ProtectedRoute>
         } />

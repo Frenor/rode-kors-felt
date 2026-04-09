@@ -513,7 +513,6 @@ export async function eventRoutes(app: FastifyInstance) {
 
 function mapEvent(row: typeof events.$inferSelect) {
   const {
-    mciSummaryHtml: _mciSummaryHtml,
     mapRuntimeConfig: _mapRuntimeConfig,
     indoorLayout: _indoorLayout,
     ...rest
