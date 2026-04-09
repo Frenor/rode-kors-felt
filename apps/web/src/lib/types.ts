@@ -204,6 +204,8 @@ export interface TeamWorkspacePatient {
   incidentId: string | null;
   status: string;
   presentingComplaint: string | null;
+  label?: string | null;
+  triageStatus?: 'green' | 'yellow' | 'red' | 'black' | null;
   updatedAt: string;
   lat: number | null;
   lon: number | null;
