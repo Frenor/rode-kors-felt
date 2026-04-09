@@ -32,18 +32,11 @@ export const teamOperationalStatusEnum = pgEnum('team_operational_status', [
   'needs_assistance',
   'unavailable',
 ]);
-export const incidentTypeEnum = pgEnum('incident_type', ['medical', 'trauma', 'psychiatric', 'other']);
-export const incidentStatusEnum = pgEnum('incident_status', [
-  'dispatched', 'on_scene', 'transporting', 'at_sickbay', 'handed_over', 'resolved',
-]);
-export const incidentSourceEnum = pgEnum('incident_source', ['field', 'coordinator']);
 export const acvpuEnum = pgEnum('acvpu_level', ['alert', 'confused', 'voice', 'pain', 'unresponsive']);
 export const patientStatusEnum = pgEnum('patient_status', [
   'incoming', 'in_treatment', 'observation', 'discharged', 'transferred',
 ]);
-export const escalationPathEnum = pgEnum('escalation_path', ['path_a_rk_ambulance', 'path_b_113']);
-export const triageTagEnum = pgEnum('triage_tag', ['immediate', 'delayed', 'minor', 'expectant']);
-export const actionEntityTypeEnum = pgEnum('action_entity_type', ['incident', 'patient', 'event', 'team']);
+export const actionEntityTypeEnum = pgEnum('action_entity_type', ['patient', 'event', 'team']);
 
 // ─── Tables ──────────────────────────────────────────────────────
 
@@ -53,13 +46,6 @@ export const events = pgTable('events', {
   startDate: timestamp('start_date', { withTimezone: true }).notNull(),
   endDate: timestamp('end_date', { withTimezone: true }).notNull(),
   status: eventStatusEnum('status').notNull().default('draft'),
-  mciActive: boolean('mci_active').notNull().default(false),
-  mciActivatedAt: timestamp('mci_activated_at', { withTimezone: true }),
-  mciActivatedBy: varchar('mci_activated_by', { length: 255 }),
-  mciSectors: text('mci_sectors').array().notNull().default([]),
-  mciSummaryHtml: text('mci_summary_html'),
-  mciSummaryGeneratedAt: timestamp('mci_summary_generated_at', { withTimezone: true }),
-  mciSummaryGeneratedBy: varchar('mci_summary_generated_by', { length: 255 }),
   indoorLayout: jsonb('indoor_layout').$type<{
     venueId: string;
     venueName?: string;
@@ -123,47 +109,10 @@ export const accessCodes = pgTable('access_codes', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 });
 
-export const incidents = pgTable('incidents', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
-  teamId: uuid('team_id').references(() => teams.id),
-  type: incidentTypeEnum('type').notNull(),
-  status: incidentStatusEnum('status').notNull().default('on_scene'),
-  source: incidentSourceEnum('source').notNull().default('field'),
-  location: jsonb('location').$type<{ lat: number; lng: number }>().notNull(),
-  acvpu: acvpuEnum('acvpu'),
-  vitals: jsonb('vitals').$type<Record<string, unknown>>(),
-  mist: jsonb('mist').$type<Record<string, unknown>>(),
-  sbar: jsonb('sbar').$type<Record<string, unknown>>(),
-  locationContext: jsonb('location_context').$type<{
-    mode: 'gps' | 'indoor_zone';
-    venueId?: string;
-    floorId?: string;
-    zoneId?: string;
-    zoneLabel?: string;
-  }>(),
-  triageTag: triageTagEnum('triage_tag'),
-  notes: text('notes'),
-  clientId: varchar('client_id', { length: 255 }).unique(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const escalations = pgTable('escalations', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  incidentId: uuid('incident_id').notNull().references(() => incidents.id, { onDelete: 'cascade' }),
-  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
-  path: escalationPathEnum('path').notNull(),
-  reason: text('reason'),
-  raisedAt: timestamp('raised_at', { withTimezone: true }).notNull().defaultNow(),
-  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
-  raisedBy: varchar('raised_by', { length: 255 }).notNull(),
-});
-
 export const patients = pgTable('patients', {
   id: uuid('id').primaryKey().defaultRandom(),
   eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
-  incidentId: uuid('incident_id').references(() => incidents.id),
+  incidentId: uuid('incident_id'),
   status: patientStatusEnum('status').notNull().default('incoming'),
   fullName: varchar('full_name', { length: 200 }),
   birthDate: date('birth_date'),

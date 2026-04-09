@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
-import { calculateNEWS2 } from '@rkf/shared-types';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { actionEvents, escalations, events, incidents, patients, teams, vitalReadings } from '../db/schema.js';
+import { events, patients, teams, actionEvents } from '../db/schema.js';
 import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 
