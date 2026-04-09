@@ -7,7 +7,7 @@ import {
   CreateAmkCallLogRequest,
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
-import { actionEvents, incidents, medicationRecords, patients, teams, vitalReadings } from '../db/schema.js';
+import { actionEvents, medicationRecords, patients, teams, vitalReadings } from '../db/schema.js';
 import { canAccessEvent, requireAuth } from '../middleware/auth.js';
 import { applyPatientAction, getActionHistoryByEntityIds } from './action-events.js';
 import { broadcast } from './ws.js';

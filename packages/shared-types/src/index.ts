@@ -15,24 +15,8 @@ import { z } from 'zod';
 export const UserRole = z.enum(['admin', 'coordinator', 'sickbay', 'first_aider']);
 export type UserRole = z.infer<typeof UserRole>;
 
-export const IncidentType = z.enum(['medical', 'trauma', 'psychiatric', 'other']);
-export type IncidentType = z.infer<typeof IncidentType>;
-
 export const AcvpuLevel = z.enum(['alert', 'confused', 'voice', 'pain', 'unresponsive']);
 export type AcvpuLevel = z.infer<typeof AcvpuLevel>;
-
-export const IncidentStatus = z.enum([
-  'dispatched',
-  'on_scene',
-  'transporting',
-  'at_sickbay',
-  'handed_over',
-  'resolved',
-]);
-export type IncidentStatus = z.infer<typeof IncidentStatus>;
-
-export const IncidentSource = z.enum(['field', 'coordinator']);
-export type IncidentSource = z.infer<typeof IncidentSource>;
 
 export const PatientStatus = z.enum([
   'incoming',
@@ -67,16 +51,6 @@ export const TeamPatientStatus = z.enum([
   'monitoring',
 ]);
 export type TeamPatientStatus = z.infer<typeof TeamPatientStatus>;
-
-export const EscalationType = z.enum(['auto', 'manual']);
-export type EscalationType = z.infer<typeof EscalationType>;
-
-export const EscalationPath = z.enum(['path_a_rk_ambulance', 'path_b_113']);
-export type EscalationPath = z.infer<typeof EscalationPath>;
-
-// START triage tags (Mass Casualty Incident)
-export const TriageTag = z.enum(['immediate', 'delayed', 'minor', 'expectant']);
-export type TriageTag = z.infer<typeof TriageTag>;
 
 // ═══════════════════════════════════════════════
 // CORE SCHEMAS
@@ -169,39 +143,9 @@ export const SbarForm = z.object({
 });
 export type SbarForm = z.infer<typeof SbarForm>;
 
-export const Incident = z.object({
-  id: z.string().uuid(),
-  eventId: z.string().uuid(),
-  teamId: z.string().uuid().optional(),
-  type: IncidentType,
-  status: IncidentStatus,
-  source: IncidentSource.default('field'),
-  location: GeoPoint,
-  locationContext: IndoorLocationContext.optional(),
-  acvpu: AcvpuLevel.optional(),
-  vitals: VitalReading.optional(),
-  mist: MistForm.optional(),
-  sbar: SbarForm.optional(),
-  triageTag: TriageTag.optional(),
-  notes: z.string().max(2000).optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  syncedAt: z.string().datetime().optional(),
-});
-export type Incident = z.infer<typeof Incident>;
-
-export const MciMode = z.object({
-  mciActive: z.boolean(),
-  mciActivatedAt: z.string().datetime().optional(),
-  mciActivatedBy: z.string().optional(),
-  mciSectors: z.array(z.string()).default([]),
-});
-export type MciMode = z.infer<typeof MciMode>;
-
 export const Patient = z.object({
   id: z.string().uuid(),
   eventId: z.string().uuid(),
-  incidentId: z.string().uuid().optional(),
   status: PatientStatus,
   ageGroup: z.enum(['child', 'adolescent', 'adult', 'elderly']).optional(),
   presentingComplaint: z.string().max(500).optional(),
@@ -283,23 +227,9 @@ export const AuthResponse = z.object({
   eventId: z.string().uuid().optional(),
 });
 
-export const CreateIncidentRequest = Incident.pick({
-  type: true,
-  location: true,
-  locationContext: true,
-  acvpu: true,
-  notes: true,
-  source: true,
-}).extend({
-  teamId: z.string().uuid().optional(),
-  vitals: VitalReading.omit({ id: true, patientId: true, timestamp: true }).optional(),
-  mist: MistForm.optional(),
-});
-
 export const TeamStatusSetActionRequest = z.object({
   type: z.literal('team.status_set'),
   status: TeamOperationalStatus,
-  incidentId: z.string().uuid().optional(),
   note: z.string().max(500).optional(),
   clientActionId: z.string().uuid(),
 });
@@ -338,7 +268,6 @@ export type TeamActionRequest = z.infer<typeof TeamActionRequest>;
 
 export const TeamWorkspacePatient = z.object({
   id: z.string().uuid(),
-  incidentId: z.string().uuid().nullable(),
   status: PatientStatus,
   presentingComplaint: z.string().nullable(),
   label: z.string().nullable().optional(),
@@ -380,17 +309,16 @@ export type TeamPatientEngagementsResponse = z.infer<typeof TeamPatientEngagemen
 
 export const SickbayIncomingCriticalReason = z.enum([
   'needs_assistance',
-  'open_escalation',
-  'triage_immediate',
+  'triage_red',
   'news2_high',
 ]);
 export type SickbayIncomingCriticalReason = z.infer<typeof SickbayIncomingCriticalReason>;
 
 export const SickbayIncomingItem = z.object({
-  incidentId: z.string().uuid(),
-  patientId: z.string().uuid().nullable(),
+  patientId: z.string().uuid(),
+  label: z.string().nullable(),
+  triageStatus: z.enum(['green', 'yellow', 'red', 'black']).nullable(),
   teamId: z.string().uuid().nullable(),
-  progressStage: z.string(),
   critical: z.boolean(),
   criticalReasons: z.array(SickbayIncomingCriticalReason),
   latestVitals: VitalReading.partial().nullable().optional(),
@@ -398,7 +326,6 @@ export const SickbayIncomingItem = z.object({
     total: z.number(),
     alertLevel: z.enum(['routine', 'low', 'medium', 'high']),
   }).nullable().optional(),
-  triageTag: TriageTag.nullable().optional(),
   updatedAt: z.string().datetime(),
 });
 export type SickbayIncomingItem = z.infer<typeof SickbayIncomingItem>;
@@ -407,28 +334,6 @@ export const SickbayIncomingResponse = z.object({
   items: z.array(SickbayIncomingItem),
 });
 export type SickbayIncomingResponse = z.infer<typeof SickbayIncomingResponse>;
-
-// ═══════════════════════════════════════════════
-// ESCALATION SCHEMAS
-// ═══════════════════════════════════════════════
-
-export const Escalation = z.object({
-  id: z.string().uuid(),
-  incidentId: z.string().uuid(),
-  eventId: z.string().uuid(),
-  path: EscalationPath,
-  reason: z.string().max(500).optional(),
-  raisedAt: z.string().datetime(),
-  resolvedAt: z.string().datetime().optional(),
-  raisedBy: z.string(),
-});
-export type Escalation = z.infer<typeof Escalation>;
-
-export const CreateEscalationRequest = z.object({
-  path: EscalationPath,
-  reason: z.string().max(500).optional(),
-});
-export type CreateEscalationRequest = z.infer<typeof CreateEscalationRequest>;
 
 // ═══════════════════════════════════════════════
 // WEBSOCKET PAYLOAD SCHEMAS
@@ -445,21 +350,15 @@ export type TeamPositionPayload = z.infer<typeof TeamPositionPayload>;
 // ═══════════════════════════════════════════════
 
 export const WsEventType = z.enum([
-  'incident.created',
-  'incident.updated',
   'team.position',
-  'team.sector_assigned',
   'team.status_changed',
   'team.session_changed',
   'team.message',
-  'escalation.raised',
-  'escalation.resolved',
+  'team.transport_changed',
   'patient.created',
   'patient.updated',
   'patient.vitals_updated',
   'patient.deterioration_alert',
-  'event.mci_activated',
-  'event.mci_deactivated',
 ]);
 
 export const TeamMessage = z.object({
