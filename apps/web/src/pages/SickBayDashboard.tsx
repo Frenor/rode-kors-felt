@@ -427,7 +427,8 @@ export function SickBayDashboard() {
             </span>
           </div>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flexShrink: 0 }}>
-            {expanded ? 'Skjul detaljer ▲' : 'Vis detaljer ▼'}
+            {expanded ? 'Skjul detaljer' : 'Vis detaljer'}
+            <span aria-hidden="true">{expanded ? ' ▲' : ' ▼'}</span>
           </span>
         </button>
 
