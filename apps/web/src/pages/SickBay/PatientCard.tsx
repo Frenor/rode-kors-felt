@@ -153,6 +153,8 @@ export function PatientCard({
   const trend = (patient.vitalsHistory?.length ?? 0) >= 2
     ? calculateNEWS2Trend(patient.vitalsHistory)
     : null;
+  // Arrow represents patient health direction, not the raw score direction.
+  // Rising NEWS2 = worsening condition → show ↓; falling NEWS2 = improving → show ↑.
   const trendArrow = trend?.direction === 'rising' ? '↓'
     : trend?.direction === 'falling' ? '↑'
     : trend ? '→' : null;
@@ -249,6 +251,7 @@ export function PatientCard({
   }, [patient.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // Same rationale as placement useEffect above — patient.id only.
     setDemoForm({
       fullName: patient.fullName ?? '',
       gender: (patient.gender as DemographicsFormShape['gender']) ?? '',
@@ -258,6 +261,7 @@ export function PatientCard({
   }, [patient.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // Same rationale as placement useEffect above — patient.id only.
     setComplaintDraft(patient.presentingComplaint ?? '');
   }, [patient.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
