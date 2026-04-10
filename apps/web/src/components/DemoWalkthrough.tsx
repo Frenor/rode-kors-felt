@@ -15,8 +15,8 @@ const STEPS = {
   ],
   first_aider: [
     'Velg patrulje Alpha fra listen oppe til høyre',
-    'Klikk "Meld hendelse" for å rapportere en ny hendelse',
-    'Fyll ut skjemaet steg for steg — GPS-posisjon fanges automatisk',
+    'Klikk "Meld pasient" for å registrere en ny pasient',
+    'Velg triagefarge og type skade — GPS-posisjon fanges automatisk',
   ],
 } satisfies Record<'coordinator' | 'sickbay' | 'first_aider', string[]>;
 
