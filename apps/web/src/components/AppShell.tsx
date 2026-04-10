@@ -323,7 +323,7 @@ export function AppShell({ children }: AppShellProps) {
         style={{
           flex: 1,
           padding: 'var(--space-4)',
-          maxWidth: role === 'coordinator' ? '1440px' : '768px',
+          maxWidth: (role === 'coordinator' || role === 'sickbay') ? '1440px' : '768px',
           width: '100%',
           margin: '0 auto',
         }}
