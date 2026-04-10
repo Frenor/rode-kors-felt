@@ -399,26 +399,67 @@ export function PatientCard({
         onOpenAmk={onOpenAmk}
       />
 
-      <button
-        type="button"
-        className="touch-target"
-        onClick={handleTogglePlacementEditor}
-        style={{
-          minHeight: 32,
-          borderRadius: 'var(--radius-full)',
-          border: '1px solid var(--color-border)',
-          background: 'transparent',
-          color: 'var(--color-text)',
-          fontWeight: 600,
-          fontSize: 'var(--text-xs)',
-          fontFamily: 'var(--font-mono)',
-          cursor: 'pointer',
-          alignSelf: 'flex-start',
-          padding: '0 var(--space-3)',
-        }}
-      >
-        {showPlacementEditor ? 'Lukk plassering' : 'Oppdater plassering'}
-      </button>
+      {/* Compact editor bar — 3 pills in one row */}
+      <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={handleTogglePlacementEditor}
+          style={{
+            minHeight: 28,
+            padding: '0 var(--space-2)',
+            borderRadius: 'var(--radius-full)',
+            border: `1px solid ${showPlacementEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
+            background: showPlacementEditor ? 'var(--color-brand-dim)' : 'transparent',
+            fontSize: 'var(--text-xs)',
+            fontFamily: 'var(--font-mono)',
+            color: showPlacementEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {showPlacementEditor ? '✕ Plassering' : '✎ Plassering'}
+        </button>
+
+        <button
+          type="button"
+          data-testid={`demographics-editor-toggle-${patient.id}`}
+          onClick={handleToggleDemographicsEditor}
+          style={{
+            minHeight: 28,
+            padding: '0 var(--space-2)',
+            borderRadius: 'var(--radius-full)',
+            border: `1px solid ${showDemographicsEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
+            background: showDemographicsEditor ? 'var(--color-brand-dim)' : 'transparent',
+            fontSize: 'var(--text-xs)',
+            fontFamily: 'var(--font-mono)',
+            color: showDemographicsEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {showDemographicsEditor ? '✕ Pasientinfo' : '✎ Pasientinfo'}
+        </button>
+
+        <button
+          type="button"
+          data-testid={`complaint-editor-toggle-${patient.id}`}
+          onClick={handleToggleComplaintEditor}
+          style={{
+            minHeight: 28,
+            padding: '0 var(--space-2)',
+            borderRadius: 'var(--radius-full)',
+            border: `1px solid ${showComplaintEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
+            background: showComplaintEditor ? 'var(--color-brand-dim)' : 'transparent',
+            fontSize: 'var(--text-xs)',
+            fontFamily: 'var(--font-mono)',
+            color: showComplaintEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {showComplaintEditor ? '✕ Beskrivelse' : '✎ Beskrivelse'}
+        </button>
+      </div>
 
       {showPlacementEditor && (
           <div
@@ -493,28 +534,6 @@ export function PatientCard({
             </button>
           </div>
         )}
-
-      <button
-        type="button"
-        className="touch-target"
-        data-testid={`demographics-editor-toggle-${patient.id}`}
-        onClick={handleToggleDemographicsEditor}
-        style={{
-          minHeight: 32,
-          borderRadius: 'var(--radius-full)',
-          border: '1px solid var(--color-border)',
-          background: 'transparent',
-          color: 'var(--color-text)',
-          fontWeight: 600,
-          fontSize: 'var(--text-xs)',
-          fontFamily: 'var(--font-mono)',
-          cursor: 'pointer',
-          alignSelf: 'flex-start',
-          padding: '0 var(--space-3)',
-        }}
-      >
-        {showDemographicsEditor ? 'Lukk pasientinfo' : 'Rediger pasientinfo'}
-      </button>
 
       {showDemographicsEditor && (
         <div
@@ -640,28 +659,6 @@ export function PatientCard({
           </button>
         </div>
       )}
-
-      <button
-        type="button"
-        className="touch-target"
-        data-testid={`complaint-editor-toggle-${patient.id}`}
-        onClick={handleToggleComplaintEditor}
-        style={{
-          minHeight: 32,
-          borderRadius: 'var(--radius-full)',
-          border: '1px solid var(--color-border)',
-          background: 'transparent',
-          color: 'var(--color-text)',
-          fontWeight: 600,
-          fontSize: 'var(--text-xs)',
-          fontFamily: 'var(--font-mono)',
-          cursor: 'pointer',
-          alignSelf: 'flex-start',
-          padding: '0 var(--space-3)',
-        }}
-      >
-        {showComplaintEditor ? 'Lukk problemstilling' : 'Rediger problemstilling'}
-      </button>
 
       {showComplaintEditor && (
         <div
