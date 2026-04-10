@@ -80,6 +80,12 @@ export function FirstAiderDashboard() {
   const [reportDescription, setReportDescription] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [reportError, setReportError] = useState('');
+  // Close patient flow
+  const [closingPatientId, setClosingPatientId] = useState<string | null>(null);
+  const [perPatientCloseNote, setPerPatientCloseNote] = useState<Record<string, string>>({});
+  const [perPatientCloseError, setPerPatientCloseError] = useState<Record<string, string>>({});
+  const [closedPatients, setClosedPatients] = useState<Array<{ id: string; label: string; closedAt: string; note: string }>>([]);
+  const [showClosedPatients, setShowClosedPatients] = useState(false);
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
 
@@ -350,11 +356,12 @@ export function FirstAiderDashboard() {
     }
   };
 
-  const setTeamOperationalStatus = async (status: TeamOperationalStatus) => {
+  const setTeamOperationalStatus = async (status: TeamOperationalStatus, note?: string) => {
     if (!eventId || !selectedTeam) return;
     const payload = {
       type: 'team.status_set' as const,
       status,
+      note,
       clientActionId: crypto.randomUUID(),
     };
     setTeamStatus(eventId, selectedTeam, status);
@@ -482,6 +489,30 @@ export function FirstAiderDashboard() {
     }
   };
 
+  const handleClosePatient = async (patientId: string, patientLabel: string) => {
+    const note = (perPatientCloseNote[patientId] ?? '').trim();
+    if (!note) {
+      setPerPatientCloseError((prev) => ({ ...prev, [patientId]: 'Skriv inn årsak for avslutning.' }));
+      return;
+    }
+    const author = selectedTeamData?.name ?? 'Ukjent lag';
+    try {
+      await api.addPatientNote(patientId, `Avsluttet: ${note}`, author);
+      setAssignedPatients((prev) => prev.filter((p) => p.id !== patientId));
+      clearPatientStatus(eventId!, selectedTeam!, patientId);
+      setClosedPatients((prev) => [
+        { id: patientId, label: patientLabel, closedAt: new Date().toISOString(), note },
+        ...prev,
+      ]);
+      setClosingPatientId(null);
+      setPerPatientCloseNote((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      setPerPatientCloseError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      if (expandedPatientId === patientId) setExpandedPatientId(null);
+    } catch {
+      setPerPatientCloseError((prev) => ({ ...prev, [patientId]: 'Kunne ikke avslutte pasient — prøv igjen.' }));
+    }
+  };
+
   const TRIAGE_STYLE: Record<string, { bg: string; text: string; label: string }> = {
     red:    { bg: '#fee2e2', text: '#b91c1c', label: 'Rød' },
     yellow: { bg: '#fef9c3', text: '#854d0e', label: 'Gul' },
@@ -517,10 +548,11 @@ export function FirstAiderDashboard() {
 
   const filteredUnassigned = useMemo(() => {
     const assignedIds = new Set(combinedAssignedPatients.map((p) => p.id));
+    const closedIds = new Set(closedPatients.map((p) => p.id));
     return (workspace?.unassignedPatients ?? []).filter(
-      (p) => !wsRemovedPatientIds.has(p.id) && !assignedIds.has(p.id),
+      (p) => !wsRemovedPatientIds.has(p.id) && !assignedIds.has(p.id) && !closedIds.has(p.id),
     );
-  }, [workspace?.unassignedPatients, wsRemovedPatientIds, combinedAssignedPatients]);
+  }, [workspace?.unassignedPatients, wsRemovedPatientIds, combinedAssignedPatients, closedPatients]);
 
   const INJURY_TYPES = [
     'Brudd / skade',
@@ -988,7 +1020,7 @@ export function FirstAiderDashboard() {
 
                       {/* Trenger bistand */}
                       <button
-                        onClick={async () => { await setTeamOperationalStatus('needs_assistance'); setExpandedPatientId(null); }}
+                        onClick={async () => { await setTeamOperationalStatus('needs_assistance', label); setExpandedPatientId(null); }}
                         className="touch-target"
                         style={{
                           minHeight: 'var(--touch-min)', width: '100%',
@@ -1000,6 +1032,77 @@ export function FirstAiderDashboard() {
                       >
                         ! Trenger bistand
                       </button>
+
+                      {/* Avslutt pasient */}
+                      {closingPatientId !== p.id ? (
+                        <button
+                          onClick={() => setClosingPatientId(p.id)}
+                          className="touch-target"
+                          style={{
+                            minHeight: 'var(--touch-min)', width: '100%',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--color-border)',
+                            background: 'transparent',
+                            color: 'var(--color-text-subtle)',
+                            fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
+                          }}
+                        >
+                          Avslutt pasient
+                        </button>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Årsak for avslutning
+                          </div>
+                          <textarea
+                            value={perPatientCloseNote[p.id] ?? ''}
+                            onChange={(e) => setPerPatientCloseNote((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            placeholder="Beskriv årsaken til at pasienten avsluttes…"
+                            rows={2}
+                            style={{
+                              width: '100%', padding: 'var(--space-2)',
+                              borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                              background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                              fontSize: 'var(--text-sm)', resize: 'none', fontFamily: 'inherit',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                          {perPatientCloseError[p.id] && (
+                            <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}>
+                              {perPatientCloseError[p.id]}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                            <button
+                              onClick={() => handleClosePatient(p.id, label)}
+                              disabled={!(perPatientCloseNote[p.id] ?? '').trim()}
+                              className="touch-target"
+                              style={{
+                                flex: 1, minHeight: 44, padding: '0 var(--space-3)',
+                                borderRadius: 'var(--radius-sm)', border: 'none',
+                                background: (perPatientCloseNote[p.id] ?? '').trim() ? 'var(--color-status-critical)' : 'var(--color-border)',
+                                color: (perPatientCloseNote[p.id] ?? '').trim() ? 'white' : 'var(--color-text-subtle)',
+                                fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
+                              }}
+                            >
+                              Bekreft avslutning
+                            </button>
+                            <button
+                              onClick={() => { setClosingPatientId(null); setPerPatientCloseError((prev) => { const n = { ...prev }; delete n[p.id]; return n; }); }}
+                              className="touch-target"
+                              style={{
+                                minHeight: 44, padding: '0 var(--space-3)',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px solid var(--color-border)',
+                                background: 'transparent', color: 'var(--color-text-subtle)',
+                                fontSize: 'var(--text-sm)', cursor: 'pointer',
+                              }}
+                            >
+                              Avbryt
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1133,6 +1236,53 @@ export function FirstAiderDashboard() {
                 </div>
               )}
             </>
+
+            {/* Avsluttede pasienter */}
+            {closedPatients.length > 0 && (
+              <div style={{ marginTop: 'var(--space-2)' }}>
+                <button
+                  onClick={() => setShowClosedPatients((v) => !v)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: 'var(--space-2) var(--space-3)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-surface-sunken)',
+                    color: 'var(--color-text-muted)',
+                    fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
+                    textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span>Avsluttede pasienter ({closedPatients.length})</span>
+                  <span>{showClosedPatients ? '▲' : '▼'}</span>
+                </button>
+                {showClosedPatients && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                    {closedPatients.map((cp) => (
+                      <div key={cp.id} style={{
+                        padding: 'var(--space-2) var(--space-3)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-surface-sunken)',
+                        fontSize: 'var(--text-xs)',
+                        display: 'flex', flexDirection: 'column', gap: 'var(--space-1)',
+                      }}>
+                        <div style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                          {cp.label}
+                        </div>
+                        <div style={{ color: 'var(--color-text-subtle)' }}>
+                          {cp.note}
+                        </div>
+                        <div style={{ color: 'var(--color-text-subtle)', fontFamily: 'var(--font-mono)' }}>
+                          {new Date(cp.closedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {workspaceLoading && (
               <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
