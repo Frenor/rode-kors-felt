@@ -14,13 +14,14 @@ import { useAuthStore } from '../stores/auth';
 const INTERVAL_MS = 30_000;
 const DEVICE_ID_KEY = 'rkf-device-id';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function getOrCreateDeviceId(): string {
   try {
-    let id = localStorage.getItem(DEVICE_ID_KEY);
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem(DEVICE_ID_KEY, id);
-    }
+    const stored = localStorage.getItem(DEVICE_ID_KEY);
+    if (stored && UUID_RE.test(stored)) return stored;
+    const id = crypto.randomUUID();
+    localStorage.setItem(DEVICE_ID_KEY, id);
     return id;
   } catch {
     return crypto.randomUUID();

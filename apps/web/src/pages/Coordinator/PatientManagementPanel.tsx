@@ -107,6 +107,7 @@ function PatientRow({
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
   const [showCloseMenu, setShowCloseMenu] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
 
   const handleSave = async () => {
     setSaving(true);
@@ -127,8 +128,11 @@ function PatientRow({
     if (!onClose) return;
     setClosing(true);
     setShowCloseMenu(false);
+    setCloseError(null);
     try {
       await onClose(reason);
+    } catch {
+      setCloseError('Lukking feilet. Prøv igjen.');
     } finally {
       setClosing(false);
     }
@@ -223,6 +227,7 @@ function PatientRow({
                 <button
                   onClick={() => setShowCloseMenu((v) => !v)}
                   disabled={closing}
+                  aria-expanded={showCloseMenu}
                   style={{
                     padding: '4px 12px', borderRadius: 'var(--radius-sm)',
                     border: '1px solid #dc2626', background: 'transparent',
@@ -256,6 +261,9 @@ function PatientRow({
               </div>
             )}
           </div>
+          {closeError && (
+            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: '#dc2626' }}>{closeError}</p>
+          )}
         </div>
       )}
 
@@ -563,6 +571,7 @@ export function PatientManagementPanel({
             <button
               type="button"
               onClick={() => setShowClosed((v) => !v)}
+              aria-expanded={showClosed}
               style={{
                 width: '100%', padding: '6px var(--space-3)', background: 'none', border: '1px solid var(--color-border)',
                 borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--text-xs)',

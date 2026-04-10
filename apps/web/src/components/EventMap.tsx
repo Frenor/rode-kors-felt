@@ -43,6 +43,15 @@ interface EventMapProps {
 
 // ── Utility helpers ────────────────────────────────────────────────────────────
 
+function esc(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function haversineMeters(p1: GeoPoint, p2: GeoPoint): number {
   const R = 6_371_000;
   const φ1 = (p1.lat * Math.PI) / 180;
@@ -127,7 +136,7 @@ function getTeamMarkers(
 // ── Leaflet icons ──────────────────────────────────────────────────────────────
 
 function makeTeamIcon(label: string): L.DivIcon {
-  const safe = label.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const safe = esc(label);
   return L.divIcon({
     html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">
       <div style="white-space:nowrap;background:rgba(30,58,138,.92);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.35);margin-bottom:2px;font-family:sans-serif">${safe}</div>
@@ -413,10 +422,10 @@ function MapLibreCanvas({
       const el = document.createElement('div');
       el.style.cssText =
         'display:flex;flex-direction:column;align-items:center;pointer-events:auto';
-      el.innerHTML = `<div style="white-space:nowrap;background:rgba(30,58,138,.92);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.35);margin-bottom:2px;font-family:sans-serif">${m.label.replace(/</g, '&lt;')}</div><div style="width:14px;height:14px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`;
+      el.innerHTML = `<div style="white-space:nowrap;background:rgba(30,58,138,.92);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.35);margin-bottom:2px;font-family:sans-serif">${esc(m.label)}</div><div style="width:14px;height:14px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`;
 
       const popup = new runtime.Popup({ offset: 20 }).setHTML(
-        `<div style="font-family:sans-serif;font-size:12px;font-weight:700">${m.label.replace(/</g, '&lt;')}</div>`,
+        `<div style="font-family:sans-serif;font-size:12px;font-weight:700">${esc(m.label)}</div>`,
       );
       const marker = new runtime.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([m.lng, m.lat])
@@ -447,7 +456,7 @@ function MapLibreCanvas({
       el.innerHTML = `<div style="width:28px;height:22px;border-radius:4px;background:${bg};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:monospace">P${p.seqNum}</div><div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${bg}"></div>`;
 
       const popup = new runtime.Popup({ offset: 20 }).setHTML(
-        `<div style="font-family:sans-serif;font-size:12px;font-weight:700">${(p.label ?? `Pasient ${p.seqNum}`).replace(/</g, '&lt;')}</div>`,
+        `<div style="font-family:sans-serif;font-size:12px;font-weight:700">${esc(p.label ?? `Pasient ${p.seqNum}`)}</div>`,
       );
       const marker = new runtime.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([p.lon, p.lat])
