@@ -289,6 +289,7 @@ export async function patientRoutes(app: FastifyInstance) {
       birthDate: string;
       placementType: string | null;
       placementNumber: string | null;
+      presentingComplaint: string | null;
       // Field patient fields
       label: string | null;
       triageStatus: string | null;
@@ -370,6 +371,7 @@ export async function patientRoutes(app: FastifyInstance) {
       ['assignedTeamId', existing.assignedTeamId, body.assignedTeamId],
       ['assignedClinician', existing.assignedClinician, body.assignedClinician],
       ['fullName', existing.fullName, body.fullName !== undefined ? body.fullName?.trim() : undefined],
+      ['presentingComplaint', existing.presentingComplaint, body.presentingComplaint],
     ];
     for (const [field, oldVal, newVal] of fieldChecks) {
       if (newVal !== undefined && newVal !== oldVal) changedFields.push(field);
@@ -381,6 +383,7 @@ export async function patientRoutes(app: FastifyInstance) {
         ...(body.assignedClinician !== undefined && { assignedClinician: body.assignedClinician }),
         ...(body.diagnosisFlags && { diagnosisFlags: body.diagnosisFlags }),
         ...(body.fullName !== undefined && { fullName: body.fullName.trim() }),
+        ...(body.presentingComplaint !== undefined && { presentingComplaint: body.presentingComplaint }),
         ...(normalizedGender !== undefined && { gender: normalizedGender }),
         ...(parsedBirthDate && { birthDate: parsedBirthDate }),
         ...(parsedPlacement && {

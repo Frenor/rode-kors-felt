@@ -55,6 +55,7 @@ interface PatientCardProps {
   onOpenAmk: () => void;
   onUpdatePlacement: (placementType: 'chair' | 'bed' | '', placementNumber: string) => void;
   onUpdateDemographics: (form: DemographicsFormShape) => void;
+  onUpdateComplaint: (complaint: string) => void;
 }
 
 export function PatientCard({
@@ -68,6 +69,7 @@ export function PatientCard({
   onOpenAmk,
   onUpdatePlacement,
   onUpdateDemographics,
+  onUpdateComplaint,
 }: PatientCardProps) {
   const [showVitals, setShowVitals] = useState(false);
   const [showMeds, setShowMeds] = useState(false);
@@ -75,6 +77,8 @@ export function PatientCard({
   const [showHistory, setShowHistory] = useState(false);
   const [showPlacementEditor, setShowPlacementEditor] = useState(false);
   const [showDemographicsEditor, setShowDemographicsEditor] = useState(false);
+  const [showComplaintEditor, setShowComplaintEditor] = useState(false);
+  const [complaintDraft, setComplaintDraft] = useState(patient.presentingComplaint ?? '');
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
 
@@ -149,8 +153,8 @@ export function PatientCard({
   const trend = (patient.vitalsHistory?.length ?? 0) >= 2
     ? calculateNEWS2Trend(patient.vitalsHistory)
     : null;
-  const trendArrow = trend?.direction === 'rising' ? '↑'
-    : trend?.direction === 'falling' ? '↓'
+  const trendArrow = trend?.direction === 'rising' ? '↓'
+    : trend?.direction === 'falling' ? '↑'
     : trend ? '→' : null;
   const trendColor = trend?.direction === 'rising' ? 'var(--color-status-critical)'
     : trend?.direction === 'falling' ? 'var(--color-status-ok)'
@@ -222,6 +226,15 @@ export function PatientCard({
       ageGroup: patient.ageGroup ?? 'adult',
     });
   }, [patient.id, patient.fullName, patient.gender, patient.birthDate, patient.ageGroup]);
+
+  useEffect(() => {
+    setComplaintDraft(patient.presentingComplaint ?? '');
+  }, [patient.id, patient.presentingComplaint]);
+
+  const handleSubmitComplaint = () => {
+    onUpdateComplaint(complaintDraft.trim());
+    setShowComplaintEditor(false);
+  };
 
   return (
     <article
@@ -590,6 +603,81 @@ export function PatientCard({
             }}
           >
             Lagre pasientinfo
+          </button>
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="touch-target"
+        data-testid={`complaint-editor-toggle-${patient.id}`}
+        onClick={() => setShowComplaintEditor((prev) => !prev)}
+        style={{
+          minHeight: 32,
+          borderRadius: 'var(--radius-full)',
+          border: '1px solid var(--color-border)',
+          background: 'transparent',
+          color: 'var(--color-text)',
+          fontWeight: 600,
+          fontSize: 'var(--text-xs)',
+          fontFamily: 'var(--font-mono)',
+          cursor: 'pointer',
+          alignSelf: 'flex-start',
+          padding: '0 var(--space-3)',
+        }}
+      >
+        {showComplaintEditor ? 'Lukk problemstilling' : 'Rediger problemstilling'}
+      </button>
+
+      {showComplaintEditor && (
+        <div
+          data-testid={`complaint-editor-${patient.id}`}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-3)',
+            background: 'var(--color-surface-sunken)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-3)',
+          }}
+        >
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            Problemstilling / kort beskrivelse
+            <input
+              type="text"
+              value={complaintDraft}
+              onChange={(e) => setComplaintDraft(e.target.value)}
+              placeholder="F.eks. Smerter i brystet"
+              style={{
+                height: 'var(--touch-min)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-input-border)',
+                background: 'var(--color-input-bg)',
+                color: 'var(--color-text)',
+                padding: '0 var(--space-2)',
+                fontSize: 'var(--text-sm)',
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            className="touch-target"
+            onClick={handleSubmitComplaint}
+            style={{
+              minHeight: 'var(--touch-min)',
+              borderRadius: 'var(--radius-md)',
+              border: 'none',
+              background: 'var(--color-brand)',
+              color: '#fff',
+              fontWeight: 700,
+              padding: '0 var(--space-3)',
+              cursor: 'pointer',
+              alignSelf: 'flex-start',
+            }}
+          >
+            Lagre problemstilling
           </button>
         </div>
       )}
