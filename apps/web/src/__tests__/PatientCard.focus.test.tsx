@@ -158,7 +158,7 @@ describe('PatientCard editor — focus and draft stability on parent re-render',
     const { rerender } = render(<PatientCard {...defaultProps(patient)} />);
 
     // Open the placement editor
-    fireEvent.click(screen.getByText('Oppdater plassering'));
+    fireEvent.click(screen.getByText('✎ Plassering'));
 
     const input = screen.getByPlaceholderText('F.eks. 12') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '7' } });

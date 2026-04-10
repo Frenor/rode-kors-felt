@@ -34,14 +34,14 @@ export function PatientActionButtons({
     whiteSpace: 'nowrap' as const,
   });
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+    <div className="patient-action-grid">
         <button
           onClick={onOpenAmk}
           data-testid="patient-ring-113"
           className="touch-target"
           style={{
             minHeight: 36,
-            padding: '0 var(--space-3)',
+            padding: '0 var(--space-2)',
             borderRadius: 'var(--radius-full)',
             border: '1px solid var(--color-status-critical)',
             background: 'var(--color-status-critical)',
@@ -56,11 +56,11 @@ export function PatientActionButtons({
         </button>
 
         <button onClick={onToggleVitals} className="touch-target" style={quickActionStyle(showVitals)}>
-          {showVitals ? 'Lukk vitale' : 'Vitale tegn'}
+          {showVitals ? 'Lukk vitale' : 'Vitale'}
         </button>
 
         <button onClick={onToggleMedication} className="touch-target" style={quickActionStyle(showMeds)}>
-          {showMeds ? 'Lukk medik.' : 'Medikament'}
+          {showMeds ? 'Lukk medik.' : 'Medik.'}
         </button>
 
         <button onClick={onToggleNote} className="touch-target" style={quickActionStyle(showNote)}>

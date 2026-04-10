@@ -138,3 +138,39 @@ body {
     animation: none;
   }
 }
+
+/* Action buttons grid — 3 cols; collapses to 2 cols on very narrow viewports */
+.patient-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+@media (max-width: 399px) {
+  .patient-action-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   SICKBAY GROUPS GRID — 1/2/3 responsive columns
+   Each status-group occupies exactly one column.
+═══════════════════════════════════════════════ */
+.sickbay-groups-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+@media (min-width: 640px) {
+  .sickbay-groups-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .sickbay-groups-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

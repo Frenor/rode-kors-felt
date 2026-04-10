@@ -412,7 +412,7 @@ export function SickBayDashboard() {
           Ingen pasienter registrert
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <div className="sickbay-groups-grid">
           {groupedPatients.map((group) => {
             const isClosedGroup = CLOSED_STATUSES.has(group.status as PatientStatus);
             return (
@@ -447,10 +447,9 @@ export function SickBayDashboard() {
 
                 <div
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 25rem), 1fr))',
+                    display: 'flex',
+                    flexDirection: 'column',
                     gap: 'var(--space-3)',
-                    alignItems: 'start',
                   }}
                 >
                   {group.patients.map((patient) => {
