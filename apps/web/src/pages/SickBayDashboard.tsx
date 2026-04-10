@@ -312,6 +312,12 @@ export function SickBayDashboard() {
     fetchPatients();
   };
 
+  const handleUpdateComplaint = async (patientId: string, complaint: string) => {
+    await api.updatePatient(patientId, { presentingComplaint: complaint || null });
+    addToast({ message: 'Problemstilling oppdatert', level: 'info', autoDismissMs: 3_000 });
+    fetchPatients();
+  };
+
   const handleStartTreatment = async (patientId: string) => {
     const patient = patients.find((row) => row.id === patientId);
     await handleStatusChange(patientId, 'in_treatment', patient);
@@ -463,6 +469,7 @@ export function SickBayDashboard() {
                           onUpdatePlacement={(placementType, placementNumber) =>
                             handleUpdatePlacement(patient.id, placementType, placementNumber)}
                           onUpdateDemographics={(form) => handleUpdateDemographics(patient.id, form)}
+                          onUpdateComplaint={(complaint) => handleUpdateComplaint(patient.id, complaint)}
                         />
                       );
                     }
@@ -547,6 +554,7 @@ export function SickBayDashboard() {
                               onUpdatePlacement={(placementType, placementNumber) =>
                                 handleUpdatePlacement(patient.id, placementType, placementNumber)}
                               onUpdateDemographics={(form) => handleUpdateDemographics(patient.id, form)}
+                              onUpdateComplaint={(complaint) => handleUpdateComplaint(patient.id, complaint)}
                             />
                           </div>
                         )}
