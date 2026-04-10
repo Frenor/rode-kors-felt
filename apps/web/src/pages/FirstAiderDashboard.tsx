@@ -572,6 +572,14 @@ export function FirstAiderDashboard() {
     }
   };
 
+  const handleCloseReportForm = () => {
+    setShowReportPatient(false);
+    setReportInjuryType('');
+    setReportTriage('');
+    setReportDescription('');
+    setReportError('');
+  };
+
   const currentTeamTransport = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
 
   const openMapsNav = (lat: number, lon: number) => {
@@ -580,6 +588,7 @@ export function FirstAiderDashboard() {
   };
 
   const teamStatusLabel = teamStatusLabels[selectedTeamStatus as TeamOperationalStatus];
+  const isReportFormInvalid = !reportInjuryType && !reportDescription.trim();
 
   return (
     <div data-testid="firstaid-patient-workspace" className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '6.25rem' }}>
@@ -1078,28 +1087,31 @@ export function FirstAiderDashboard() {
                     }}
                   >
                     <span>
-                      Tildelte pasienter ({combinedAssignedPatients.length + otherTeamAssignedPatients.length})
+                      Tildelte pasienter ({new Set([...combinedAssignedPatients.map((p) => p.id), ...otherTeamAssignedPatients.map((p) => p.id)]).size})
                     </span>
                     <span>{showOtherAssigned ? '▲' : '▼'}</span>
                   </button>
                   {showOtherAssigned && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
-                      {combinedAssignedPatients.map((p) => (
-                        <div key={p.id} style={{
-                          padding: 'var(--space-2) var(--space-3)',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--color-brand)',
-                          background: 'var(--color-brand-dim)',
-                          fontSize: 'var(--text-xs)',
-                        }}>
-                          <span style={{ fontWeight: 600 }}>
-                            {(p as TeamWorkspacePatient).label || (p as TeamWorkspacePatient).presentingComplaint || `Pasient ${(p.id as string).slice(0, 8)}`}
-                          </span>
-                          <span style={{ color: 'var(--color-brand)', marginLeft: 'var(--space-2)' }}>
-                            (ditt lag)
-                          </span>
-                        </div>
-                      ))}
+                      {combinedAssignedPatients.map((p) => {
+                        const wp = p as TeamWorkspacePatient;
+                        return (
+                          <div key={p.id} style={{
+                            padding: 'var(--space-2) var(--space-3)',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--color-brand)',
+                            background: 'var(--color-brand-dim)',
+                            fontSize: 'var(--text-xs)',
+                          }}>
+                            <span style={{ fontWeight: 600 }}>
+                              {wp.label || wp.presentingComplaint || `Pasient ${wp.id.slice(0, 8)}`}
+                            </span>
+                            <span style={{ color: 'var(--color-brand)', marginLeft: 'var(--space-2)' }}>
+                              (ditt lag)
+                            </span>
+                          </div>
+                        );
+                      })}
                       {otherTeamAssignedPatients.map((p) => (
                         <div key={p.id} style={{
                           padding: 'var(--space-2) var(--space-3)',
@@ -1173,7 +1185,7 @@ export function FirstAiderDashboard() {
               }}>
                 <span style={{ color: 'white', fontWeight: 700, fontSize: 'var(--text-base)' }}>Meld pasient</span>
                 <button
-                  onClick={() => { setShowReportPatient(false); setReportInjuryType(''); setReportTriage(''); setReportDescription(''); setReportError(''); }}
+                  onClick={handleCloseReportForm}
                   style={{
                     background: 'transparent', border: 'none', color: 'white',
                     fontSize: 'var(--text-lg)', cursor: 'pointer', lineHeight: 1,
@@ -1272,19 +1284,15 @@ export function FirstAiderDashboard() {
 
                 <button
                   onClick={handleReportPatient}
-                  disabled={reportSubmitting || (!reportInjuryType && !reportDescription.trim())}
+                  disabled={reportSubmitting || isReportFormInvalid}
                   className="touch-target"
                   style={{
                     minHeight: 'var(--touch-min)', width: '100%',
                     borderRadius: 'var(--radius-md)', border: 'none',
-                    background: (!reportInjuryType && !reportDescription.trim()) || reportSubmitting
-                      ? 'var(--color-border)'
-                      : 'var(--color-brand)',
-                    color: (!reportInjuryType && !reportDescription.trim()) || reportSubmitting
-                      ? 'var(--color-text-subtle)'
-                      : 'white',
+                    background: isReportFormInvalid || reportSubmitting ? 'var(--color-border)' : 'var(--color-brand)',
+                    color: isReportFormInvalid || reportSubmitting ? 'var(--color-text-subtle)' : 'white',
                     fontSize: 'var(--text-base)', fontWeight: 700,
-                    cursor: reportSubmitting || (!reportInjuryType && !reportDescription.trim()) ? 'not-allowed' : 'pointer',
+                    cursor: reportSubmitting || isReportFormInvalid ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {reportSubmitting ? 'Registrerer…' : 'Registrer pasient'}
