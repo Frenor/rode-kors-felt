@@ -554,10 +554,10 @@ export function FirstAiderDashboard() {
         triageStatus: reportTriage || null,
         description: reportDescription.trim() || null,
         positionText: gpsPosition
-          ? `${gpsPosition.coords.latitude.toFixed(5)}, ${gpsPosition.coords.longitude.toFixed(5)}`
+          ? `${gpsPosition.lat.toFixed(5)}, ${gpsPosition.lng.toFixed(5)}`
           : null,
-        lat: gpsPosition?.coords.latitude ?? null,
-        lon: gpsPosition?.coords.longitude ?? null,
+        lat: gpsPosition?.lat ?? null,
+        lon: gpsPosition?.lng ?? null,
         assignedTeamId: selectedTeam,
       });
       setAssignedPatients((prev) => [res.patient, ...prev]);
@@ -1272,7 +1272,7 @@ export function FirstAiderDashboard() {
 
                 {gpsPosition && (
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                    📍 GPS-posisjon registreres automatisk ({gpsPosition.coords.latitude.toFixed(4)}, {gpsPosition.coords.longitude.toFixed(4)})
+                    📍 GPS-posisjon registreres automatisk ({gpsPosition.lat.toFixed(4)}, {gpsPosition.lng.toFixed(4)})
                   </div>
                 )}
 
