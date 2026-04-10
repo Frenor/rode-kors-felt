@@ -5,7 +5,7 @@ import { useNotificationStore } from '../stores/notifications';
 import { api } from '../lib/api';
 import { EventMap } from '../components/EventMap';
 import { useLLMApiKey } from '../hooks/useLLMApiKey';
-import type { DeteriorationAlert } from '../lib/types';
+import type { DeteriorationAlert, GeoPoint } from '../lib/types';
 import { CoordinatorHeader } from './Coordinator/CoordinatorHeader';
 import { APIKeyModal } from './Coordinator/APIKeyModal';
 import { DeteriorationAlertsPanel } from './Coordinator/DeteriorationAlertsPanel';
@@ -32,6 +32,10 @@ export function CoordinatorDashboard() {
   const [fieldPatients, setFieldPatients] = useState<FieldPatient[]>([]);
   const [creatingPatient, setCreatingPatient] = useState(false);
   const [teamPatientEngagements, setTeamPatientEngagements] = useState<Record<string, TeamPatientEngagement[]>>({});
+  /** Per-team per-member live positions: teamId → memberId → GeoPoint */
+  const [teamMemberPositions, setTeamMemberPositions] = useState<Record<string, Record<string, GeoPoint>>>({});
+  /** ID of the patient whose location is being picked on the map (null = not picking) */
+  const [pickingPatientId, setPickingPatientId] = useState<string | null>(null);
 
   const [teamMessages, setTeamMessages] = useState<Array<{
     id: string;
@@ -98,11 +102,19 @@ export function CoordinatorDashboard() {
           });
         }
       } else if (msg.type === 'team.position') {
-        const { teamId, position } = (msg.payload as any) ?? {};
+        const { teamId, position, memberId } = (msg.payload as any) ?? {};
         if (teamId && position) {
+          // Update the legacy single-position on the team object
           setTeams((prev) =>
             prev.map((t) => (t.id === teamId ? { ...t, currentPosition: position } : t)),
           );
+          // Track per-member position when a memberId is present
+          if (memberId) {
+            setTeamMemberPositions((prev) => ({
+              ...prev,
+              [teamId]: { ...(prev[teamId] ?? {}), [memberId]: position },
+            }));
+          }
         }
       } else if (msg.type === 'team.message') {
         if (eventId && msg.eventId && msg.eventId !== eventId) return;
@@ -184,6 +196,29 @@ export function CoordinatorDashboard() {
     setFieldPatients((prev) => prev.map((p) => p.id === id ? res.patient as FieldPatient : p));
   };
 
+  const handleClosePatient = async (id: string, reason: 'false_alarm' | 'disappeared') => {
+    const reasonText = reason === 'false_alarm' ? 'Lukket: Falsk alarm' : 'Lukket: Forsvunnet';
+    try {
+      // First persist the close reason in the description field
+      await api.updatePatient(id, { description: reasonText });
+    } catch (err) {
+      console.error('[coordinator] Failed to set close reason', err);
+    }
+    // Then set status = discharged (triggers applyPatientAction which broadcasts patient.updated)
+    const res = await api.updatePatient(id, { status: 'discharged' });
+    setFieldPatients((prev) =>
+      prev.map((p) => p.id === id ? { ...(res.patient as FieldPatient), description: reasonText } : p),
+    );
+  };
+
+  const handleMapClick = pickingPatientId
+    ? async (lat: number, lng: number) => {
+        const posText = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        await handleUpdatePatient(pickingPatientId, { lat, lon: lng, positionText: posText });
+        setPickingPatientId(null);
+      }
+    : null;
+
   return (
     <div>
       <CoordinatorHeader
@@ -234,6 +269,8 @@ export function CoordinatorDashboard() {
           onCreatePatient={handleCreatePatient}
           onUpdatePatient={handleUpdatePatient}
           teamPatientEngagements={teamPatientEngagements}
+          onClosePatient={handleClosePatient}
+          onPickLocation={(patientId) => setPickingPatientId(patientId)}
         />
 
         <div style={{
@@ -312,6 +349,10 @@ export function CoordinatorDashboard() {
             provider={mapProvider}
             presentation3d={presentation3d}
             mapRuntimeConfig={mapRuntimeConfig}
+            memberPositions={teamMemberPositions}
+            patients={fieldPatients}
+            onMapClick={handleMapClick}
+            onCancelPick={pickingPatientId ? () => setPickingPatientId(null) : undefined}
           />
         </div>
       </div>

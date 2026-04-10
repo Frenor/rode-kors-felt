@@ -342,6 +342,7 @@ export type SickbayIncomingResponse = z.infer<typeof SickbayIncomingResponse>;
 export const TeamPositionPayload = z.object({
   teamId: z.string().uuid(),
   position: GeoPoint,
+  memberId: z.string().optional(),
 });
 export type TeamPositionPayload = z.infer<typeof TeamPositionPayload>;
 
