@@ -248,7 +248,7 @@ export function PatientCard({
   useEffect(() => {
     setPlacementType(patient.placementType ?? '');
     setPlacementNumber(patient.placementNumber ?? '');
-  }, [patient.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient.id]); // intentional: only reset on patient identity change
 
   useEffect(() => {
     // Same rationale as placement useEffect above — patient.id only.
@@ -258,12 +258,12 @@ export function PatientCard({
       birthDate: patient.birthDate ?? '',
       ageGroup: patient.ageGroup ?? 'adult',
     });
-  }, [patient.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient.id]); // intentional: only reset on patient identity change
 
   useEffect(() => {
     // Same rationale as placement useEffect above — patient.id only.
     setComplaintDraft(patient.presentingComplaint ?? '');
-  }, [patient.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient.id]); // intentional: only reset on patient identity change
 
   const handleSubmitComplaint = () => {
     onUpdateComplaint(complaintDraft.trim());
