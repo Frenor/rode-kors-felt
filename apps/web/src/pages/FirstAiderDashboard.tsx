@@ -1150,7 +1150,6 @@ export function FirstAiderDashboard() {
             <button
               onClick={() => setShowReportPatient(true)}
               className="touch-target"
-              aria-label="Meld ny pasient"
               style={{
                 width: '100%',
                 minHeight: 80,
