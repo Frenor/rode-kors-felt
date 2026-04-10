@@ -139,6 +139,19 @@ body {
   }
 }
 
+/* Action buttons grid — 3 cols; collapses to 2 cols on very narrow viewports */
+.patient-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+@media (max-width: 399px) {
+  .patient-action-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* ═══════════════════════════════════════════════
    SICKBAY GROUPS GRID — 1/2/3 responsive columns
    Each status-group occupies exactly one column.

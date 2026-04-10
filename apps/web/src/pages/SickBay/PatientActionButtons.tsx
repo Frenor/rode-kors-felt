@@ -34,7 +34,7 @@ export function PatientActionButtons({
     whiteSpace: 'nowrap' as const,
   });
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)' }}>
+    <div className="patient-action-grid">
         <button
           onClick={onOpenAmk}
           data-testid="patient-ring-113"

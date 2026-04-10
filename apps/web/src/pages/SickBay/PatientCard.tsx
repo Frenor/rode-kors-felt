@@ -403,6 +403,8 @@ export function PatientCard({
       <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
         <button
           type="button"
+          aria-label={showPlacementEditor ? 'Lukk plassering' : 'Rediger plassering'}
+          aria-expanded={showPlacementEditor}
           onClick={handleTogglePlacementEditor}
           style={{
             minHeight: 28,
@@ -422,6 +424,8 @@ export function PatientCard({
 
         <button
           type="button"
+          aria-label={showDemographicsEditor ? 'Lukk pasientinfo' : 'Rediger pasientinfo'}
+          aria-expanded={showDemographicsEditor}
           data-testid={`demographics-editor-toggle-${patient.id}`}
           onClick={handleToggleDemographicsEditor}
           style={{
@@ -442,6 +446,8 @@ export function PatientCard({
 
         <button
           type="button"
+          aria-label={showComplaintEditor ? 'Lukk problemstilling' : 'Rediger problemstilling'}
+          aria-expanded={showComplaintEditor}
           data-testid={`complaint-editor-toggle-${patient.id}`}
           onClick={handleToggleComplaintEditor}
           style={{
