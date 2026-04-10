@@ -14,6 +14,7 @@ vi.mock('react-leaflet', () => ({
   Marker: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   Popup: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   useMap: () => ({ fitBounds: vi.fn() }),
+  useMapEvents: vi.fn(() => ({ getZoom: vi.fn(() => 13) })),
 }));
 
 type MaplibreRuntime = {
@@ -55,11 +56,18 @@ const setBearing = vi.fn();
 
 function installMaplibreRuntime() {
   const mapInstance = {
+    on: vi.fn(),
+    off: vi.fn(),
     addControl: vi.fn(),
     fitBounds: vi.fn(),
+    getZoom: vi.fn(() => 13),
     setPitch,
     setBearing,
     remove: vi.fn(),
+    getSource: vi.fn(() => null),
+    addSource: vi.fn(),
+    getLayer: vi.fn(() => null),
+    addLayer: vi.fn(),
   };
 
   class MockMap {

@@ -13,6 +13,7 @@ export interface FieldPatient {
   lon: number | null;
   assignedTeamId: string | null;
   updatedAt: string;
+  status?: string | null;
 }
 
 interface Team {
@@ -28,6 +29,8 @@ interface PatientManagementPanelProps {
   onCreatePatient: (data: Omit<FieldPatient, 'id' | 'updatedAt'>) => Promise<void>;
   onUpdatePatient: (id: string, data: Partial<Omit<FieldPatient, 'id' | 'updatedAt'>>) => Promise<void>;
   teamPatientEngagements?: Record<string, TeamPatientEngagement[]>;
+  onClosePatient?: (id: string, reason: 'false_alarm' | 'disappeared') => Promise<void>;
+  onPickLocation?: (patientId: string) => void;
 }
 
 const TRIAGE_COLORS: Record<FieldTriageStatus, { bg: string; text: string; label: string }> = {
@@ -88,16 +91,22 @@ function PatientRow({
   teams,
   engagements,
   onUpdate,
+  onClose,
+  onPickLocation,
 }: {
   patient: FieldPatient;
   teams: Team[];
   engagements: TeamPatientEngagement[];
   onUpdate: (data: Partial<Omit<FieldPatient, 'id' | 'updatedAt'>>) => Promise<void>;
+  onClose?: (reason: 'false_alarm' | 'disappeared') => Promise<void>;
+  onPickLocation?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ ...patient });
   const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [showCloseMenu, setShowCloseMenu] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
@@ -114,14 +123,27 @@ function PatientRow({
     setEditing(false);
   };
 
+  const handleClose = async (reason: 'false_alarm' | 'disappeared') => {
+    if (!onClose) return;
+    setClosing(true);
+    setShowCloseMenu(false);
+    try {
+      await onClose(reason);
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  const isClosed = patient.status === 'discharged' || patient.status === 'transferred';
   const assignedTeam = teams.find((t) => t.id === patient.assignedTeamId);
 
   return (
     <div style={{
       border: '1px solid var(--color-border)',
       borderRadius: 'var(--radius-md)',
-      background: 'var(--color-surface)',
+      background: isClosed ? 'var(--color-surface-sunken)' : 'var(--color-surface)',
       overflow: 'hidden',
+      opacity: isClosed ? 0.65 : 1,
     }}>
       {/* Row header */}
       <button
@@ -133,9 +155,14 @@ function PatientRow({
         }}
       >
         <TriageBadge status={patient.triageStatus} />
-        <span style={{ flex: 1, fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+        <span style={{ flex: 1, fontWeight: 600, fontSize: 'var(--text-sm)', textDecoration: isClosed ? 'line-through' : undefined }}>
           {patient.label || 'Ukjent pasient'}
         </span>
+        {isClosed && (
+          <span style={{ fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 'var(--radius-full)', background: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1' }}>
+            Lukket
+          </span>
+        )}
         {assignedTeam && (
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
             {assignedTeam.name}
@@ -178,16 +205,57 @@ function PatientRow({
               </div>
             </div>
           )}
-          <button
-            onClick={() => { setDraft({ ...patient }); setEditing(true); }}
-            style={{
-              alignSelf: 'flex-start', padding: '4px 12px', borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--color-brand)', background: 'transparent',
-              color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            Rediger
-          </button>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+            {!isClosed && (
+              <button
+                onClick={() => { setDraft({ ...patient }); setEditing(true); }}
+                style={{
+                  padding: '4px 12px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-brand)', background: 'transparent',
+                  color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Rediger
+              </button>
+            )}
+            {!isClosed && onClose && (
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setShowCloseMenu((v) => !v)}
+                  disabled={closing}
+                  style={{
+                    padding: '4px 12px', borderRadius: 'var(--radius-sm)',
+                    border: '1px solid #dc2626', background: 'transparent',
+                    color: '#dc2626', fontSize: 'var(--text-xs)', fontWeight: 600,
+                    cursor: closing ? 'wait' : 'pointer',
+                  }}
+                >
+                  {closing ? 'Lukker...' : 'Lukk pasient ▾'}
+                </button>
+                {showCloseMenu && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, zIndex: 20, marginTop: 2,
+                    background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-sm)', boxShadow: '0 4px 12px rgba(0,0,0,.15)',
+                    minWidth: 160,
+                  }}>
+                    <button
+                      onClick={() => handleClose('false_alarm')}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 600 }}
+                    >
+                      Falsk alarm
+                    </button>
+                    <button
+                      onClick={() => handleClose('disappeared')}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 600 }}
+                    >
+                      Forsvunnet
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -260,6 +328,20 @@ function PatientRow({
             </div>
           </div>
 
+          {onPickLocation && (
+            <button
+              type="button"
+              onClick={() => onPickLocation()}
+              style={{
+                alignSelf: 'flex-start', padding: '4px 12px', height: 36, borderRadius: 'var(--radius-sm)',
+                border: '1px solid #0369a1', background: 'transparent',
+                color: '#0369a1', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              📍 Pin på kart
+            </button>
+          )}
+
           <div>
             <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Tilordnet lag</label>
             <select
@@ -309,6 +391,8 @@ export function PatientManagementPanel({
   onCreatePatient,
   onUpdatePatient,
   teamPatientEngagements = {},
+  onClosePatient,
+  onPickLocation,
 }: PatientManagementPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [newLabel, setNewLabel] = useState('');
@@ -316,6 +400,7 @@ export function PatientManagementPanel({
   const [newDescription, setNewDescription] = useState('');
   const [newPositionText, setNewPositionText] = useState('');
   const [newTeamId, setNewTeamId] = useState('');
+  const [showClosed, setShowClosed] = useState(false);
 
   const handleCreate = async () => {
     if (!newLabel.trim()) return;
@@ -336,10 +421,16 @@ export function PatientManagementPanel({
     setShowForm(false);
   };
 
-  const sortedPatients = [...patients].sort((a, b) => {
-    const order = { red: 0, yellow: 1, green: 2, black: 3 };
-    return (order[a.triageStatus ?? 'green'] ?? 2) - (order[b.triageStatus ?? 'green'] ?? 2);
-  });
+  const CLOSED_STATUSES = new Set(['discharged', 'transferred']);
+  const triageOrder = { red: 0, yellow: 1, green: 2, black: 3 };
+
+  const activePatients = [...patients]
+    .filter((p) => !CLOSED_STATUSES.has(p.status ?? ''))
+    .sort((a, b) => (triageOrder[a.triageStatus ?? 'green'] ?? 2) - (triageOrder[b.triageStatus ?? 'green'] ?? 2));
+
+  const closedPatients = [...patients]
+    .filter((p) => CLOSED_STATUSES.has(p.status ?? ''))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   return (
     <section
@@ -351,7 +442,10 @@ export function PatientManagementPanel({
           id="patients-panel-title"
           style={{ margin: 0, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', letterSpacing: 'var(--tracking-mono)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}
         >
-          Pasienter ({patients.length})
+          Pasienter ({activePatients.length})
+          {closedPatients.length > 0 && (
+            <span style={{ marginLeft: 8, color: 'var(--color-text-subtle)', fontWeight: 400 }}>· {closedPatients.length} lukket</span>
+          )}
         </h2>
         <button
           onClick={() => setShowForm((v) => !v)}
@@ -442,25 +536,56 @@ export function PatientManagementPanel({
       )}
 
       <div style={{ padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-        {loading && sortedPatients.length === 0 && (
+        {loading && activePatients.length === 0 && closedPatients.length === 0 && (
           <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', textAlign: 'center', padding: 'var(--space-4) 0' }}>
             Laster pasienter…
           </p>
         )}
-        {!loading && sortedPatients.length === 0 && (
+        {!loading && activePatients.length === 0 && closedPatients.length === 0 && (
           <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', textAlign: 'center', padding: 'var(--space-4) 0' }}>
             Ingen pasienter registrert
           </p>
         )}
-        {sortedPatients.map((p) => (
+        {activePatients.map((p) => (
           <PatientRow
             key={p.id}
             patient={p}
             teams={teams}
             engagements={teamPatientEngagements[p.id] ?? []}
             onUpdate={(data) => onUpdatePatient(p.id, data)}
+            onClose={onClosePatient ? (reason) => onClosePatient(p.id, reason) : undefined}
+            onPickLocation={onPickLocation ? () => onPickLocation(p.id) : undefined}
           />
         ))}
+
+        {closedPatients.length > 0 && (
+          <div style={{ marginTop: 'var(--space-2)' }}>
+            <button
+              type="button"
+              onClick={() => setShowClosed((v) => !v)}
+              style={{
+                width: '100%', padding: '6px var(--space-3)', background: 'none', border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--text-xs)',
+                color: 'var(--color-text-subtle)', fontWeight: 600, textAlign: 'left',
+              }}
+            >
+              {showClosed ? '▲' : '▼'} Lukkede pasienter ({closedPatients.length})
+            </button>
+            {showClosed && (
+              <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                {closedPatients.map((p) => (
+                  <PatientRow
+                    key={p.id}
+                    patient={p}
+                    teams={teams}
+                    engagements={teamPatientEngagements[p.id] ?? []}
+                    onUpdate={(data) => onUpdatePatient(p.id, data)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );
