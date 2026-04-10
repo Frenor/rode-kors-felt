@@ -127,6 +127,7 @@ resource "aws_db_instance" "this" {
   copy_tags_to_snapshot                = true
   performance_insights_enabled         = true
   performance_insights_retention_period = 7
+  enabled_cloudwatch_logs_exports      = ["postgresql", "upgrade"]
   parameter_group_name                 = "default.postgres16"
 
   tags = {

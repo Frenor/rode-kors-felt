@@ -5,11 +5,14 @@
     <script>
       // GitHub Pages SPA redirect — preserves path for React Router.
       // Encodes the path into the query string and redirects to index.html.
+      // Only the portion AFTER the repo sub-path is encoded so that
+      // index.html decode does not double-prefix the base segment.
       var l = window.location;
+      var base = l.pathname.split('/').slice(0, 2).join('/');
       l.replace(
         l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 2).join('/') +
-        '/?p=' + encodeURIComponent(l.pathname.slice(1) + l.search) +
+        base +
+        '/?p=' + encodeURIComponent(l.pathname.slice(base.length + 1) + l.search) +
         l.hash
       );
     </script>
