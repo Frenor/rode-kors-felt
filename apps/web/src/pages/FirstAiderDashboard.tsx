@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
 import { useFirstAidWorkspaceStore } from '../stores/firstaid-workspace';
 import { useGeolocation } from '../hooks/useGeolocation';
@@ -49,7 +48,6 @@ export function FirstAiderDashboard() {
   // Map of patientId → Set of field names currently highlighted
   const [highlightedFields, setHighlightedFields] = useState<Map<string, Set<string>>>(new Map());
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const navigate = useNavigate();
   const { position: gpsPosition } = useGeolocation();
   const wsSend = useWsStore((s) => s.send);
   const onMessage = useWsStore((s) => s.onMessage);
@@ -71,6 +69,17 @@ export function FirstAiderDashboard() {
   const [perPatientPosEdit, setPerPatientPosEdit] = useState<Record<string, string>>({});
   const [perPatientPosError, setPerPatientPosError] = useState<Record<string, string>>({});
   const [geoLookupLoading, setGeoLookupLoading] = useState<Record<string, boolean>>({});
+  // Patients assigned to other teams discovered via WS events (removed from unassigned list)
+  const [wsRemovedPatientIds, setWsRemovedPatientIds] = useState<Set<string>>(new Set());
+  const [otherTeamAssignedPatients, setOtherTeamAssignedPatients] = useState<TeamWorkspacePatient[]>([]);
+  const [showOtherAssigned, setShowOtherAssigned] = useState(false);
+  // Meld pasient inline form
+  const [showReportPatient, setShowReportPatient] = useState(false);
+  const [reportInjuryType, setReportInjuryType] = useState('');
+  const [reportTriage, setReportTriage] = useState('');
+  const [reportDescription, setReportDescription] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportError, setReportError] = useState('');
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
 
@@ -123,6 +132,27 @@ export function FirstAiderDashboard() {
           return prev.filter((p) => p.id !== patient.id);
         });
 
+        // Track assignment changes so the unassigned list stays accurate
+        if (patient.assignedTeamId) {
+          setWsRemovedPatientIds((prev) => new Set([...prev, patient.id as string]));
+          if (patient.assignedTeamId !== selectedTeam) {
+            setOtherTeamAssignedPatients((prev) => {
+              const exists = prev.some((p) => p.id === patient.id);
+              return exists
+                ? prev.map((p) => p.id === patient.id ? patient as TeamWorkspacePatient : p)
+                : [...prev, patient as TeamWorkspacePatient];
+            });
+          }
+        } else {
+          // Patient un-assigned — return to unassigned list
+          setWsRemovedPatientIds((prev) => {
+            const next = new Set(prev);
+            next.delete(patient.id as string);
+            return next;
+          });
+          setOtherTeamAssignedPatients((prev) => prev.filter((p) => p.id !== patient.id));
+        }
+
         if (changed.length > 0 && patient.assignedTeamId === selectedTeam) {
           const id: string = patient.id;
           setHighlightedFields((prev) => {
@@ -147,6 +177,9 @@ export function FirstAiderDashboard() {
         const patient = (msg.payload as any)?.patient;
         if (patient && patient.assignedTeamId === selectedTeam) {
           setAssignedPatients((prev) => [patient, ...prev]);
+        } else if (patient && patient.assignedTeamId && patient.assignedTeamId !== selectedTeam) {
+          setWsRemovedPatientIds((prev) => new Set([...prev, patient.id as string]));
+          setOtherTeamAssignedPatients((prev) => [...prev, patient as TeamWorkspacePatient]);
         }
       }
     });
@@ -481,6 +514,63 @@ export function FirstAiderDashboard() {
       ...extras.filter((p) => !monitoredPatients.some((m) => m.id === p.id)),
     ];
   }, [assignedPatients, monitoredPatients, patientStatusMap, eventId, selectedTeam, workspace?.unassignedPatients]);
+
+  const filteredUnassigned = useMemo(() => {
+    const assignedIds = new Set(combinedAssignedPatients.map((p) => p.id));
+    return (workspace?.unassignedPatients ?? []).filter(
+      (p) => !wsRemovedPatientIds.has(p.id) && !assignedIds.has(p.id),
+    );
+  }, [workspace?.unassignedPatients, wsRemovedPatientIds, combinedAssignedPatients]);
+
+  const INJURY_TYPES = [
+    'Brudd / skade',
+    'Blødning',
+    'Bevisstløshet',
+    'Hjerteproblemer',
+    'Pustevansker',
+    'Forbrenning',
+    'Hjerneslag',
+    'Allergisk reaksjon',
+    'Forgiftning',
+    'Hypotermi',
+    'Andre',
+  ];
+
+  const REPORT_TRIAGE: Array<{ value: string; label: string; bg: string; color: string }> = [
+    { value: 'red',    label: 'Rød',    bg: '#fee2e2', color: '#b91c1c' },
+    { value: 'yellow', label: 'Gul',    bg: '#fef9c3', color: '#854d0e' },
+    { value: 'green',  label: 'Grønn',  bg: '#dcfce7', color: '#166534' },
+    { value: 'black',  label: 'Svart',  bg: '#f1f5f9', color: '#1e293b' },
+  ];
+
+  const handleReportPatient = async () => {
+    if (!eventId || !selectedTeam) return;
+    const label = reportInjuryType || reportDescription || 'Ny pasient';
+    setReportSubmitting(true);
+    setReportError('');
+    try {
+      const res = await api.createFieldPatient(eventId, {
+        label,
+        triageStatus: reportTriage || null,
+        description: reportDescription.trim() || null,
+        positionText: gpsPosition
+          ? `${gpsPosition.coords.latitude.toFixed(5)}, ${gpsPosition.coords.longitude.toFixed(5)}`
+          : null,
+        lat: gpsPosition?.coords.latitude ?? null,
+        lon: gpsPosition?.coords.longitude ?? null,
+        assignedTeamId: selectedTeam,
+      });
+      setAssignedPatients((prev) => [res.patient, ...prev]);
+      setReportInjuryType('');
+      setReportTriage('');
+      setReportDescription('');
+      setShowReportPatient(false);
+    } catch {
+      setReportError('Kunne ikke registrere pasient — prøv igjen.');
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
 
   const currentTeamTransport = (selectedTeamData?.transport ?? 'foot') as TeamTransport;
 
@@ -918,9 +1008,9 @@ export function FirstAiderDashboard() {
                   letterSpacing: 'var(--tracking-mono)',
                 }}
               >
-                Utildelte pasienter ({(workspace?.unassignedPatients ?? []).length})
+                Utildelte pasienter ({filteredUnassigned.length})
               </h3>
-              {(workspace?.unassignedPatients ?? []).length === 0 && !workspaceLoading && (
+              {filteredUnassigned.length === 0 && !workspaceLoading && (
                 <div style={{
                   padding: 'var(--space-4)', textAlign: 'center',
                   color: 'var(--color-text-subtle)', fontSize: 'var(--text-sm)',
@@ -929,7 +1019,7 @@ export function FirstAiderDashboard() {
                   Ingen utildelte pasienter
                 </div>
               )}
-              {(workspace?.unassignedPatients ?? []).map((patient) => {
+              {filteredUnassigned.map((patient) => {
                 return (
                   <div
                     key={patient.id}
@@ -969,6 +1059,67 @@ export function FirstAiderDashboard() {
                   </div>
                 );
               })}
+
+              {/* Collapsed section for patients assigned to other teams */}
+              {(otherTeamAssignedPatients.length > 0 || combinedAssignedPatients.length > 0) && (
+                <div style={{ marginTop: 'var(--space-2)' }}>
+                  <button
+                    onClick={() => setShowOtherAssigned((v) => !v)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: 'var(--space-2) var(--space-3)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-surface-sunken)',
+                      color: 'var(--color-text-muted)',
+                      fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
+                      textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span>
+                      Tildelte pasienter ({combinedAssignedPatients.length + otherTeamAssignedPatients.length})
+                    </span>
+                    <span>{showOtherAssigned ? '▲' : '▼'}</span>
+                  </button>
+                  {showOtherAssigned && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                      {combinedAssignedPatients.map((p) => (
+                        <div key={p.id} style={{
+                          padding: 'var(--space-2) var(--space-3)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--color-brand)',
+                          background: 'var(--color-brand-dim)',
+                          fontSize: 'var(--text-xs)',
+                        }}>
+                          <span style={{ fontWeight: 600 }}>
+                            {(p as TeamWorkspacePatient).label || (p as TeamWorkspacePatient).presentingComplaint || `Pasient ${(p.id as string).slice(0, 8)}`}
+                          </span>
+                          <span style={{ color: 'var(--color-brand)', marginLeft: 'var(--space-2)' }}>
+                            (ditt lag)
+                          </span>
+                        </div>
+                      ))}
+                      {otherTeamAssignedPatients.map((p) => (
+                        <div key={p.id} style={{
+                          padding: 'var(--space-2) var(--space-3)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--color-border)',
+                          background: 'var(--color-surface)',
+                          fontSize: 'var(--text-xs)',
+                        }}>
+                          <span style={{ fontWeight: 600 }}>
+                            {p.label || p.presentingComplaint || `Pasient ${p.id.slice(0, 8)}`}
+                          </span>
+                          <span style={{ color: 'var(--color-text-subtle)', marginLeft: 'var(--space-2)' }}>
+                            (annet lag)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
 
             {workspaceLoading && (
@@ -979,33 +1130,170 @@ export function FirstAiderDashboard() {
           </div>
         </section>
       )}
-      {selectedTeam && <button
-        onClick={() => navigate('/firstaid/incident', {
-          state: { teamId: selectedTeam, eventId },
-        })}
-        className="touch-target"
-        aria-label="Meld ny hendelse"
-        style={{
-          width: '100%',
-          minHeight: 80,
-          padding: 'var(--space-5)',
-          borderRadius: 'var(--radius-lg)',
-          border: 'none',
-          background: 'var(--color-brand)',
-          color: 'white',
-          fontSize: 'var(--text-xl)',
-          fontWeight: 700,
-          cursor: 'pointer',
-          marginBottom: 'var(--space-6)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 'var(--space-3)',
-        }}
-      >
-        <span style={{ fontSize: '1.5em' }} aria-hidden="true">+</span>
-        Meld hendelse
-      </button>}
+
+      {/* Meld pasient */}
+      {selectedTeam && (
+        <div style={{ marginBottom: 'var(--space-6)' }}>
+          {!showReportPatient ? (
+            <button
+              onClick={() => setShowReportPatient(true)}
+              className="touch-target"
+              aria-label="Meld ny pasient"
+              style={{
+                width: '100%',
+                minHeight: 80,
+                padding: 'var(--space-5)',
+                borderRadius: 'var(--radius-lg)',
+                border: 'none',
+                background: 'var(--color-brand)',
+                color: 'white',
+                fontSize: 'var(--text-xl)',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <span style={{ fontSize: '1.5em' }} aria-hidden="true">+</span>
+              Meld pasient
+            </button>
+          ) : (
+            <div style={{
+              borderRadius: 'var(--radius-lg)',
+              border: '2px solid var(--color-brand)',
+              background: 'var(--color-surface)',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                padding: 'var(--space-3) var(--space-4)',
+                background: 'var(--color-brand)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <span style={{ color: 'white', fontWeight: 700, fontSize: 'var(--text-base)' }}>Meld pasient</span>
+                <button
+                  onClick={() => { setShowReportPatient(false); setReportInjuryType(''); setReportTriage(''); setReportDescription(''); setReportError(''); }}
+                  style={{
+                    background: 'transparent', border: 'none', color: 'white',
+                    fontSize: 'var(--text-lg)', cursor: 'pointer', lineHeight: 1,
+                  }}
+                  aria-label="Lukk"
+                >
+                  ✕
+                </button>
+              </div>
+              <div style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                {/* Triage picker */}
+                <div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
+                    Triagefarge
+                  </div>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                    {REPORT_TRIAGE.map(({ value, label, bg, color }) => (
+                      <button
+                        key={value}
+                        onClick={() => setReportTriage((prev) => prev === value ? '' : value)}
+                        className="touch-target"
+                        style={{
+                          padding: '4px 14px', minHeight: 36,
+                          borderRadius: 'var(--radius-sm)',
+                          border: `2px solid ${color}`,
+                          background: reportTriage === value ? bg : 'transparent',
+                          color,
+                          fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        {label}{reportTriage === value ? ' ✓' : ''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Injury type quick picker */}
+                <div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
+                    Type skade
+                  </div>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                    {INJURY_TYPES.map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => setReportInjuryType((prev) => prev === type ? '' : type)}
+                        className="touch-target"
+                        style={{
+                          padding: '4px 12px', minHeight: 36,
+                          borderRadius: 'var(--radius-sm)',
+                          border: `1.5px solid ${reportInjuryType === type ? 'var(--color-brand)' : 'var(--color-border)'}`,
+                          background: reportInjuryType === type ? 'var(--color-brand-dim)' : 'transparent',
+                          color: reportInjuryType === type ? 'var(--color-brand)' : 'var(--color-text)',
+                          fontSize: 'var(--text-sm)', fontWeight: reportInjuryType === type ? 700 : 400, cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Free-text description */}
+                <div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
+                    Tilleggsinformasjon
+                  </div>
+                  <textarea
+                    value={reportDescription}
+                    onChange={(e) => setReportDescription(e.target.value)}
+                    placeholder="Beskriv skaden, pasientens tilstand, ekstra opplysninger…"
+                    rows={3}
+                    style={{
+                      width: '100%', padding: 'var(--space-2)',
+                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                      background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                      fontSize: 'var(--text-sm)', resize: 'vertical', fontFamily: 'inherit',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+
+                {gpsPosition && (
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                    📍 GPS-posisjon registreres automatisk ({gpsPosition.coords.latitude.toFixed(4)}, {gpsPosition.coords.longitude.toFixed(4)})
+                  </div>
+                )}
+
+                {reportError && (
+                  <div role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-status-critical)', fontWeight: 600 }}>
+                    {reportError}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleReportPatient}
+                  disabled={reportSubmitting || (!reportInjuryType && !reportDescription.trim())}
+                  className="touch-target"
+                  style={{
+                    minHeight: 'var(--touch-min)', width: '100%',
+                    borderRadius: 'var(--radius-md)', border: 'none',
+                    background: (!reportInjuryType && !reportDescription.trim()) || reportSubmitting
+                      ? 'var(--color-border)'
+                      : 'var(--color-brand)',
+                    color: (!reportInjuryType && !reportDescription.trim()) || reportSubmitting
+                      ? 'var(--color-text-subtle)'
+                      : 'white',
+                    fontSize: 'var(--text-base)', fontWeight: 700,
+                    cursor: reportSubmitting || (!reportInjuryType && !reportDescription.trim()) ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {reportSubmitting ? 'Registrerer…' : 'Registrer pasient'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Queued (offline) team actions section handled by useOfflineTeamSync */}
 
