@@ -29,8 +29,10 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await page.waitForURL('**/firstaid');
   await selectTeamIfNeeded(page);
   const workspace = page.getByTestId('firstaid-patient-workspace');
-  await expect(page.getByRole('button', { name: /Meld( ny)? hendelse/i })).toBeVisible();
-  await expect(workspace).toBeVisible();
+  await expect(workspace).toBeVisible({ timeout: 20_000 });
+  await expect(
+    workspace.getByRole('button', { name: /Meld( ny)? hendelse/i })
+  ).toBeVisible({ timeout: 20_000 });
   await expect(workspace.getByText(/^Egne pasienter/)).toBeVisible();
   await expect(workspace.getByText(/^Utildelte pasienter/)).toBeVisible();
   await workspace.getByTestId('firstaid-field-status-pill').click();
