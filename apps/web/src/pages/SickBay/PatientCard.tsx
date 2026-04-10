@@ -213,10 +213,40 @@ export function PatientCard({
     setShowDemographicsEditor(false);
   };
 
+  const handleTogglePlacementEditor = () => {
+    if (!showPlacementEditor) {
+      setPlacementType(patient.placementType ?? '');
+      setPlacementNumber(patient.placementNumber ?? '');
+    }
+    setShowPlacementEditor((prev) => !prev);
+  };
+
+  const handleToggleDemographicsEditor = () => {
+    if (!showDemographicsEditor) {
+      setDemoForm({
+        fullName: patient.fullName ?? '',
+        gender: (patient.gender as DemographicsFormShape['gender']) ?? '',
+        birthDate: patient.birthDate ?? '',
+        ageGroup: patient.ageGroup ?? 'adult',
+      });
+    }
+    setShowDemographicsEditor((prev) => !prev);
+  };
+
+  const handleToggleComplaintEditor = () => {
+    if (!showComplaintEditor) {
+      setComplaintDraft(patient.presentingComplaint ?? '');
+    }
+    setShowComplaintEditor((prev) => !prev);
+  };
+
+  // Re-initialise placement state only when the patient identity changes.
+  // NOT on individual field changes — that would clobber what the user is
+  // currently typing if a concurrent prop update (WS / fetchPatients) arrives.
   useEffect(() => {
     setPlacementType(patient.placementType ?? '');
     setPlacementNumber(patient.placementNumber ?? '');
-  }, [patient.id, patient.placementNumber, patient.placementType]);
+  }, [patient.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setDemoForm({
@@ -225,11 +255,11 @@ export function PatientCard({
       birthDate: patient.birthDate ?? '',
       ageGroup: patient.ageGroup ?? 'adult',
     });
-  }, [patient.id, patient.fullName, patient.gender, patient.birthDate, patient.ageGroup]);
+  }, [patient.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setComplaintDraft(patient.presentingComplaint ?? '');
-  }, [patient.id, patient.presentingComplaint]);
+  }, [patient.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmitComplaint = () => {
     onUpdateComplaint(complaintDraft.trim());
@@ -368,7 +398,7 @@ export function PatientCard({
       <button
         type="button"
         className="touch-target"
-        onClick={() => setShowPlacementEditor((prev) => !prev)}
+        onClick={handleTogglePlacementEditor}
         style={{
           minHeight: 32,
           borderRadius: 'var(--radius-full)',
@@ -464,7 +494,7 @@ export function PatientCard({
         type="button"
         className="touch-target"
         data-testid={`demographics-editor-toggle-${patient.id}`}
-        onClick={() => setShowDemographicsEditor((prev) => !prev)}
+        onClick={handleToggleDemographicsEditor}
         style={{
           minHeight: 32,
           borderRadius: 'var(--radius-full)',
@@ -611,7 +641,7 @@ export function PatientCard({
         type="button"
         className="touch-target"
         data-testid={`complaint-editor-toggle-${patient.id}`}
-        onClick={() => setShowComplaintEditor((prev) => !prev)}
+        onClick={handleToggleComplaintEditor}
         style={{
           minHeight: 32,
           borderRadius: 'var(--radius-full)',
