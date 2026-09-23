@@ -28,8 +28,9 @@ vi.mock('../stores/notifications', () => ({
   }),
 }));
 
+type WsHandler = (msg: Record<string, unknown>) => void;
 const wsState = {
-  onMessage: vi.fn(() => () => {}),
+  onMessage: vi.fn((_handler?: WsHandler) => () => {}),
   send: vi.fn(),
 };
 
@@ -733,5 +734,60 @@ describe('Demographics editor — edit patient info from PatientCard', () => {
     await waitFor(() => {
       expect(screen.queryByTestId(`demographics-editor-${patient.id}`)).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('Live updates — field reports reach the sick bay without a reload', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wsState.onMessage.mockImplementation(() => () => {});
+  });
+
+  it('refetches the patient list when a patient is created or updated elsewhere', async () => {
+    let handler: ((msg: Record<string, unknown>) => void) | null = null;
+    wsState.onMessage.mockImplementation((h: (msg: Record<string, unknown>) => void) => {
+      handler = h;
+      return () => {};
+    });
+
+    await renderWithPatient('incoming');
+    expect(handler).not.toBeNull();
+    const callsAfterMount = vi.mocked(api.getPatients).mock.calls.length;
+
+    handler!({ type: 'patient.created', eventId: 'evt-test', payload: { patient: { id: 'pat-new' } } });
+    handler!({ type: 'patient.updated', eventId: 'evt-test', payload: { patient: { id: 'pat-new' } } });
+
+    await waitFor(() => {
+      // Two events in quick succession coalesce into a single refetch.
+      expect(vi.mocked(api.getPatients).mock.calls.length).toBe(callsAfterMount + 1);
+    });
+  });
+
+  it('refetches when the realtime connection is re-established', async () => {
+    await renderWithPatient('incoming');
+    const callsAfterMount = vi.mocked(api.getPatients).mock.calls.length;
+
+    window.dispatchEvent(new Event('rkf:wsConnected'));
+
+    await waitFor(() => {
+      expect(vi.mocked(api.getPatients).mock.calls.length).toBe(callsAfterMount + 1);
+    });
+  });
+
+  it('shows the field label, description and triage for a patient reported by a patrol', async () => {
+    await renderWithPatient('incoming', {
+      id: 'pat-field',
+      fullName: undefined,
+      presentingComplaint: undefined,
+      label: 'Brudd / skade',
+      description: 'Falt i nedkjøringen, smerter i ankel',
+      triageStatus: 'yellow',
+    });
+
+    const section = screen.getByTestId('patient-section-incoming');
+    expect(within(section).getByText('Brudd / skade')).toBeInTheDocument();
+    expect(within(section).getByText('Falt i nedkjøringen, smerter i ankel')).toBeInTheDocument();
+    expect(within(section).getByLabelText('Felt-triage Gul')).toBeInTheDocument();
+    expect(within(section).queryByText('Ukjent pasient')).toBeNull();
   });
 });

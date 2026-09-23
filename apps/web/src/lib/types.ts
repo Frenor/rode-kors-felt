@@ -137,6 +137,12 @@ export interface SickBayPatient {
   status: string;
   presentingComplaint: string;
   assignedClinician: string;
+  /** Field-report fields — set when the patient was reported by a patrol or the coordinator. */
+  label?: string | null;
+  description?: string | null;
+  triageStatus?: 'green' | 'yellow' | 'red' | 'black' | null;
+  positionText?: string | null;
+  assignedTeamId?: string | null;
   vitalsHistory: VitalsReading[];
   latestVitals: VitalsReading | null;
   notes: PatientNote[];

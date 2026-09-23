@@ -126,7 +126,17 @@ export function PatientCard({
   const news2 = patient.latestVitals ? calculateNEWS2(patient.latestVitals) : null;
   const n2colors = news2 ? news2Colors[news2.alertLevel] : null;
 
-  const patientName = patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient';
+  // Field reports carry a label (e.g. "Brudd / skade") and a free-text
+  // description rather than a name and presenting complaint — fall back to
+  // them so a patient arriving from a patrol is not shown as "Ukjent pasient".
+  const patientName = patient.fullName ?? patient.label ?? patient.presentingComplaint ?? 'Ukjent pasient';
+  const FIELD_TRIAGE_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+    red:    { bg: '#fee2e2', text: '#b91c1c', label: 'Rød' },
+    yellow: { bg: '#fef9c3', text: '#854d0e', label: 'Gul' },
+    green:  { bg: '#dcfce7', text: '#166534', label: 'Grønn' },
+    black:  { bg: '#f1f5f9', text: '#1e293b', label: 'Svart' },
+  };
+  const fieldTriage = patient.triageStatus ? FIELD_TRIAGE_STYLE[patient.triageStatus] ?? null : null;
   const patientAgeLabel = formatPatientAge({
     birthDate: patient.birthDate ?? null,
     ageGroup: patient.ageGroup ?? null,
@@ -134,7 +144,7 @@ export function PatientCard({
   });
   const patientGenderLabel = patient.gender ? GENDER_LABELS[patient.gender] : null;
   const patientDemographics = [patientAgeLabel, patientGenderLabel].filter(Boolean).join(' · ');
-  const complaintText = patient.presentingComplaint ?? 'Problemstilling ikke registrert';
+  const complaintText = patient.presentingComplaint ?? patient.description ?? 'Problemstilling ikke registrert';
   const placementLabel = formatSickbayPlacement(patient.placementType ?? null, patient.placementNumber ?? null);
   const sc = statusColors[patient.status] ?? { color: 'var(--color-text-subtle)', bg: 'transparent' };
   const news2MissingLabels: string[] = news2
@@ -281,7 +291,21 @@ export function PatientCard({
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 'var(--space-2)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{patientName}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            {fieldTriage && (
+              <span
+                aria-label={`Felt-triage ${fieldTriage.label}`}
+                style={{
+                  flexShrink: 0, padding: '1px 7px', borderRadius: 'var(--radius-full)',
+                  background: fieldTriage.bg, color: fieldTriage.text,
+                  fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
+                }}
+              >
+                {fieldTriage.label}
+              </span>
+            )}
+            <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{patientName}</span>
+          </span>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{complaintText}</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
             {`${placementLabel || 'Ikke satt'}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
