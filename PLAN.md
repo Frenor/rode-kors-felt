@@ -9,6 +9,7 @@
 - Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
 - Lane 6 (Field Trial Remediation — production readiness): `In progress`
 - Lane 7 (UX Review — field teams / sick bay / coordinator): `Done` (review, three fix passes, design system and presentation export landed; backlog in the review doc §7)
+- Lane 8 (Gap review implementation — see section 13): `In progress` (batch 1 API foundation)
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -34,7 +35,8 @@
     - NEWS2 high
 - Coordinator "Krever handling" banner (2026-09-23): only red patients (red triage without a
   team, NEWS2 rising fast) and patrols asking for assistance. Yellow/green patients without a
-  team are counted, not alarmed.
+  team are counted, not alarmed — until they have waited too long (lane 8 item 8.20: yellow
+  > 10 min, green > 30 min without a team enter the banner as "Venter for lenge").
 
 ## 3. API and Interface Additions
 - `POST /api/teams/:teamId/actions`
@@ -315,3 +317,188 @@ Legend: `P0` blocks field use, `P1` degrades the flow, `P2` polish. Status refer
 | 22 | P2 | Load test still targeted the removed `/api/incidents` endpoint and ignored non-2xx responses. | Fixed |
 | 23 | P2 | Semgrep supply-chain rules want `minimumReleaseAge`/`trustPolicy`/`blockExoticSubdeps`, which need pnpm 10. | Fixed (workspace upgraded to pnpm 10.34.5; settings enabled) |
 
+
+## 13. Lane 8 — Gap Review Implementation Plan (from `docs/design/gap-review-2026-09.md`)
+
+Status board for this lane lives here; the review has the rationale. Execution model: one
+foundation batch on the API (sequential), then UI batches in parallel by ownership area, each
+integrated, verified (lint, typecheck, unit, e2e) and committed centrally. Cheaper agents do the
+building from the specs below; the specs are the contract.
+
+### 13.0 Rules for every item
+- English enums in code, API, DB and payloads; Norwegian Bokmål labels in view code only.
+- Schema changes: `schema.ts` + idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS` in
+  `apps/api/src/db/migrate.ts` + `shared-types` zod + `apps/web/src/lib/types.ts` + demo store
+  parity (`apps/web/src/lib/demo-store.ts`) in the same change.
+- UI uses `components/ui` (`Button`, `Pill`, `Icon`); no raw `<button>` with inline sizes; 44 px
+  minimum, 48–56 px in the field; one filled brand-red control per view; critical red only for
+  help/danger/overdue and only as edge or text.
+- Fail loud: no silent fallbacks; a queued or degraded state is shown ("lagret lokalt").
+- Every item ships with unit tests; a user-visible web flow change updates
+  `apps/web/e2e/pages-demo.spec.ts` (demo data must support it) or records a no-impact note here.
+- Testids: kebab-case, prefixed by area (`firstaid-`, `sickbay-`, `attention-`, `team-status-`).
+- Do not widen scope; one logical change per commit; the integrator commits.
+
+### 13.1 Batch 1 — API and data foundation (sequential; unblocks everything below)
+
+**8.1 Hand-over model (gap A1, P0)**
+- Data: `patients.handed_over_at TIMESTAMPTZ NULL`, `patients.handed_over_by_team_id UUID NULL`
+  (FK teams, on delete set null), `patients.field_outcome VARCHAR(32) NULL` with values
+  `handed_to_sickbay | handed_to_ambulance | treated_on_scene | false_alarm | disappeared`.
+- API: `PATCH /patients/:id` accepts `handedOverAt` (ISO or null), `handedOverByTeamId`
+  (uuid or null, must belong to the event) and `fieldOutcome` (enum or null); they appear in
+  `changedFields` and in every patient payload (`mapPatient`, workspace, sickbay-incoming).
+- Workspace (`GET /teams/:id/workspace`): a patient with `handedOverAt` set leaves every field
+  bucket, like a closed patient (it is in the tent now).
+- Sickbay-incoming: unchanged except the new fields pass through.
+- Types: `SickBayPatient`, `FieldPatient`, `TeamWorkspacePatient`, `SickbayIncomingItem` gain
+  `handedOverAt?: string | null`, `handedOverByTeamId?: string | null`, `fieldOutcome?: FieldOutcome | null`.
+- Demo store: `updatePatient` accepts the three fields; `getTeamWorkspace` applies the bucket rule.
+- Tests: `apps/api/src/__tests__/patients.test.ts` (patch accepts/validates, workspace excludes),
+  web `api.test.ts` or demo-store coverage for the bucket rule.
+- Acceptance: PATCH with `fieldOutcome: 'handed_to_sickbay'` + `handedOverAt` keeps `status`
+  as is; the patient is absent from the team's workspace; broadcast carries the fields.
+
+**8.2 Shared patient number (gap A5, P1)**
+- Data: `patients.seq INTEGER NULL` + unique index `(event_id, seq)`; `events.patient_counter
+  INTEGER NOT NULL DEFAULT 0`. Migration backfills `seq` per event in `created_at` order and
+  sets `patient_counter` to the max.
+- API: both create paths (`POST /events/:id/patients`, `POST /patients`) allocate atomically:
+  `UPDATE events SET patient_counter = patient_counter + 1 WHERE id = $1 RETURNING
+  patient_counter` inside the insert transaction. `seq` is in every patient payload.
+- Types: `seq?: number | null` on all patient shapes. Demo store: seed 1–5, counter 5, new
+  patients get the next number.
+- Web helper: `lib/patient-number.ts` → `patientNumber(p) => \`#${p.seq}\`` (or `null` when
+  unknown) plus `PatientNumberPill` in `components/ui` (mono, neutral).
+- Tests: API allocation is sequential per event and unique under two concurrent inserts (use
+  `Promise.all`); helper unit test.
+- Acceptance: a field report and a sick bay intake in the same event get consecutive numbers.
+
+**8.3 AMK notified (gap B2 data half, P1)**
+- Data: `patients.amk_notified_at TIMESTAMPTZ NULL`, `patients.amk_notified_by VARCHAR(100) NULL`.
+- API: `POST /patients/:id/actions` accepts `{ type: 'amk.notified', by?: string }` → sets the
+  columns, writes an action event `amk.notified`, broadcasts `patient.updated` with
+  `changedFields: ['amkNotifiedAt']`. Idempotent: a second call keeps the first time.
+  `{ type: 'amk.cleared' }` clears it (mistakes happen). Both roles `first_aider`, `sickbay`,
+  `coordinator`, `admin`.
+- Web: `api.executePatientAction` union widened; demo store parity; types gain
+  `amkNotifiedAt?`, `amkNotifiedBy?`.
+- Tests: API action test; demo store test.
+
+**8.4 Assistance reason (gap A3, P1)** — no API change: `team.status_set` already accepts `note`.
+**8.5 Assignment acknowledgement (gap A4, P1)** — no API change: `team.patient_status_set`
+with `en_route_to_patient` is the acknowledgement; the coordinator derives "bekreftet".
+
+### 13.2 Batch 2 — UI by ownership area (parallel; each agent owns its files)
+
+**Field agent** — owns `apps/web/src/pages/FirstAiderDashboard.tsx`, `pages/FirstAider/*`,
+`lib/constants.ts` (close reasons only), their tests. May add small helpers in `lib/`.
+- 8.6 (A1) Close flow → outcomes. Reason `handed_to_sickbay`: PATCH `{ fieldOutcome,
+  handedOverAt: now, handedOverByTeamId: team, assignedTeamId: null }` + note
+  "Overlevert sykestue av Alpha" + clear engagement; **status unchanged**. `handed_to_ambulance`:
+  PATCH `{ fieldOutcome, status: 'transferred' }` + note. `treated_on_scene`, `false_alarm`,
+  `disappeared`: PATCH `{ fieldOutcome, status: 'discharged' }` + note. The "Avsluttede" list
+  shows the outcome label. Toast per outcome ("Overlevert sykestue", not "Pasient avsluttet").
+- 8.7 (A3) After "Trenger bistand" in the status sheet: a second step "Hva trenger dere?" with
+  four 56 px chips `more_hands | transport | amk_notified | other` (labels: Flere hender,
+  Transport, AMK er varslet, Annet) + optional text; sent as `note` (English key + free text,
+  e.g. `transport: båre til km 12`). Skippable ("Send uten detaljer"). The banner under the
+  team header repeats the choice.
+- 8.8 (A10) "Utildelte pasienter" sorted by distance from the phone (`lib/geo.ts`
+  `distanceMeters`, `describeOffset`); each card shows "≈ 1,2 km NØ"; unknown positions last.
+- 8.9 (B2) On red/yellow own-patient cards: "Ring 113" (`tel:113`, `danger-soft`, lg) and
+  "AMK er varslet" (`secondary`, sends `amk.notified`); once set, a pill "AMK varslet kl. 11:40"
+  replaces the button with a small "angre" (`amk.cleared`).
+- 8.10 (A2) Triage chips (grønn/gul/rød/svart) inside "Rediger sammendrag / posisjon";
+  saving PATCHes `triageStatus` and adds a note "Triage endret gul → rød".
+- 8.11 (A4) When `patient.updated` arrives with `assignedTeamId === selectedTeam` for a patient
+  not previously assigned: vibrate `[200, 100, 200, 100, 200]`, show a persistent card under
+  the team header "Koordinator har tildelt dere: #12 Bevisstløs person ved løypebok" with
+  "Vi drar" (sends `en_route_to_patient`, dismisses) and "Kan ikke" (sends a `team.message` to
+  the coordinator "Alpha kan ikke ta #12" and dismisses). Persists across reload until acted on
+  (localStorage keyed by patient id).
+- 8.12 (B10) Directed coordinator messages (`toTeamId === selectedTeam`) get a "Mottatt" button;
+  it sends `team.message` `{ ackOf: <message id>, text: 'Mottatt' }`; acknowledged messages show
+  a check.
+- 8.13 (A5) Patient number pill on every row and in the report/close toasts.
+- e2e: `pages-demo.spec.ts` field section: close with "Overlevert sykestue" keeps the patient
+  visible to the sick bay; assistance reason chips visible; number pill present.
+
+**Sick bay agent** — owns `apps/web/src/pages/SickBayDashboard.tsx`, `pages/SickBay/*`, their tests.
+- 8.14 (A9) Split "Innkommende" into two stacks in the same column: *På vei* (incoming patients
+  with an active patrol engagement `en_route_to_patient | transporting`, showing the patrol and,
+  when team position is known, "≈ 800 m unna") above *Venter i teltet* (all other incoming).
+  Team positions: fetch `api.getEvent(eventId).teams` on load and apply `team.position` WS
+  updates (new subscription in the dashboard; small).
+- 8.15 (A1) Card line "Overlevert av Alpha kl. 11:52" when `handedOverAt` is set (team name
+  from the event's teams), placed with the engagement line.
+- 8.16 (A2) Triage chips in "Rediger detaljer" (new editor toggle "Triage"); PATCH
+  `triageStatus` + note "Triage endret".
+- 8.17 (B2) "AMK varslet kl." pill on the card and in the critical panel when
+  `amkNotifiedAt` is set; the AMK brief modal's "Lagre AMK-logg" also sends `amk.notified`.
+- 8.18 (A5) Number pill on cards, critical rows and the intake success toast.
+- e2e: demo intake gets a number; Delta/Alpha "På vei" stack visible.
+
+**Coordinator agent** — owns `apps/web/src/pages/CoordinatorDashboard.tsx`, `pages/Coordinator/*`,
+`components/EventMap.tsx`, their tests.
+- 8.19 (A5) Number pill on queue rows, patient rows and map markers (`#12` replaces `P<index>`);
+  the "Tildel lag" toast says "#12 tildelt Bravo".
+- 8.20 (A6) Time-based escalation in `AttentionQueuePanel`: yellow without a team > 10 min or
+  green > 30 min enters the banner in a third group "Venter for lenge" with the age; thresholds
+  as constants `ATTENTION_WAIT_MINUTES = { yellow: 10, green: 30 }`. The red-only decision in
+  section 2 stands; this adds time as the second trigger (record it in section 2).
+- 8.21 (A4) Queue and patient rows show acknowledgement state for assigned patients: "Bekreftet
+  av Alpha kl. 11:41" when an engagement `en_route_to_patient | transporting` by the assigned team
+  exists (from `teamPatientEngagements`), else "Ikke bekreftet · 2 min" in warning once older
+  than 2 minutes; older than 5 minutes enters "Krever handling".
+- 8.22 (A1) Patient rows show "I sykestua" (info pill) instead of "Ikke tildelt" when
+  `handedOverAt` is set; the queue's "uten lag" groups exclude handed-over patients.
+- 8.23 (B4) Team row action "Send til" → small inline form: sector text or "velg på kartet"
+  (reuses the map pick mode) → sends `team.sector_assigned` over the socket (payload
+  `{ teamId, sector, assignedBy: 'coordinator' }`); the row shows the sector until changed.
+- 8.24 (B10) The message stream shows "Mottatt av Alpha kl." under a directed message when an
+  `ackOf` message arrives; unacknowledged directed messages older than 3 min show "Ikke kvittert".
+- 8.25 (B2) "AMK varslet" pill on queue and patient rows.
+- e2e: `local-full.spec.ts` coordinator section: number pill visible; `coordinator-flow.spec.ts`
+  unchanged.
+
+### 13.3 Batch 3 — larger items (after batch 2 is integrated)
+- 8.26 (B3) Transport request: patient actions `transport.requested` `{ need: 'stretcher' |
+  'atv' | 'ambulance', pickupText }` and `transport.assigned` `{ teamId }`; columns
+  `transport_need`, `transport_requested_at`, `transport_team_id`; field button "Be om
+  transport" (sheet with the three needs); queue group "Transport" with an assign select of
+  vehicle-capable teams (`transport in ('vehicle','atv')` first); the patrol sees "Delta (ATV)
+  på vei"; the sick bay sees the need on the card.
+- 8.27 (B1) Sick bay offline: reuse `offline-firstaid-queue` pattern for `recordVitals`,
+  `addPatientNote`, `executePatientAction`, `updatePatient` from the sick bay; a pending count
+  in `SickBayHeader`; "lagret lokalt" toasts; replay on reconnect; no server dedup yet (note).
+- 8.28 (A8) Quick log "Behandlet på stedet": one sheet from the field header (secondary
+  button next to Meld pasient): green preselected, complaint chips (gnagsår, kutt, forstuing,
+  hodepine, annet), age group, optional note → creates with `fieldOutcome: 'treated_on_scene'`
+  and `status: 'discharged'` in one call (`POST /events/:id/patients` accepts both fields).
+- 8.29 (B9) Chat history: table `team_messages` (id, event_id, from_team_id, from_label,
+  to_team_id, text, ack_of, sent_at); the WS handler persists; `GET /events/:id/messages?limit=100`;
+  clients load it on connect.
+- 8.30 (B6) Sick bay capacity: `events.settings JSONB` `{ sickbay: { chairs: 16, beds: 4 } }`;
+  occupancy strip in `SickBayHeader`, a coordinator tile "Sykestue 12/16", free-number picker.
+- 8.31 (B5) Event set-up page (`/admin/events`): create event, teams (name, transport, ISSI,
+  phone), access codes per role with QR, sectors, sick bay capacity; API routes for teams and
+  codes with `coordinator|admin` role.
+- 8.32 (B7) Per-patient journal export: `GET /patients/:id/journal` (markdown → printable HTML
+  page in the web app, `window.print`), and `GET /events/:id/journals.zip`.
+- 8.33 (B8) Retention: "Avslutt arrangement" flow (export → anonymise: null `full_name`,
+  `birth_date`, `gender`, free text notes hashed out; keep counts, triage, timestamps) and a
+  scheduled purge for events archived > 30 days; device logout clears IndexedDB queues.
+- 8.34 (A7) Distance in the sick bay's "På vei" line — folded into 8.14.
+- 8.35 (C2) Web Push via the service worker for assignment, directed message, needs-assistance.
+- 8.36 (C1) MCI mode — decision first; spec after the season plan.
+- 8.37 (C3, C4, C5) People per team; voice notes; archive the stale ideation doc.
+
+### 13.4 Order and status
+| Step | Items | Status |
+|---|---|---|
+| Batch 1 | 8.1, 8.2, 8.3 | `In progress` |
+| Batch 2 field | 8.6–8.13 | `Pending` |
+| Batch 2 sick bay | 8.14–8.18 | `Pending` |
+| Batch 2 coordinator | 8.19–8.25 | `Pending` |
+| Batch 3 | 8.26–8.37 | `Pending` |
