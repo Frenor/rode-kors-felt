@@ -78,15 +78,18 @@ export type AssignmentAck =
  * as more precise than it is.
  */
 export function assignmentAckState(
-  patient: Pick<FieldPatient, 'assignedTeamId' | 'updatedAt'>,
+  patient: Pick<FieldPatient, 'assignedTeamId' | 'updatedAt' | 'status' | 'handedOverAt'>,
   engagements: TeamPatientEngagement[],
   now: Date,
 ): AssignmentAck {
   if (!patient.assignedTeamId) return { kind: 'none' };
-  const confirmed = engagements.find(
-    (e) => e.teamId === patient.assignedTeamId
-      && (e.status === 'en_route_to_patient' || e.status === 'transporting'),
-  );
+  // Acknowledgement is about a patrol going to a patient in the field: once the
+  // patient is in the tent (handed over, in treatment, observation) or closed,
+  // there is nothing left to acknowledge.
+  if (patient.status !== 'incoming' || patient.handedOverAt) return { kind: 'none' };
+  // Any engagement by the assigned patrol (on the way, transporting, or
+  // monitoring on site) means they have the patient — that is the acknowledgement.
+  const confirmed = engagements.find((e) => e.teamId === patient.assignedTeamId);
   if (confirmed) return { kind: 'confirmed', teamName: confirmed.teamName };
   const minutes = minutesSince(patient.updatedAt, now);
   if (minutes == null) return { kind: 'none' };

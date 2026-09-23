@@ -198,7 +198,7 @@ describe('PatientManagementPanel — team engagement display', () => {
     it('shows "Bekreftet av <team>" once the assigned team is en route or transporting', () => {
       render(
         <PatientManagementPanel
-          patients={[makePatient({ id: 'pat-1', assignedTeamId: 'team-1', updatedAt: minutesAgo(10) })]}
+          patients={[makePatient({ id: 'pat-1', status: 'incoming', assignedTeamId: 'team-1', updatedAt: minutesAgo(10) })]}
           teams={[{ id: 'team-1', name: 'Alpha' }]}
           creating={false}
           onCreatePatient={NOOP_CREATE}
@@ -214,7 +214,7 @@ describe('PatientManagementPanel — team engagement display', () => {
     it('shows nothing before 2 minutes, then "Ikke bekreftet · N min" after', () => {
       const { rerender } = render(
         <PatientManagementPanel
-          patients={[makePatient({ id: 'pat-1', assignedTeamId: 'team-1', updatedAt: minutesAgo(1) })]}
+          patients={[makePatient({ id: 'pat-1', status: 'incoming', assignedTeamId: 'team-1', updatedAt: minutesAgo(1) })]}
           teams={[{ id: 'team-1', name: 'Alpha' }]}
           creating={false}
           onCreatePatient={NOOP_CREATE}
@@ -228,7 +228,7 @@ describe('PatientManagementPanel — team engagement display', () => {
 
       rerender(
         <PatientManagementPanel
-          patients={[makePatient({ id: 'pat-1', assignedTeamId: 'team-1', updatedAt: minutesAgo(4) })]}
+          patients={[makePatient({ id: 'pat-1', status: 'incoming', assignedTeamId: 'team-1', updatedAt: minutesAgo(4) })]}
           teams={[{ id: 'team-1', name: 'Alpha' }]}
           creating={false}
           onCreatePatient={NOOP_CREATE}
