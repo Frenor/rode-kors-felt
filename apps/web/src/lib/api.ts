@@ -1,6 +1,7 @@
 import { useAuthStore } from '../stores/auth';
 import { enqueueTeamAction } from './offline-firstaid-queue';
 import { demoStore } from './demo-store';
+import { API_BASE, isTokenExpiringSoon, refreshAccessToken } from './session';
 import type {
   AmkAssistDraft,
   AmkCallLog,
@@ -12,8 +13,6 @@ import type {
   TeamPatientStatus,
   TeamWorkspaceResponse,
 } from './types';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
 // Demo mode: env var (build-time) OR ?demo URL parameter (runtime)
 // Persist runtime flag to sessionStorage so it survives in-app navigation
@@ -34,8 +33,15 @@ class ApiClient {
     return useAuthStore.getState().accessToken;
   }
 
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const token = this.getToken();
+  private async request<T>(path: string, options: RequestInit = {}, allowRetry = true): Promise<T> {
+    let token = this.getToken();
+
+    // Access tokens expire after 15 minutes. Refresh proactively so a field
+    // user who has had the app open for an hour never sees a failed save.
+    if (token && isTokenExpiringSoon(token)) {
+      token = (await refreshAccessToken()) ?? token;
+    }
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...((options.headers as Record<string, string>) || {}),
@@ -49,6 +55,14 @@ class ApiClient {
       ...options,
       headers,
     });
+
+    // Expired/invalid access token: refresh once and replay the request.
+    if (res.status === 401 && token && allowRetry) {
+      const fresh = await refreshAccessToken();
+      if (fresh && fresh !== token) {
+        return this.request<T>(path, options, false);
+      }
+    }
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ error: 'Nettverksfeil' }));

@@ -3,11 +3,23 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
 import type { TeamTransport } from '../stores/auth';
 import { api } from '../lib/api';
+import { SESSION_EXPIRED_KEY } from '../lib/session';
+
+function consumeSessionExpiredFlag(): boolean {
+  try {
+    const expired = sessionStorage.getItem(SESSION_EXPIRED_KEY) === '1';
+    if (expired) sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+    return expired;
+  } catch {
+    return false;
+  }
+}
 
 export function CodeEntryPage() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sessionExpired] = useState(consumeSessionExpiredFlag);
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
 
@@ -99,6 +111,25 @@ export function CodeEntryPage() {
       </div>
 
       <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 360 }}>
+        {sessionExpired && (
+          <div
+            role="status"
+            data-testid="session-expired-notice"
+            style={{
+              marginBottom: 'var(--space-4)',
+              padding: 'var(--space-3) var(--space-4)',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--color-status-warning-bg)',
+              border: '1px solid var(--color-status-warning-border)',
+              color: 'var(--color-status-warning)',
+              fontSize: 'var(--text-sm)',
+              textAlign: 'center',
+            }}
+          >
+            Økten din utløp. Tast inn arrangementskoden på nytt for å fortsette.
+          </div>
+        )}
+
         {/* Code display */}
         <div
           role="status"

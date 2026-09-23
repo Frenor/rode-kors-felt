@@ -15,6 +15,7 @@
  */
 
 import { create } from 'zustand';
+import { refreshAccessToken } from '../lib/session';
 
 export type WsStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -58,32 +59,6 @@ function getWsProtocols(token: string): string[] {
   return ['rkf.v1', `rkf-auth.${token}`];
 }
 
-async function tryRefreshToken(): Promise<string | null> {
-  try {
-    // Lazy-import to avoid circular deps with auth store
-    const { useAuthStore } = await import('./auth');
-    const { refreshToken } = useAuthStore.getState();
-    if (!refreshToken) return null;
-
-    const res = await fetch('/api/auth/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-
-    if (!res.ok) {
-      console.warn('[ws] Token refresh failed — server returned', res.status);
-      return null;
-    }
-    const { accessToken } = (await res.json()) as { accessToken: string };
-    useAuthStore.setState({ accessToken });
-    return accessToken;
-  } catch (err) {
-    console.warn('[ws] Token refresh threw unexpectedly', err);
-    return null;
-  }
-}
-
 export const useWsStore = create<WsStore>((set) => ({
   status: 'disconnected',
 
@@ -121,7 +96,7 @@ export const useWsStore = create<WsStore>((set) => ({
 
       // Server closed with auth error → refresh token first
       if (event.code === 4001) {
-        const newToken = await tryRefreshToken();
+        const newToken = await refreshAccessToken();
         set({ status: 'reconnecting' });
         const delay = nextDelay();
         reconnectTimer = setTimeout(
