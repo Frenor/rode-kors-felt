@@ -57,7 +57,36 @@ export function AppShell({ children }: AppShellProps) {
     persistTheme(theme);
   }, [theme]);
 
+  // Archive flow (gap B8 / item 8.33) — a device that logs out must not keep
+  // another role's offline queue or pending-assignment banners around for
+  // whoever logs in next. Deleted by name (not by importing the queue
+  // modules) so this works regardless of which roles' queues actually exist
+  // on this device, and each failure is logged rather than silently eaten.
+  const clearOfflineState = () => {
+    try {
+      indexedDB.deleteDatabase('rkf-firstaid-queue');
+    } catch (err) {
+      console.warn('[AppShell] Failed to clear first aider offline queue on logout', err);
+    }
+    try {
+      indexedDB.deleteDatabase('rkf-sickbay-queue');
+    } catch (err) {
+      console.warn('[AppShell] Failed to clear sick bay offline queue on logout', err);
+    }
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('rkf-pending-assignments:')) keys.push(key);
+      }
+      keys.forEach((key) => localStorage.removeItem(key));
+    } catch (err) {
+      console.warn('[AppShell] Failed to clear pending-assignment banners on logout', err);
+    }
+  };
+
   const handleLogout = () => {
+    clearOfflineState();
     logout();
     navigate('/');
   };

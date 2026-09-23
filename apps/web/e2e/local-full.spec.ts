@@ -107,4 +107,8 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   // Messages can be composed from the dashboard, to everyone or to one patrol.
   await expect(page.getByTestId('coordinator-message-compose')).toBeVisible();
   await expect(page.getByTestId('coordinator-message-to').locator('option', { hasText: 'Patrulje Alpha' })).toHaveCount(1);
+  // Event set-up (gap B5 / item 8.31) — the link to the Arrangement page is
+  // reachable from the coordinator header (kept robust: not navigating away,
+  // since this suite already covers the full flow end to end).
+  await expect(page.getByTestId('coordinator-event-setup-link')).toBeVisible();
 });

@@ -144,9 +144,10 @@ class ApiClient {
     return this.request<{ events: any[] }>('/events');
   }
 
-  async getEvent(id: string) {
-    if (DEMO) return demoStore.getEvent(id);
-    return this.request<{ event: any; teams: any[] }>(`/events/${id}`);
+  async getEvent(id: string, opts?: { includeInactive?: boolean }) {
+    if (DEMO) return demoStore.getEvent(id, opts);
+    const query = opts?.includeInactive ? '?includeInactive=1' : '';
+    return this.request<{ event: any; teams: any[] }>(`/events/${id}${query}`);
   }
 
   async getEventIndoorLayout(id: string) {

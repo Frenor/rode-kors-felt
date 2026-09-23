@@ -8,7 +8,7 @@
  */
 
 import { useState, type FormEvent } from 'react';
-import { TEAM_OPERATIONAL_STATUS_LABELS, TEAM_OPERATIONAL_STATUS_STYLE } from '../../lib/constants';
+import { TEAM_OPERATIONAL_STATUS_LABELS, TEAM_OPERATIONAL_STATUS_STYLE, TEAM_TRANSPORT_LABELS } from '../../lib/constants';
 import type { Team, TeamOperationalStatus } from '../../lib/types';
 import { Button, Pill } from '../../components/ui';
 import { TeamAssistanceActions } from './TeamAssistanceActions';
@@ -35,13 +35,6 @@ const STATUS_PRIORITY: Record<TeamOperationalStatus, number> = {
   en_route: 2,
   available: 3,
   unavailable: 4,
-};
-
-const TRANSPORT_LABELS: Record<string, string> = {
-  foot: 'Til fots',
-  bike: 'Sykkel',
-  vehicle: 'Kjøretøy',
-  atv: 'ATV',
 };
 
 function formatClock(iso?: string | null): string | null {
@@ -206,7 +199,7 @@ export function TeamStatusPanel({ teams, memberCounts = {}, onClearAssistance, o
                 )}
                 <span style={{ flex: 1 }} />
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', display: 'flex', gap: 'var(--space-2)' }}>
-                  {team.transport && <span>{TRANSPORT_LABELS[team.transport] ?? team.transport}</span>}
+                  {team.transport && <span>{TEAM_TRANSPORT_LABELS[team.transport] ?? team.transport}</span>}
                   {members ? <span><span className="data">{members}</span> enhet{members === 1 ? '' : 'er'}</span> : null}
                   {updated && <span>kl. <span className="data">{updated}</span></span>}
                 </span>

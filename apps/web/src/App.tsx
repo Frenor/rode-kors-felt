@@ -6,6 +6,7 @@ import { FirstAiderDashboard } from './pages/FirstAiderDashboard';
 import { SickBayDashboard } from './pages/SickBayDashboard';
 import { PatientJournalPage } from './pages/PatientJournalPage';
 import { CoordinatorDashboard } from './pages/CoordinatorDashboard';
+import { EventSetupPage } from './pages/Coordinator/EventSetupPage';
 import { AppShell } from './components/AppShell';
 import './styles/global.css';
 
@@ -70,6 +71,13 @@ export default function App() {
           <ProtectedRoute allowedRoles={['coordinator']}>
             <AppShell>
               <CoordinatorDashboard />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        <Route path="/coordinator/event" element={
+          <ProtectedRoute allowedRoles={['coordinator']}>
+            <AppShell>
+              <EventSetupPage />
             </AppShell>
           </ProtectedRoute>
         } />

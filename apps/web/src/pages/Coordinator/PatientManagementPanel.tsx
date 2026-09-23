@@ -4,6 +4,7 @@ import {
   FIELD_TRIAGE_ORDER,
   FIELD_TRIAGE_STYLE,
   TEAM_PATIENT_STATUS_STYLE,
+  TRANSPORT_NEED_LABELS,
   minutesSince,
   type FieldTriageStatus,
 } from '../../lib/constants';
@@ -42,11 +43,15 @@ export interface FieldPatient {
   transportRequestedBy?: string | null;
   transportTeamId?: string | null;
   transportAssignedAt?: string | null;
+  /** Sick bay placement (gap B6 / item 8.30 stats tile) — same patient record, sick bay side. */
+  placementType?: 'chair' | 'bed' | null;
+  placementNumber?: string | null;
 }
 
 interface Team {
   id: string;
   name: string;
+  transport?: string;
 }
 
 interface PatientManagementPanelProps {
@@ -59,6 +64,8 @@ interface PatientManagementPanelProps {
   teamPatientEngagements?: Record<string, TeamPatientEngagement[]>;
   onClosePatient?: (id: string, reason: 'false_alarm' | 'disappeared') => Promise<void>;
   onPickLocation?: (patientId: string) => void;
+  /** Transport request (gap B3 / item 8.26) — clears a patient's transport request/assignment. */
+  onClearTransport?: (patientId: string) => Promise<void> | void;
   /** Clock for age-based state (acknowledgement); defaults to `new Date()`. */
   now?: Date;
 }
@@ -123,6 +130,46 @@ export function AmkNotifiedPill({ patientId, amkNotifiedAt }: { patientId: strin
   );
 }
 
+/**
+ * Transport pill (gap B3 / item 8.26) — "Transport bedt om: ATV" while
+ * pending, "Transport: Delta (ATV) · tildelt kl." once a team is assigned.
+ */
+export function TransportPill({
+  patientId,
+  transportNeed,
+  transportTeamId,
+  transportAssignedAt,
+  teamName,
+}: {
+  patientId: string;
+  transportNeed?: FieldPatient['transportNeed'];
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
+  teamName?: string | null;
+}) {
+  if (!transportNeed) return null;
+  const need = TRANSPORT_NEED_LABELS[transportNeed];
+  if (transportTeamId) {
+    const clock = clockTime(transportAssignedAt);
+    return (
+      <Pill
+        data-testid={`transport-pill-${patientId}`}
+        tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', border: 'var(--color-status-info-border)' }}
+      >
+        {`Transport: ${teamName ?? 'lag'} (${need})${clock ? ` · tildelt kl. ${clock}` : ''}`}
+      </Pill>
+    );
+  }
+  return (
+    <Pill
+      data-testid={`transport-pill-${patientId}`}
+      tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', border: 'var(--color-status-info-border)' }}
+    >
+      {`Transport bedt om: ${need}`}
+    </Pill>
+  );
+}
+
 /** Assignment-acknowledgement pill shared by the patient row and the attention queue. */
 export function AssignmentAckPill({ patientId, ack }: { patientId: string; ack: AssignmentAck }) {
   if (ack.kind === 'confirmed') {
@@ -172,6 +219,7 @@ function PatientRow({
   onUpdate,
   onClose,
   onPickLocation,
+  onClearTransport,
   now = new Date(),
 }: {
   patient: FieldPatient;
@@ -180,6 +228,7 @@ function PatientRow({
   onUpdate: (data: Partial<Omit<FieldPatient, 'id' | 'updatedAt'>>) => Promise<void>;
   onClose?: (reason: 'false_alarm' | 'disappeared') => Promise<void>;
   onPickLocation?: () => void;
+  onClearTransport?: (patientId: string) => Promise<void> | void;
   now?: Date;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -190,6 +239,17 @@ function PatientRow({
   const [closing, setClosing] = useState(false);
   const [showCloseMenu, setShowCloseMenu] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [clearingTransport, setClearingTransport] = useState(false);
+
+  const handleClearTransport = async () => {
+    if (!onClearTransport) return;
+    setClearingTransport(true);
+    try {
+      await onClearTransport(patient.id);
+    } finally {
+      setClearingTransport(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -299,6 +359,13 @@ function PatientRow({
         )}
         <AssignmentAckPill patientId={patient.id} ack={ack} />
         <AmkNotifiedPill patientId={patient.id} amkNotifiedAt={patient.amkNotifiedAt} />
+        <TransportPill
+          patientId={patient.id}
+          transportNeed={patient.transportNeed}
+          transportTeamId={patient.transportTeamId}
+          transportAssignedAt={patient.transportAssignedAt}
+          teamName={teams.find((t) => t.id === patient.transportTeamId)?.name}
+        />
         {positionSummary && (
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {positionSummary}
@@ -372,6 +439,18 @@ function PatientRow({
             {!isClosed && (
               <Button variant="secondary" size="sm" icon="edit" onClick={() => { setDraft({ ...patient }); setEditing(true); }}>
                 Rediger detaljer
+              </Button>
+            )}
+            {!isClosed && patient.transportNeed && onClearTransport && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="x"
+                disabled={clearingTransport}
+                data-testid={`transport-clear-${patient.id}`}
+                onClick={() => void handleClearTransport()}
+              >
+                {clearingTransport ? 'Fjerner…' : 'Fjern'}
               </Button>
             )}
             {!isClosed && onClose && (
@@ -528,6 +607,7 @@ export function PatientManagementPanel({
   teamPatientEngagements = {},
   onClosePatient,
   onPickLocation,
+  onClearTransport,
   now = new Date(),
 }: PatientManagementPanelProps) {
   const [showForm, setShowForm] = useState(false);
@@ -689,6 +769,7 @@ export function PatientManagementPanel({
             onUpdate={(data) => onUpdatePatient(p.id, data)}
             onClose={onClosePatient ? (reason) => onClosePatient(p.id, reason) : undefined}
             onPickLocation={onPickLocation ? () => onPickLocation(p.id) : undefined}
+            onClearTransport={onClearTransport}
             now={now}
           />
         ))}

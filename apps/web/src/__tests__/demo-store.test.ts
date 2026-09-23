@@ -257,6 +257,11 @@ describe('demoStore — retention (gap B8)', () => {
       followUpOwner: 'Lege Andersen',
     });
 
+    // The demo event defaults to 'active' (event set-up, gap B5 / 8.31) —
+    // anonymising a still-active event is refused (409 on the real API), same
+    // as archiving it first in the event set-up page's flow.
+    demoStore.updateEvent('demo-event', { status: 'archived' });
+
     const first = demoStore.anonymiseEvent('demo-event');
     expect(first.alreadyAnonymised).toBe(false);
     expect(first.patientsAnonymised).toBeGreaterThan(0);

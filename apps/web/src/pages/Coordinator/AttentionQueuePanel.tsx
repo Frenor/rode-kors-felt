@@ -15,6 +15,8 @@ import {
   ASSIGNMENT_ACK_MINUTES,
   FIELD_TRIAGE_STYLE,
   TEAM_OPERATIONAL_STATUS_LABELS,
+  TEAM_TRANSPORT_LABELS,
+  TRANSPORT_NEED_LABELS,
   minutesSince,
   type FieldTriageStatus,
 } from '../../lib/constants';
@@ -39,6 +41,8 @@ interface AttentionQueuePanelProps {
   onClearTeamAssistance?: (teamId: string) => Promise<void> | void;
   /** Open the message compose addressed to this patrol. */
   onMessageTeam?: (teamId: string) => void;
+  /** Transport request (gap B3 / item 8.26) — assign a team to a pending transport request. */
+  onAssignTransport?: (patientId: string, teamId: string) => Promise<void> | void;
   /** Assignment acknowledgement (gap A4) — who is en route / transporting whom. */
   teamPatientEngagements?: Record<string, TeamPatientEngagement[]>;
   now?: Date;
@@ -73,14 +77,29 @@ export function AttentionQueuePanel({
   onDismissAlert,
   onClearTeamAssistance,
   onMessageTeam,
+  onAssignTransport,
   teamPatientEngagements = {},
   now = new Date(),
 }: AttentionQueuePanelProps) {
   const [assigning, setAssigning] = useState<Record<string, boolean>>({});
+  const [assigningTransport, setAssigningTransport] = useState<Record<string, boolean>>({});
 
   const needsAssistance = teams
     .filter((t) => t.operationalStatus === 'needs_assistance')
     .sort((a, b) => (a.statusUpdatedAt ?? '').localeCompare(b.statusUpdatedAt ?? ''));
+
+  // Transport request (gap B3 / item 8.26) — a requested but not-yet-assigned
+  // transport. Same "leaves the tent's queues" rule as everywhere else: once
+  // handed over, there is nothing left to move.
+  const transportNeeded = patients
+    .filter((p) => p.transportNeed && !p.transportTeamId && !CLOSED.has(p.status ?? '') && !p.handedOverAt)
+    .sort((a, b) => new Date(a.transportRequestedAt ?? a.updatedAt).getTime() - new Date(b.transportRequestedAt ?? b.updatedAt).getTime());
+  // Teams with a vehicle or ATV can actually carry a patient — list them first.
+  const transportTeams = [...teams].sort((a, b) => {
+    const pa = a.transport === 'vehicle' || a.transport === 'atv' ? 0 : 1;
+    const pb = b.transport === 'vehicle' || b.transport === 'atv' ? 0 : 1;
+    return pa - pb;
+  });
 
   // A handed-over patient is in the tent now — it leaves every queue group
   // (gap A1 / item 8.22), same rule as the field team's workspace.
@@ -115,7 +134,7 @@ export function AttentionQueuePanel({
     .filter(({ ack }) => ack.kind === 'unconfirmed' && ack.minutes > ASSIGNMENT_ACK_MINUTES.escalate)
     .sort((a, b) => new Date(a.patient.updatedAt).getTime() - new Date(b.patient.updatedAt).getTime());
 
-  const total = needsAssistance.length + unassigned.length + unacknowledged.length + waitingTooLong.length + alerts.length;
+  const total = needsAssistance.length + unassigned.length + unacknowledged.length + waitingTooLong.length + alerts.length + transportNeeded.length;
   const teamName = (id: string | null | undefined) => teams.find((t) => t.id === id)?.name ?? null;
 
   const assign = async (patientId: string, teamId: string) => {
@@ -125,6 +144,20 @@ export function AttentionQueuePanel({
       await onAssignTeam(patientId, teamId);
     } finally {
       setAssigning((prev) => {
+        const next = { ...prev };
+        delete next[patientId];
+        return next;
+      });
+    }
+  };
+
+  const assignTransport = async (patientId: string, teamId: string) => {
+    if (!teamId || !onAssignTransport) return;
+    setAssigningTransport((prev) => ({ ...prev, [patientId]: true }));
+    try {
+      await onAssignTransport(patientId, teamId);
+    } finally {
+      setAssigningTransport((prev) => {
         const next = { ...prev };
         delete next[patientId];
         return next;
@@ -191,6 +224,50 @@ export function AttentionQueuePanel({
                       </span>
                     )}
                     <TeamAssistanceActions team={team} onClear={onClearTeamAssistance} onMessage={onMessageTeam} testIdPrefix="attention" />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {transportNeeded.length > 0 && (
+            <div>
+              <h3 className="section-label" style={groupHeadingStyle}>Transport</h3>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                {transportNeeded.map((patient) => (
+                  <li key={patient.id} data-testid={`attention-transport-${patient.id}`} style={{ ...rowStyle, borderLeft: '4px solid var(--color-status-info)' }}>
+                    <PatientNumberPill seq={patient.seq} data-testid={`patient-number-${patient.id}`} />
+                    <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', minWidth: 0 }}>
+                      {fieldPatientName(patient)}
+                    </span>
+                    <Pill tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', border: 'var(--color-status-info-border)' }}>
+                      {patient.transportNeed ? TRANSPORT_NEED_LABELS[patient.transportNeed] : '—'}
+                    </Pill>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', flex: 1, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {patient.transportPickupText || 'Hentested ikke oppgitt'} · bedt om {formatRelativeAge(patient.transportRequestedAt, now)}
+                    </span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', fontWeight: 600 }}>
+                      <span className="sr-only">Tildel lag for transport av {fieldPatientName(patient)}</span>
+                      <select
+                        data-testid={`attention-transport-assign-${patient.id}`}
+                        className="field"
+                        value=""
+                        disabled={!!assigningTransport[patient.id] || transportTeams.length === 0}
+                        onChange={(e) => void assignTransport(patient.id, e.target.value)}
+                        style={{
+                          width: 'auto', minWidth: 200, minHeight: 44, padding: '0 var(--space-2)',
+                          border: '1px solid var(--color-border-strong)', color: 'var(--color-text)',
+                          fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">{assigningTransport[patient.id] ? 'Tildeler…' : transportTeams.length === 0 ? 'Ingen lag' : 'Tildel transport…'}</option>
+                        {transportTeams.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} — {t.transport ? (TEAM_TRANSPORT_LABELS[t.transport] ?? t.transport) : '—'} · {TEAM_OPERATIONAL_STATUS_LABELS[t.operationalStatus ?? 'available'] ?? t.operationalStatus}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </li>
                 ))}
               </ul>

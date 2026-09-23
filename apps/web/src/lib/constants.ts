@@ -353,3 +353,10 @@ export function freeSickbayNumbers(
   }
   return free;
 }
+/** A team's own means of getting around (distinct from a patient's transport need above). */
+export const TEAM_TRANSPORT_LABELS: Record<string, string> = {
+  foot: 'Til fots',
+  bike: 'Sykkel',
+  vehicle: 'Kjøretøy',
+  atv: 'ATV',
+};

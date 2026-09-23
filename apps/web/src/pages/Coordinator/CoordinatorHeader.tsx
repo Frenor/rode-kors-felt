@@ -10,6 +10,8 @@ interface CoordinatorHeaderProps {
   isDemo: boolean;
   onOpenApiKey: () => void;
   connectedUsers?: number;
+  /** Opens the event set-up page (gap B5 / 8.31). */
+  onOpenEventSetup?: () => void;
 }
 
 export function CoordinatorHeader({
@@ -18,6 +20,7 @@ export function CoordinatorHeader({
   isDemo,
   onOpenApiKey,
   connectedUsers,
+  onOpenEventSetup,
 }: CoordinatorHeaderProps) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
@@ -28,6 +31,19 @@ export function CoordinatorHeader({
           <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', fontWeight: 600 }}>
             <span className="data">{connectedUsers}</span> tilkoblet
           </span>
+        )}
+
+        {onOpenEventSetup && (
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="calendar"
+            data-testid="coordinator-event-setup-link"
+            onClick={onOpenEventSetup}
+            title="Arrangement, lag, tilgangskoder og arkivering"
+          >
+            Arrangement
+          </Button>
         )}
 
         <Button variant="secondary" size="sm" onClick={onDownloadReport} title="Last ned debrief-rapport som Markdown">

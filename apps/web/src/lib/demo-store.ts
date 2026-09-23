@@ -413,6 +413,11 @@ let demoEvent: any = {
   id: 'demo-event',
   name: 'Holmenkollen Skimaraton 2026',
   createdAt: minsAgo(120),
+  // Event set-up (gap B5 / 8.31) — the demo event is a live, ongoing event.
+  startDate: minsAgo(120),
+  endDate: new Date(Date.now() + 4 * 3_600_000).toISOString(),
+  status: 'active',
+  anonymisedAt: null,
   // Capacity settings (gap B6 / 8.30) — demo default matches the spec.
   settings: { sickbay: { chairs: 16, beds: 4 } },
 };
@@ -1229,11 +1234,12 @@ export const demoStore = {
     discharged: patients.filter((p) => p.status === 'discharged').length,
   }),
 
-  getEvent: (_id: string) => ({
+  getEvent: (_id: string, opts?: { includeInactive?: boolean }) => ({
     event: { ...demoEvent },
     // Event set-up (gap B5 / 8.31): mirrors the API default (excludes
-    // inactive teams — there is no ?includeInactive=1 support in demo mode).
-    teams: DEMO_TEAMS.filter((team) => team.active !== false).map((team) => ({
+    // inactive teams unless the caller asks for `includeInactive`, same as
+    // `?includeInactive=1` on the real endpoint).
+    teams: DEMO_TEAMS.filter((team) => opts?.includeInactive || team.active !== false).map((team) => ({
       ...team,
       operationalStatus: teamWorkspaceState[team.id]?.latestStatus ?? 'available',
       statusNote: null,

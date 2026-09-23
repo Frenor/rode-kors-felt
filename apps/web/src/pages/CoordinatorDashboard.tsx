@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth';
 import { useWsStore } from '../stores/ws';
 import { useNotificationStore } from '../stores/notifications';
@@ -7,7 +8,7 @@ import { EventMap } from '../components/EventMap';
 import { useLLMApiKey } from '../hooks/useLLMApiKey';
 import { useNow } from '../hooks/useNow';
 import { patientNumber } from '../lib/patient-number';
-import type { DeteriorationAlert, GeoPoint } from '../lib/types';
+import type { DeteriorationAlert, EventSettings, GeoPoint, TeamMessage } from '../lib/types';
 import { CoordinatorHeader } from './Coordinator/CoordinatorHeader';
 import { APIKeyModal } from './Coordinator/APIKeyModal';
 import { AttentionQueuePanel } from './Coordinator/AttentionQueuePanel';
@@ -15,17 +16,20 @@ import { StatsGrid } from './Coordinator/StatsGrid';
 import { TeamMessageStreamPanel } from './Coordinator/TeamMessageStreamPanel';
 import { TeamStatusPanel } from './Coordinator/TeamStatusPanel';
 import { PatientManagementPanel, type FieldPatient } from './Coordinator/PatientManagementPanel';
+import { mergeTeamMessages } from './Coordinator/teamMessages';
 import { TEAM_OPERATIONAL_STATUS_LABELS } from '../lib/constants';
 import { Button } from '../components/ui';
 import type { EventIndoorLayout, MapRuntimeConfig, Team, TeamOperationalStatus, TeamPatientEngagement } from '../lib/types';
 
 export function CoordinatorDashboard() {
   const { eventId } = useAuthStore();
+  const navigate = useNavigate();
   const onMessage = useWsStore((s) => s.onMessage);
   const wsSend = useWsStore((s) => s.send);
   const addToast = useNotificationStore((s) => s.add);
   const now = useNow();
   const [teams, setTeams] = useState<Team[]>([]);
+  const [eventSettings, setEventSettings] = useState<EventSettings | null>(null);
   const [eventIndoorLayout, setEventIndoorLayout] = useState<EventIndoorLayout | null>(null);
   const [mapRuntimeConfig, setMapRuntimeConfig] = useState<MapRuntimeConfig | null>(null);
   const [mapProvider, setMapProvider] = useState<'leaflet' | 'maplibre'>('leaflet');
@@ -47,16 +51,7 @@ export function CoordinatorDashboard() {
   /** Sector/place last dispatched to each team (gap B4 / item 8.23) — shown on the row until changed. */
   const [teamSectors, setTeamSectors] = useState<Record<string, { sector: string; assignedAt: string }>>({});
 
-  const [teamMessages, setTeamMessages] = useState<Array<{
-    id: string;
-    text: string;
-    fromTeamId?: string | null;
-    fromLabel?: string | null;
-    toTeamId?: string | null;
-    /** Set on a receipt: the id of the message it acknowledges (gap B10). */
-    ackOf?: string | null;
-    sentAt: string;
-  }>>([]);
+  const [teamMessages, setTeamMessages] = useState<TeamMessage[]>([]);
   /** "Melding" on a team row: which team to preselect, and a nonce so the same team can be picked twice. */
   const [composeTeamId, setComposeTeamId] = useState<string | null>(null);
   const [composeNonce, setComposeNonce] = useState(0);
@@ -79,6 +74,7 @@ export function CoordinatorDashboard() {
       });
       setLastStatsUpdatedAt(Date.now());
       setTeams(evtRes.teams ?? []);
+      setEventSettings(evtRes.event?.settings ?? null);
       setEventIndoorLayout(indoorRes.layout ?? evtRes.event?.indoorLayout ?? null);
       setMapRuntimeConfig(mapConfigRes.config ?? evtRes.event?.mapRuntimeConfig ?? null);
       if (mapConfigRes.config?.provider) {
@@ -101,6 +97,12 @@ export function CoordinatorDashboard() {
     api.getTeamPatientEngagements(eventId).then((res) => {
       setTeamPatientEngagements(res.engagements as Record<string, TeamPatientEngagement[]>);
     }).catch((err) => console.error('[coordinator] Failed to load team-patient engagements', err));
+
+    // Chat history (gap B9 / item 8.29) — seeded once on load, then merged
+    // (de-duplicated by id) with whatever arrives live or was already there.
+    api.getTeamMessages(eventId).then((res) => {
+      setTeamMessages((prev) => mergeTeamMessages(prev, res.messages));
+    }).catch((err) => console.error('[coordinator] Failed to load team messages', err));
   }, [eventId]);
 
   useEffect(() => {
@@ -186,21 +188,18 @@ export function CoordinatorDashboard() {
         if (eventId && msg.eventId && msg.eventId !== eventId) return;
         const payload = (msg.payload as any) ?? {};
         if (typeof payload.text === 'string' && payload.text.trim()) {
-          setTeamMessages((prev) => {
-            const next = [
-              {
-                id: payload.id ?? crypto.randomUUID(),
-                text: payload.text,
-                fromTeamId: payload.fromTeamId ?? null,
-                fromLabel: typeof payload.fromLabel === 'string' ? payload.fromLabel : null,
-                toTeamId: payload.toTeamId ?? null,
-                ackOf: payload.ackOf ?? null,
-                sentAt: payload.sentAt ?? new Date().toISOString(),
-              },
-              ...prev,
-            ];
-            return next.slice(0, 100);
-          });
+          // De-duplicated by id (gap B9 / item 8.29) — the same message can
+          // otherwise arrive twice: once live, once from a resync seed.
+          const incoming: TeamMessage = {
+            id: payload.id ?? crypto.randomUUID(),
+            text: payload.text,
+            fromTeamId: payload.fromTeamId ?? null,
+            fromLabel: typeof payload.fromLabel === 'string' ? payload.fromLabel : null,
+            toTeamId: payload.toTeamId ?? null,
+            ackOf: payload.ackOf ?? null,
+            sentAt: payload.sentAt ?? new Date().toISOString(),
+          };
+          setTeamMessages((prev) => mergeTeamMessages(prev, [incoming]));
         }
       } else if (msg.type === 'patient.created') {
         const p = (msg.payload as any)?.patient;
@@ -341,15 +340,22 @@ export function CoordinatorDashboard() {
   };
 
   // Chat is realtime-only: the server echoes the message back into the
-  // stream, so nothing is added here unless there is no server (demo).
+  // stream, so nothing is added here unless there is no server (demo, where
+  // `api.sendTeamMessage` appends to the same in-memory list `getTeamMessages`
+  // reads — history and live stay one list, gap B9 / item 8.29).
   const handleSendTeamMessage = async (toTeamId: string | null, text: string): Promise<boolean> => {
     if (isDemo) {
-      setTeamMessages((prev) => [
-        { id: crypto.randomUUID(), text, fromTeamId: null, fromLabel: 'Koordinator', toTeamId, sentAt: new Date().toISOString() },
-        ...prev,
-      ].slice(0, 100));
-      addToast({ level: 'info', autoDismissMs: 4_000, message: 'Demo — meldingen vises bare her' });
-      return true;
+      if (!eventId) return false;
+      try {
+        const { message } = await api.sendTeamMessage(eventId, { fromTeamId: null, fromLabel: 'Koordinator', toTeamId, text });
+        setTeamMessages((prev) => mergeTeamMessages(prev, [message]));
+        addToast({ level: 'info', autoDismissMs: 4_000, message: 'Demo — meldingen vises bare her' });
+        return true;
+      } catch (err) {
+        console.error('[coordinator] Demo sendTeamMessage failed', err);
+        addToast({ level: 'urgent', autoDismissMs: 6_000, message: 'Kunne ikke sende meldingen.' });
+        return false;
+      }
     }
     const delivered = wsSend({
       type: 'team.message',
@@ -362,6 +368,29 @@ export function CoordinatorDashboard() {
       return false;
     }
     return true;
+  };
+
+  // Transport request (gap B3 / item 8.26).
+  const handleAssignTransport = async (patientId: string, teamId: string) => {
+    try {
+      const teamNameForToast = teams.find((t) => t.id === teamId)?.name ?? 'lag';
+      const res = await api.executePatientAction(patientId, { type: 'transport.assigned', teamId });
+      setFieldPatients((prev) => prev.map((p) => (p.id === patientId ? (res.patient as FieldPatient) : p)));
+      addToast({ level: 'info', autoDismissMs: 4_000, message: `Transport tildelt ${teamNameForToast}` });
+    } catch (err) {
+      console.error('[coordinator] Failed to assign transport', err);
+      addToast({ level: 'urgent', autoDismissMs: 6_000, message: 'Kunne ikke tildele transport — prøv igjen.' });
+    }
+  };
+
+  const handleClearTransport = async (patientId: string) => {
+    try {
+      const res = await api.executePatientAction(patientId, { type: 'transport.cleared' });
+      setFieldPatients((prev) => prev.map((p) => (p.id === patientId ? (res.patient as FieldPatient) : p)));
+    } catch (err) {
+      console.error('[coordinator] Failed to clear transport', err);
+      addToast({ level: 'urgent', autoDismissMs: 6_000, message: 'Kunne ikke fjerne transport — prøv igjen.' });
+    }
   };
 
   const handleClosePatient = async (id: string, reason: 'false_alarm' | 'disappeared') => {
@@ -395,6 +424,7 @@ export function CoordinatorDashboard() {
         isDemo={isDemo}
         onOpenApiKey={() => { setApiKeyDraft(apiKey); setShowApiKeyInput(true); }}
         connectedUsers={connectedUsers}
+        onOpenEventSetup={() => navigate('/coordinator/event')}
       />
 
       {showApiKeyInput && (
@@ -415,6 +445,7 @@ export function CoordinatorDashboard() {
         onDismissAlert={(patientId) => setDeteriorationAlerts((prev) => prev.filter((a) => a.patientId !== patientId))}
         onClearTeamAssistance={handleClearTeamAssistance}
         onMessageTeam={handleMessageTeam}
+        onAssignTransport={handleAssignTransport}
         teamPatientEngagements={teamPatientEngagements}
         now={now}
       />
@@ -423,6 +454,8 @@ export function CoordinatorDashboard() {
         stats={stats}
         lastUpdatedAt={lastStatsUpdatedAt}
         prevStats={prevStats}
+        sickbaySettings={eventSettings?.sickbay}
+        patients={fieldPatients}
       />
 
       {/* Patients + teams + messages on the left, map on the right (stacked on tablets) */}
@@ -438,6 +471,7 @@ export function CoordinatorDashboard() {
             teamPatientEngagements={teamPatientEngagements}
             onClosePatient={handleClosePatient}
             onPickLocation={(patientId) => setPickingPatientId(patientId)}
+            onClearTransport={handleClearTransport}
             now={now}
           />
 

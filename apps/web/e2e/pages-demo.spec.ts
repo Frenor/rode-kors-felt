@@ -229,4 +229,16 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await page.getByTestId('coordinator-message-send').click();
   await expect(page.getByText('Koordinator → Alle')).toBeVisible();
   await expect(page.getByText('Samling ved mål kl. 14')).toBeVisible();
+
+  // Event set-up (gap B5 / item 8.31): the coordinator can reach the
+  // Arrangement page, see the demo event's own data and generate an access
+  // code with a visible six-digit value.
+  await page.getByTestId('coordinator-event-setup-link').click();
+  await page.waitForURL('**/coordinator/event');
+  await expect(page.getByTestId('event-setup-name')).toHaveValue('Holmenkollen Skimaraton 2026');
+  await expect(page.getByTestId('event-setup-capacity-chairs')).toHaveValue('16');
+  await page.getByTestId('event-setup-code-create').click();
+  await expect(page.getByTestId('event-setup-code-value')).toHaveText(/^\d{6}$/);
+  await page.getByRole('link', { name: /Tilbake til oversikten/i }).click();
+  await page.waitForURL('**/coordinator');
 });
