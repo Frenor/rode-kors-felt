@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuthStore } from '../stores/auth';
+import { useNotificationStore } from '../stores/notifications';
 import { useFirstAidWorkspaceStore } from '../stores/firstaid-workspace';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useTeamPositionBroadcast } from '../hooks/useTeamPositionBroadcast';
@@ -23,8 +24,13 @@ import { TeamSettingsPanel, TRANSPORT_LABELS } from './FirstAider/TeamSettingsPa
 import { TeamStatusPickerSheet } from './FirstAider/TeamStatusPickerSheet';
 import { TeamChatSection } from './FirstAider/TeamChatSection';
 
+/** Patient statuses that still concern a field team. Closed patients drop out of every list. */
+const OPEN_PATIENT_STATUSES = new Set(['incoming', 'in_treatment', 'observation']);
+const isOpenPatient = (p: { status?: string | null }) => !p.status || OPEN_PATIENT_STATUSES.has(p.status);
+
 export function FirstAiderDashboard() {
   const { eventId, teams, updateTeamTransport } = useAuthStore();
+  const addToast = useNotificationStore((s) => s.add);
   const selectedTeam = useFirstAidWorkspaceStore((s) => s.selectedTeamId);
   const setSelectedTeam = useFirstAidWorkspaceStore((s) => s.setSelectedTeam);
   const activePatientIdByTeam = useFirstAidWorkspaceStore((s) => s.activePatientIdByTeam);
@@ -95,31 +101,111 @@ export function FirstAiderDashboard() {
     [],
     [],
   );
+  // Latest queue snapshot for async callbacks (reconciliation must not trust
+  // the server for a patient whose local action has not been synced yet).
+  const queuedTeamActionsRef = useRef(queuedTeamActions);
+  queuedTeamActionsRef.current = queuedTeamActions;
 
+  // A persisted team id that no longer exists in this event (new event, demo →
+  // real, team removed) would otherwise leave the user stuck on "Ukjent lag"
+  // with no way back to the team picker.
+  useEffect(() => {
+    if (selectedTeam && teams.length > 0 && !teams.some((t) => t.id === selectedTeam)) {
+      setSelectedTeam(null);
+    }
+  }, [selectedTeam, teams, setSelectedTeam]);
+
+  /**
+   * Adopt the server's view of this team's per-patient engagement unless we
+   * still have an unsynced local action for that patient. Without this, a
+   * status set on one phone (or cleared by the coordinator) never reaches
+   * the other phones in the same patrol because the optimistic local value
+   * always wins.
+   */
+  const reconcilePatientStatuses = useCallback((ws: TeamWorkspaceResponse) => {
+    if (!eventId || !selectedTeam) return;
+    const pendingPatientIds = new Set(
+      (queuedTeamActionsRef.current ?? [])
+        .map((item) => item.payload)
+        .filter((p): p is Extract<QueuedTeamActionPayload, { patientId: string }> => 'patientId' in p)
+        .map((p) => p.patientId),
+    );
+    const serverStatus = new Map<string, TeamPatientStatus>();
+    for (const p of [...ws.assignedPatients, ...ws.monitoredPatients, ...ws.unassignedPatients]) {
+      if (p.teamPatientStatus) serverStatus.set(p.id, p.teamPatientStatus);
+    }
+    const prefix = `${eventId}:${selectedTeam}:`;
+    const { patientStatusMap: localMap } = useFirstAidWorkspaceStore.getState();
+    const seen = new Set<string>();
+    for (const [key, localStatus] of Object.entries(localMap)) {
+      if (!key.startsWith(prefix)) continue;
+      const patientId = key.slice(prefix.length);
+      seen.add(patientId);
+      if (pendingPatientIds.has(patientId)) continue;
+      const remote = serverStatus.get(patientId) ?? null;
+      if (remote === null) clearPatientStatus(eventId, selectedTeam, patientId);
+      else if (remote !== localStatus) setPatientStatus(eventId, selectedTeam, patientId, remote);
+    }
+    for (const [patientId, remote] of serverStatus) {
+      if (!seen.has(patientId) && !pendingPatientIds.has(patientId)) {
+        setPatientStatus(eventId, selectedTeam, patientId, remote);
+      }
+    }
+  }, [eventId, selectedTeam, clearPatientStatus, setPatientStatus]);
+
+  const loadWorkspace = useCallback(async () => {
+    if (!eventId || !selectedTeam) return;
+    setWorkspaceLoading(true);
+    try {
+      const [ws, patientsRes] = await Promise.all([
+        api.getTeamWorkspace(selectedTeam),
+        api.getPatients(eventId, { assignedTeamId: selectedTeam }).catch((err) => {
+          console.error('[firstaid] Failed to load assigned patients', err);
+          return null;
+        }),
+      ]);
+      setWorkspace(ws);
+      // Only reset the WS-derived bookkeeping once we have a fresh authoritative list.
+      setWsRemovedPatientIds(new Set());
+      setAssignedPatients(
+        patientsRes?.patients
+          ? patientsRes.patients.filter(isOpenPatient)
+          : ws.assignedPatients,
+      );
+      reconcilePatientStatuses(ws);
+      const hasPendingTeamStatus = (queuedTeamActionsRef.current ?? []).some((i) => i.payload.type === 'team.status_set');
+      if (!hasPendingTeamStatus) setTeamStatus(eventId, selectedTeam, ws.latestStatus);
+    } catch (err) {
+      console.error('[firstaid] Failed to load team workspace', err);
+      addToast({ level: 'urgent', message: 'Kunne ikke hente pasientlisten — viser siste kjente data.', autoDismissMs: 6_000 });
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  }, [eventId, selectedTeam, reconcilePatientStatuses, setTeamStatus, addToast]);
+
+  // Load on team change, and re-sync whenever we regain connectivity or the
+  // user returns to the app (phones suspend background tabs for long periods).
   useEffect(() => {
     if (!eventId || !selectedTeam) {
       setWorkspace(null);
+      setAssignedPatients([]);
       return;
     }
-    setWorkspaceLoading(true);
-    api.getTeamWorkspace(selectedTeam)
-      .then((res) => {
-        setWorkspace(res);
-        // Seed assignedPatients from workspace so the list is immediately
-        // visible while the separate getPatients fetch is still in flight.
-        if (res.assignedPatients.length > 0) {
-          setAssignedPatients((prev) => (prev.length === 0 ? res.assignedPatients : prev));
-        }
-      })
-      .finally(() => setWorkspaceLoading(false));
-  }, [eventId, selectedTeam]);
+    void loadWorkspace();
 
-  useEffect(() => {
-    if (!eventId || !selectedTeam) { setAssignedPatients([]); return; }
-    api.getPatients(eventId, { assignedTeamId: selectedTeam }).then((res) => {
-      setAssignedPatients(res.patients ?? []);
-    }).catch((err) => console.error('[firstaid] Failed to load assigned patients', err));
-  }, [eventId, selectedTeam]);
+    const onReconnect = () => { void loadWorkspace(); };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) void loadWorkspace();
+    };
+    window.addEventListener('rkf:wsConnected', onReconnect);
+    window.addEventListener('online', onReconnect);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('rkf:wsConnected', onReconnect);
+      window.removeEventListener('online', onReconnect);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [eventId, selectedTeam, loadWorkspace]);
 
   useEffect(() => {
     const off = onMessage((msg) => {
@@ -128,69 +214,107 @@ export function FirstAiderDashboard() {
         const patient = payload.patient;
         const changed: string[] = payload.changedFields ?? [];
         if (!patient || !patient.id) return;
+        const patientId: string = patient.id;
+
+        // Closed by sick bay or coordinator → gone from every field list.
+        if (!isOpenPatient(patient)) {
+          setAssignedPatients((prev) => prev.filter((p) => p.id !== patientId));
+          setOtherTeamAssignedPatients((prev) => prev.filter((p) => p.id !== patientId));
+          setWorkspace((prev) => prev ? {
+            ...prev,
+            assignedPatients: prev.assignedPatients.filter((p) => p.id !== patientId),
+            monitoredPatients: prev.monitoredPatients.filter((p) => p.id !== patientId),
+            unassignedPatients: prev.unassignedPatients.filter((p) => p.id !== patientId),
+          } : prev);
+          if (eventId && selectedTeam) clearPatientStatus(eventId, selectedTeam, patientId);
+          return;
+        }
 
         setAssignedPatients((prev) => {
-          const exists = prev.some((p) => p.id === patient.id);
+          const exists = prev.some((p) => p.id === patientId);
           if (patient.assignedTeamId === selectedTeam) {
-            return exists ? prev.map((p) => p.id === patient.id ? patient : p) : [...prev, patient];
+            return exists ? prev.map((p) => p.id === patientId ? patient : p) : [...prev, patient];
           }
           // Removed from this team
-          return prev.filter((p) => p.id !== patient.id);
+          return prev.filter((p) => p.id !== patientId);
         });
 
         // Track assignment changes so the unassigned list stays accurate
         if (patient.assignedTeamId) {
-          setWsRemovedPatientIds((prev) => new Set([...prev, patient.id as string]));
+          setWsRemovedPatientIds((prev) => new Set([...prev, patientId]));
+          setWorkspace((prev) => prev ? {
+            ...prev,
+            unassignedPatients: prev.unassignedPatients.filter((p) => p.id !== patientId),
+          } : prev);
           if (patient.assignedTeamId !== selectedTeam) {
             setOtherTeamAssignedPatients((prev) => {
-              const exists = prev.some((p) => p.id === patient.id);
+              const exists = prev.some((p) => p.id === patientId);
               return exists
-                ? prev.map((p) => p.id === patient.id ? patient as TeamWorkspacePatient : p)
+                ? prev.map((p) => p.id === patientId ? patient as TeamWorkspacePatient : p)
                 : [...prev, patient as TeamWorkspacePatient];
             });
+          } else {
+            setOtherTeamAssignedPatients((prev) => prev.filter((p) => p.id !== patientId));
           }
         } else {
-          // Patient un-assigned — return to unassigned list
+          // Patient un-assigned — (re)appear in the unassigned list
           setWsRemovedPatientIds((prev) => {
             const next = new Set(prev);
-            next.delete(patient.id as string);
+            next.delete(patientId);
             return next;
           });
-          setOtherTeamAssignedPatients((prev) => prev.filter((p) => p.id !== patient.id));
+          setOtherTeamAssignedPatients((prev) => prev.filter((p) => p.id !== patientId));
+          setWorkspace((prev) => {
+            if (!prev) return prev;
+            const exists = prev.unassignedPatients.some((p) => p.id === patientId);
+            return {
+              ...prev,
+              unassignedPatients: exists
+                ? prev.unassignedPatients.map((p) => p.id === patientId ? { ...p, ...(patient as TeamWorkspacePatient) } : p)
+                : [patient as TeamWorkspacePatient, ...prev.unassignedPatients],
+            };
+          });
         }
 
         if (changed.length > 0 && patient.assignedTeamId === selectedTeam) {
-          const id: string = patient.id;
           setHighlightedFields((prev) => {
             const next = new Map(prev);
-            next.set(id, new Set(changed));
+            next.set(patientId, new Set(changed));
             return next;
           });
           // Clear existing timer for this patient
-          const existing = highlightTimers.current.get(id);
+          const existing = highlightTimers.current.get(patientId);
           if (existing) clearTimeout(existing);
           const timer = setTimeout(() => {
             setHighlightedFields((prev) => {
               const next = new Map(prev);
-              next.delete(id);
+              next.delete(patientId);
               return next;
             });
-            highlightTimers.current.delete(id);
+            highlightTimers.current.delete(patientId);
           }, 3000);
-          highlightTimers.current.set(id, timer);
+          highlightTimers.current.set(patientId, timer);
         }
       } else if (msg.type === 'patient.created') {
         const patient = (msg.payload as any)?.patient;
-        if (patient && patient.assignedTeamId === selectedTeam) {
-          setAssignedPatients((prev) => [patient, ...prev]);
-        } else if (patient && patient.assignedTeamId && patient.assignedTeamId !== selectedTeam) {
+        if (!patient || !patient.id || !isOpenPatient(patient)) return;
+        if (patient.assignedTeamId === selectedTeam) {
+          setAssignedPatients((prev) => prev.some((p) => p.id === patient.id) ? prev : [patient, ...prev]);
+        } else if (patient.assignedTeamId) {
           setWsRemovedPatientIds((prev) => new Set([...prev, patient.id as string]));
-          setOtherTeamAssignedPatients((prev) => [...prev, patient as TeamWorkspacePatient]);
+          setOtherTeamAssignedPatients((prev) => prev.some((p) => p.id === patient.id) ? prev : [...prev, patient as TeamWorkspacePatient]);
+        } else {
+          // New unassigned patient (reported by the coordinator or another
+          // patrol) — previously this never showed up until a full reload.
+          setWorkspace((prev) => {
+            if (!prev || prev.unassignedPatients.some((p) => p.id === patient.id)) return prev;
+            return { ...prev, unassignedPatients: [patient as TeamWorkspacePatient, ...prev.unassignedPatients] };
+          });
         }
       }
     });
     return off;
-  }, [onMessage, selectedTeam]);
+  }, [onMessage, selectedTeam, eventId, clearPatientStatus]);
 
   useEffect(() => {
     if (!selectedTeam) { setTeamGear([]); setContactPhone(''); setContactRadio(''); return; }
@@ -209,7 +333,7 @@ export function FirstAiderDashboard() {
     }
   }, [activePatientIdByTeam, eventId, selectedTeam, setActivePatient, workspace]);
 
-  // Receive team messages via WebSocket
+  // Receive team messages and own-team status changes via WebSocket
   useEffect(() => {
     const off = onMessage((msg) => {
       if (msg.type === 'team.message') {
@@ -227,6 +351,26 @@ export function FirstAiderDashboard() {
           },
         ]);
         setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+      } else if (msg.type === 'team.status_changed' || msg.type === 'team.session_changed') {
+        // Keep several phones in the same patrol (and server-derived
+        // statuses) in sync. Skip while we still have unsynced local actions.
+        const payload = (msg.payload as any) ?? {};
+        if (!eventId || !selectedTeam || payload.teamId !== selectedTeam) return;
+        const action = payload.action ?? {};
+        const actionPayload = action.payload ?? {};
+        const queued = queuedTeamActionsRef.current ?? [];
+        if (queued.some((item) => item.clientActionId === actionPayload.clientActionId)) return;
+        if (msg.type === 'team.status_changed' && actionPayload.status) {
+          if (!queued.some((item) => item.payload.type === 'team.status_set')) {
+            setTeamStatus(eventId, selectedTeam, actionPayload.status as TeamOperationalStatus);
+          }
+        } else if (msg.type === 'team.session_changed' && payload.actionType === 'team.patient_status_set' && actionPayload.patientId) {
+          const patientId = actionPayload.patientId as string;
+          const hasPending = queued.some((item) => 'patientId' in item.payload && item.payload.patientId === patientId);
+          if (hasPending) return;
+          if (actionPayload.status) setPatientStatus(eventId, selectedTeam, patientId, actionPayload.status as TeamPatientStatus);
+          else clearPatientStatus(eventId, selectedTeam, patientId);
+        }
       } else if (msg.type === 'team.sector_assigned') {
         const payload = (msg.payload as any) ?? {};
         if (typeof payload.teamId === 'string') {
@@ -249,11 +393,22 @@ export function FirstAiderDashboard() {
       }
     });
     return off;
-  }, [onMessage, selectedTeam]);
+  }, [onMessage, selectedTeam, eventId, setTeamStatus, setPatientStatus, clearPatientStatus]);
 
   const sendMessage = () => {
     if (!messageText.trim() || !eventId) return;
     const text = messageText.trim();
+    const delivered = wsSend({
+      type: 'team.message',
+      eventId,
+      payload: { fromTeamId: selectedTeam ?? undefined, text },
+      timestamp: new Date().toISOString(),
+    });
+    if (!delivered) {
+      // Chat is realtime-only: never pretend a message went out while offline.
+      addToast({ level: 'urgent', message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.', autoDismissMs: 6_000 });
+      return;
+    }
     // Add optimistically so the sender sees the message immediately.
     setMessages((prev) => [
       ...prev,
@@ -266,12 +421,6 @@ export function FirstAiderDashboard() {
       },
     ]);
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
-    wsSend({
-      type: 'team.message',
-      eventId,
-      payload: { fromTeamId: selectedTeam ?? undefined, text },
-      timestamp: new Date().toISOString(),
-    });
     setMessageText('');
   };
 
@@ -428,6 +577,7 @@ export function FirstAiderDashboard() {
       await api.recordVitals(patientId, payload as Record<string, number | undefined>);
       setPerPatientVitalsForm((prev) => ({ ...prev, [patientId]: EMPTY_VITALS_FORM }));
       setPerPatientVitalsError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'info', message: 'Vitale tegn lagret', autoDismissMs: 2_500 });
     } catch {
       setPerPatientVitalsError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre vitals — prøv igjen.' }));
     }
@@ -441,6 +591,7 @@ export function FirstAiderDashboard() {
       await api.addPatientNote(patientId, text, author);
       setPerPatientNoteText((prev) => ({ ...prev, [patientId]: '' }));
       setPerPatientNoteError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'info', message: 'Notat lagret', autoDismissMs: 2_500 });
     } catch {
       setPerPatientNoteError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre notat — prøv igjen.' }));
     }
@@ -455,6 +606,7 @@ export function FirstAiderDashboard() {
     try {
       await api.updatePatient(patientId, { label: text || null });
       setPerPatientSummaryError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'info', message: 'Sammendrag lagret', autoDismissMs: 2_500 });
     } catch {
       setPerPatientSummaryError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre — prøv igjen.' }));
     }
@@ -465,6 +617,7 @@ export function FirstAiderDashboard() {
     try {
       await api.updatePatient(patientId, { positionText: text || null });
       setPerPatientPosError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'info', message: 'Posisjon lagret', autoDismissMs: 2_500 });
     } catch {
       setPerPatientPosError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre posisjon — prøv igjen.' }));
     }
@@ -498,8 +651,23 @@ export function FirstAiderDashboard() {
     const author = selectedTeamData?.name ?? 'Ukjent lag';
     try {
       await api.addPatientNote(patientId, `Avsluttet: ${note}`, author);
+      // Close on the server too — otherwise the coordinator and sick bay keep
+      // the patient as active and it reappears here after a reload.
+      await api.updatePatient(patientId, { status: 'discharged' });
       setAssignedPatients((prev) => prev.filter((p) => p.id !== patientId));
+      setWorkspace((prev) => prev ? {
+        ...prev,
+        assignedPatients: prev.assignedPatients.filter((p) => p.id !== patientId),
+        monitoredPatients: prev.monitoredPatients.filter((p) => p.id !== patientId),
+        unassignedPatients: prev.unassignedPatients.filter((p) => p.id !== patientId),
+      } : prev);
       clearPatientStatus(eventId!, selectedTeam!, patientId);
+      await queueAndSyncTeamAction(selectedTeam!, {
+        type: 'team.patient_status_set',
+        patientId,
+        status: null,
+        clientActionId: crypto.randomUUID(),
+      });
       setClosedPatients((prev) => [
         { id: patientId, label: patientLabel, closedAt: new Date().toISOString(), note },
         ...prev,
@@ -508,6 +676,7 @@ export function FirstAiderDashboard() {
       setPerPatientCloseNote((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
       setPerPatientCloseError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
       if (expandedPatientId === patientId) setExpandedPatientId(null);
+      addToast({ level: 'info', message: 'Pasient avsluttet', autoDismissMs: 3_000 });
     } catch {
       setPerPatientCloseError((prev) => ({ ...prev, [patientId]: 'Kunne ikke avslutte pasient — prøv igjen.' }));
     }
@@ -743,6 +912,7 @@ export function FirstAiderDashboard() {
           onContactPhoneChange={(v) => { setContactPhone(v); setContactsDirty(true); }}
           onContactRadioChange={(v) => { setContactRadio(v); setContactsDirty(true); }}
           onContactsSave={handleContactsSave}
+          onChangeTeam={teams.length > 1 ? () => { setShowSettings(false); setSelectedTeam(null); } : undefined}
         />
       )}
 
@@ -1143,8 +1313,20 @@ export function FirstAiderDashboard() {
                       display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
                     }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                      {patient.presentingComplaint || 'Ukjent problemstilling'}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      {patient.triageStatus && TRIAGE_STYLE[patient.triageStatus] && (
+                        <span style={{
+                          flexShrink: 0, display: 'inline-block', padding: '2px 10px',
+                          borderRadius: 'var(--radius-full)',
+                          background: TRIAGE_STYLE[patient.triageStatus]!.bg, color: TRIAGE_STYLE[patient.triageStatus]!.text,
+                          fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
+                        }}>
+                          {TRIAGE_STYLE[patient.triageStatus]!.label}
+                        </span>
+                      )}
+                      <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                        {patient.label || patient.presentingComplaint || 'Ukjent pasient'}
+                      </div>
                     </div>
                     <PatientLocationRow
                       positionText={patient.positionText}

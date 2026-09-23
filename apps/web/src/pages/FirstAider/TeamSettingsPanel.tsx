@@ -41,6 +41,8 @@ export interface TeamSettingsPanelProps {
   onContactPhoneChange: (value: string) => void;
   onContactRadioChange: (value: string) => void;
   onContactsSave: () => void;
+  /** Return to the team picker (hidden when the event only has one team). */
+  onChangeTeam?: () => void;
 }
 
 export function TeamSettingsPanel({
@@ -58,6 +60,7 @@ export function TeamSettingsPanel({
   onContactPhoneChange,
   onContactRadioChange,
   onContactsSave,
+  onChangeTeam,
 }: TeamSettingsPanelProps) {
   return (
     <section
@@ -306,6 +309,26 @@ export function TeamSettingsPanel({
           </div>
         )}
       </div>
+
+      {onChangeTeam && (
+        <button
+          type="button"
+          onClick={onChangeTeam}
+          className="touch-target"
+          style={{
+            minHeight: 44,
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--color-border)',
+            background: 'transparent',
+            color: 'var(--color-text-muted)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Bytt patrulje
+        </button>
+      )}
     </section>
   );
 }
