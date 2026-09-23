@@ -1,3 +1,7 @@
+> **Historical (2026-09-23).** This document describes a bottom tab bar and an incident tab that
+> were later removed (PR #51, `docs/removed-features/`). The current design is in
+> `docs/design/design-system-2026-09.md`; the feature register is `docs/FEATURES.md`.
+
 # UI Ideation 2026 — Rødt Kors Felt
 
 ## What the app does today

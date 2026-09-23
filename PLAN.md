@@ -9,7 +9,7 @@
 - Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
 - Lane 6 (Field Trial Remediation — production readiness): `In progress`
 - Lane 7 (UX Review — field teams / sick bay / coordinator): `Done` (review, three fix passes, design system and presentation export landed; backlog in the review doc §7)
-- Lane 8 (Gap review implementation — see section 13): `In progress` (batches 1 and 2 landed; batch 3 next)
+- Lane 8 (Gap review implementation — see section 13): `In progress` (batches 1 and 2 landed; batch 3 API in build)
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -480,38 +480,119 @@ with `en_route_to_patient` is the acknowledgement; the coordinator derives "bekr
 - e2e: `local-full.spec.ts` coordinator section: number pill visible; `coordinator-flow.spec.ts`
   unchanged.
 
-### 13.3 Batch 3 — larger items (after batch 2 is integrated)
-- 8.26 (B3) Transport request: patient actions `transport.requested` `{ need: 'stretcher' |
-  'atv' | 'ambulance', pickupText }` and `transport.assigned` `{ teamId }`; columns
-  `transport_need`, `transport_requested_at`, `transport_team_id`; field button "Be om
-  transport" (sheet with the three needs); queue group "Transport" with an assign select of
-  vehicle-capable teams (`transport in ('vehicle','atv')` first); the patrol sees "Delta (ATV)
-  på vei"; the sick bay sees the need on the card.
-- 8.27 (B1) Sick bay offline: reuse `offline-firstaid-queue` pattern for `recordVitals`,
-  `addPatientNote`, `executePatientAction`, `updatePatient` from the sick bay; a pending count
-  in `SickBayHeader`; "lagret lokalt" toasts; replay on reconnect; no server dedup yet (note).
-- 8.28 (A8) Quick log "Behandlet på stedet": one sheet from the field header (secondary
-  button next to Meld pasient): green preselected, complaint chips (gnagsår, kutt, forstuing,
-  hodepine, annet), age group, optional note → creates with `fieldOutcome: 'treated_on_scene'`
-  and `status: 'discharged'` in one call (`POST /events/:id/patients` accepts both fields).
-- 8.29 (B9) Chat history: table `team_messages` (id, event_id, from_team_id, from_label,
-  to_team_id, text, ack_of, sent_at); the WS handler persists; `GET /events/:id/messages?limit=100`;
-  clients load it on connect.
-- 8.30 (B6) Sick bay capacity: `events.settings JSONB` `{ sickbay: { chairs: 16, beds: 4 } }`;
-  occupancy strip in `SickBayHeader`, a coordinator tile "Sykestue 12/16", free-number picker.
-- 8.31 (B5) Event set-up page (`/admin/events`): create event, teams (name, transport, ISSI,
-  phone), access codes per role with QR, sectors, sick bay capacity; API routes for teams and
-  codes with `coordinator|admin` role.
-- 8.32 (B7) Per-patient journal export: `GET /patients/:id/journal` (markdown → printable HTML
-  page in the web app, `window.print`), and `GET /events/:id/journals.zip`.
-- 8.33 (B8) Retention: "Avslutt arrangement" flow (export → anonymise: null `full_name`,
-  `birth_date`, `gender`, free text notes hashed out; keep counts, triage, timestamps) and a
-  scheduled purge for events archived > 30 days; device logout clears IndexedDB queues.
-- 8.34 (A7) Distance in the sick bay's "På vei" line — folded into 8.14.
-- 8.35 (C2) Web Push via the service worker for assignment, directed message, needs-assistance.
-- Mass casualty mode is out of scope for good (2026-09-23); see `docs/FEATURES.md` → Removed.
-- 8.36 (C3, C4, C5) People per team; voice notes; archive the stale ideation doc.
+### 13.3 Batch 3 — larger items (specs are the contract; two API agents first, then three UI agents)
 
+**API agent A — patients** (owns `apps/api/src/routes/patients.ts`, `action-events.ts`, the
+patient parts of `events.ts`; patient columns in `schema.ts`/`migrate.ts`; patient parts of
+shared-types, `lib/types.ts`, `lib/api.ts`, `lib/demo-store.ts`):
+- 8.26 Transport request (gap B3). Columns on patients: `transport_need VARCHAR(16)`
+  (`stretcher | atv | ambulance`), `transport_pickup_text TEXT`, `transport_requested_at
+  TIMESTAMPTZ`, `transport_requested_by VARCHAR(100)`, `transport_team_id UUID` (FK teams, set
+  null), `transport_assigned_at TIMESTAMPTZ`. Patient actions: `transport.requested { need,
+  pickupText? }` (sets need/pickup/requestedAt/requestedBy, clears team), `transport.assigned
+  { teamId }` (team must belong to the event; sets team + assignedAt), `transport.cleared`
+  (nulls all six). Each writes an action event and broadcasts `patient.updated` with
+  `changedFields: ['transport']`. All roles. Fields in every patient payload and in
+  sickbay-incoming. Zod enum `TransportNeed`. Demo parity.
+- 8.28 Quick log (gap A8). `POST /events/:id/patients` accepts optional `fieldOutcome`
+  (enum) and `status` (`discharged` only, and only together with `fieldOutcome`), plus
+  `ageGroup`; when both are given the patient is created closed with a note
+  "Behandlet på stedet av <team>". Validation errors are 400 with Norwegian text. Demo parity.
+- 8.32 Journal export (gap B7). `GET /patients/:id/journal` (roles sickbay, coordinator, admin)
+  → `{ patient, vitalsHistory, notes, medications, amkCallLogs, actionHistory, teams:
+  [{id,name}] }`; `GET /events/:id/journals` (coordinator, admin) → `{ journals: [...] }` for
+  every patient in the event. Pure reads; the web renders the printable page (8.32 UI).
+- 8.33 Retention (gap B8). `events.anonymised_at TIMESTAMPTZ`. `POST /events/:id/anonymise`
+  (coordinator, admin): for every patient in the event set `full_name`, `birth_date`, `gender`,
+  `description`, `position_text` to null, replace each note's text and each AMK call log's free
+  text with `[anonymisert]`, keep `label`, triage, statuses, placement, timestamps, vitals and
+  medications; set `anonymised_at`; idempotent; 409 if the event is still `active`. Export
+  `anonymiseExpiredEvents(now)` in a new `apps/api/src/lib/retention.ts` that anonymises every
+  event with `end_date < now − 30 days` and `anonymised_at IS NULL`; `server.ts` calls it on
+  startup and every 24 h (log what it did; never throw out of the timer). Demo parity for
+  the endpoint (in-memory).
+
+**API agent B — event operations** (owns `apps/api/src/routes/ws.ts`, `teams.ts`, new
+`routes/messages.ts`, the event/team/code parts of `events.ts`, `auth.ts` if needed,
+`server.ts` registration; the `team_messages` table, `events.settings`, `teams.active`,
+`access_codes` parts of `schema.ts`/`migrate.ts`; the matching parts of shared-types,
+`lib/types.ts`, `lib/api.ts`, `lib/demo-store.ts`):
+- 8.29 Chat history (gap B9). Table `team_messages` (id uuid, event_id, from_team_id uuid
+  null, from_label varchar(100) null, to_team_id varchar(64) null — a team uuid, `coordinator`,
+  or null for everyone —, text text, ack_of uuid null, sent_at timestamptz). `ws.ts` persists
+  every relayed `team.message` (fire-and-forget with error log) and uses the stored id in the
+  broadcast. `GET /events/:id/messages?limit=100` (auth, event scope) returns the newest
+  `limit` messages in ascending time. Web: `api.getTeamMessages(eventId)`; demo store keeps an
+  in-memory list that `sendTeamMessage` in demo appends to.
+- 8.30 Capacity (gap B6). `events.settings JSONB` `{ sickbay?: { chairs?: number; beds?:
+  number } }`; `PATCH /events/:id/settings` (coordinator, admin; validates non-negative
+  integers) and `settings` in `GET /events/:id`. Demo: chairs 16, beds 4.
+- 8.31 Event set-up (gap B5). `PATCH /events/:id` (name, startDate, endDate, status;
+  coordinator/admin). `POST /events/:id/teams` (name, transport, contactPhone, contactRadio),
+  `PATCH /teams/:id` (same fields + `active`), column `teams.active BOOLEAN NOT NULL DEFAULT
+  TRUE`; inactive teams are excluded from `GET /events/:id` teams unless `?includeInactive=1`.
+  `GET /events/:id/access-codes` (role, code, expiresAt, revokedAt), `POST
+  /events/:id/access-codes { role, hours? }` generates a unique 6-digit code (default 24 h,
+  max 168 h) and returns it once, `POST /access-codes/:id/revoke`. All coordinator/admin.
+  Web api methods for each; demo parity (in-memory teams/codes).
+
+**Field agent (UI)** — owns `pages/FirstAiderDashboard.tsx`, `pages/FirstAider/*`, their tests,
+the field section of `e2e/pages-demo.spec.ts`:
+- 8.26 "Be om transport" on the expanded own-patient card (secondary lg, icon): a sheet with
+  three 56 px chips (Båre / ATV / Ambulanse) and a pickup text (prefilled with the patient's
+  position text) → `transport.requested`. While requested: a Pill "Transport bedt om: ATV ·
+  kl. 11:41"; when assigned: "Delta (ATV) på vei" (team name from the workspace teams);
+  "Avbryt transport" (ghost) → `transport.cleared`.
+- 8.28 Quick log: a secondary lg button "Behandlet på stedet" under "Meld pasient"; one sheet:
+  triage green preselected (chips), complaint chips (Gnagsår, Kutt, Forstuing, Hodepine,
+  Kvalme, Annet) + optional text, age group select, position (GPS as in Meld pasient); submit
+  creates with `fieldOutcome: 'treated_on_scene', status: 'discharged'`; toast "Loggført #12".
+- 8.29 On workspace load, fetch `api.getTeamMessages(eventId)` and seed the chat (own messages
+  marked `fromSelf`), before live messages arrive.
+- 8.36 Voice note: a mic Button next to the note field when `SpeechRecognition` exists
+  (`nb-NO`), pulsing dot while listening, appends the transcript; hidden otherwise.
+
+**Sick bay agent (UI)** — owns `pages/SickBayDashboard.tsx`, `pages/SickBay/*`, a new
+`pages/PatientJournalPage.tsx` + route, their tests, the sick bay section of pages-demo:
+- 8.27 Offline queue: new `lib/offline-sickbay-queue.ts` (Dexie table like the field queue)
+  with payloads `vitals_record | note_add | status_set | patient_update` and a
+  `useOfflineSickbaySync` hook (replay on `online` / `rkf:wsConnected` / startup, one flush at
+  a time). The dashboard queues when `!navigator.onLine` for vitals, notes, status changes and
+  card edits, shows "lagret lokalt" toasts, and `SickBayHeader` shows "N venter på sending"
+  with a red "N ikke sendt" when replay failed.
+- 8.26 Card line "Transport bedt om: ATV · Delta på vei" when set (from the patient fields).
+- 8.30 Occupancy strip in `SickBayHeader`: "Stoler 12/16 · Senger 3/4" from `event.settings`
+  and placements of open patients; the placement editor offers the free numbers first.
+- 8.32 Printable journal: route `/sickbay/journal/:patientId` rendering `GET
+  /patients/:id/journal` as a clean print layout (identity, timeline of vitals with NEWS2,
+  notes, medications, AMK log, discharge) with a "Skriv ut" Button (`window.print`) and a
+  print stylesheet; a "Journal" ghost button in the card's "Rediger detaljer" row opens it in
+  a new tab. Coordinator's event export lives in the coordinator agent (8.32b).
+
+**Coordinator agent (UI)** — owns `pages/CoordinatorDashboard.tsx`, `pages/Coordinator/*`, new
+`pages/EventSetupPage.tsx` + route, `components/AppShell.tsx` (logout clearing only), their
+tests, the coordinator sections of pages-demo and local-full:
+- 8.26 Queue group "Transport" (rows: number, need, pickup text, requested age) with an
+  assign select listing teams with transport `vehicle | atv` first, then the rest →
+  `transport.assigned`; assigned rows show "Delta (ATV) · tildelt kl."; "Fjern" → cleared.
+  Patient rows show the transport pill.
+- 8.29 On load, `api.getTeamMessages(eventId)` seeds the stream.
+- 8.30 Stats tile "Sykestue 12/16 stoler" from settings + open placements; a settings form
+  (chairs/beds) inside the event set-up page.
+- 8.31 Event set-up page at `/coordinator/event` (link "Arrangement" in CoordinatorHeader):
+  event name/dates/status, teams table (add, rename, transport, ISSI, phone, active toggle),
+  access codes (per role: generate with hours, show the code once with a copy button and a
+  QR image drawn on a canvas from a small inline QR encoder, revoke), sick bay capacity.
+- 8.32b "Eksporter journaler" in the set-up page: fetches `/events/:id/journals` and
+  downloads one printable HTML file with all journals (page-break per patient).
+- 8.33 "Avslutt og arkiver arrangementet" in the set-up page: three steps in one card —
+  export journals (8.32b), confirm with the event name typed, `POST /events/:id/anonymise`;
+  afterwards the page shows "Anonymisert kl.". `AppShell` logout clears both Dexie queues and
+  `rkf-pending-assignments:*` keys.
+
+**Deferred with reason:** 8.35 Web Push needs VAPID keys, a push subscription store and a
+send path on the API; decide hosting first. 8.36 people per team: after a field run shows
+the need. The stale ideation doc is marked historical (done in this batch).
 ### 13.4 Order and status
 | Step | Items | Status |
 |---|---|---|
@@ -519,4 +600,5 @@ with `en_route_to_patient` is the acknowledgement; the coordinator derives "bekr
 | Batch 2 field | 8.6–8.13 | `Done` |
 | Batch 2 sick bay | 8.14–8.18 | `Done` |
 | Batch 2 coordinator | 8.19–8.25 | `Done` |
-| Batch 3 | 8.26–8.36 | `Next` |
+| Batch 3 API (A: 8.26, 8.28, 8.32, 8.33 · B: 8.29, 8.30, 8.31) | `In progress` |
+| Batch 3 UI (field, sick bay, coordinator) | `Pending` |
