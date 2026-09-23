@@ -7,10 +7,11 @@ interface IncomingCriticalPanelProps {
   onAssignPlacement: (patientId: string, placementType: 'chair' | 'bed' | '', placementNumber: string) => void;
 }
 
+/** Why the patient is in this panel — phrased as a reason, not a repeat of the badge line. */
 const reasonLabels: Record<string, string> = {
-  needs_assistance: 'Trenger bistand',
-  triage_red: 'Triage rød',
-  news2_high: 'NEWS2 høy',
+  needs_assistance: 'Laget har bedt om bistand',
+  triage_red: 'Rød triage fra felt',
+  news2_high: 'NEWS2 høy — kontinuerlig overvåkning',
 };
 
 const triageLabels: Record<string, string> = {

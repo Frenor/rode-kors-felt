@@ -11,7 +11,7 @@ import {
 } from '@rkf/shared-types';
 import type { SickBayPatient, MedicationRecord, SickbayIncomingItem } from '../lib/types';
 import { SickBayHeader } from './SickBay/SickBayHeader';
-import { PatientIntakeModal, type IntakeFormShape } from './SickBay/PatientIntakeModal';
+import { PatientIntakeModal, isIntakeFormValid, type IntakeFormShape } from './SickBay/PatientIntakeModal';
 import { PatientDischargeModal, type DischargeFormShape, EMPTY_DISCHARGE_FORM, buildDischargeNote } from './SickBay/PatientDischargeModal';
 import { AmkBriefModal } from './SickBay/AmkBriefModal';
 import { PatientCard, type DemographicsFormShape } from './SickBay/PatientCard';
@@ -19,6 +19,8 @@ import { IncomingCriticalPanel } from './SickBay/IncomingCriticalPanel';
 import type { VitalsFormShape } from './SickBay/VitalsEntryForm';
 import type { MedFormShape } from './SickBay/MedicationPanel';
 import { formatPatientAge, formatSickbayPlacement, GENDER_LABELS, statusLabels } from '../lib/constants';
+import { nextObservationDue } from '../lib/observation';
+import { useNow } from '../hooks/useNow';
 
 // In dev mode the monitoring timer fires after 1 min instead of the clinical interval.
 const DEV_INTERVALS = import.meta.env.DEV && import.meta.env.VITE_NEWS2_DEV_INTERVALS === 'true';
@@ -57,6 +59,7 @@ export function SickBayDashboard() {
   const [medications, setMedications] = useState<Record<string, MedicationRecord[]>>({});
   const [incomingItems, setIncomingItems] = useState<SickbayIncomingItem[]>([]);
   const [expandedClosedCards, setExpandedClosedCards] = useState<Record<string, boolean>>({});
+  const now = useNow();
   const UNDO_WINDOW_MS = 10_000;
 
   const pushUndoToast = (message: string, actionId?: string) => {
@@ -159,6 +162,10 @@ export function SickBayDashboard() {
 
   const handleIntake = async () => {
     if (!eventId) return;
+    if (!isIntakeFormValid(intakeForm)) {
+      addToast({ message: 'Skriv inn navn eller problemstilling før du registrerer.', level: 'warning', autoDismissMs: 5_000 });
+      return;
+    }
     const placementType = intakeForm.placementType || undefined;
     const placementNumber = intakeForm.placementNumber.trim();
     if ((placementType && !placementNumber) || (!placementType && placementNumber)) {
@@ -365,7 +372,28 @@ export function SickBayDashboard() {
     await handleStatusChange(patientId, 'in_treatment', patient);
   };
 
+  // Urgency bucket: 0 = overdue re-assessment, 1 = continuous monitoring, 2 = everything else.
+  // Inside a bucket the order is placement (walk order), then NEWS2.
+  const urgencyOf = (p: SickBayPatient): { bucket: number; minutesOverdue: number } => {
+    if (CLOSED_STATUSES.has(p.status as PatientStatus)) return { bucket: 2, minutesOverdue: 0 };
+    const due = nextObservationDue(p.latestVitals, now);
+    if (due.kind === 'overdue') return { bucket: 0, minutesOverdue: due.minutesOverdue };
+    if (due.kind === 'continuous') return { bucket: 1, minutesOverdue: 0 };
+    return { bucket: 2, minutesOverdue: 0 };
+  };
+
+  const openPatients = patients.filter((p) => !CLOSED_STATUSES.has(p.status as PatientStatus));
+  const overdueCount = openPatients.filter((p) => urgencyOf(p).bucket === 0).length;
+  const continuousCount = openPatients.filter((p) => urgencyOf(p).bucket === 1).length;
+
   const sortedPatients = [...patients].sort((a, b) => {
+    const aUrgency = urgencyOf(a);
+    const bUrgency = urgencyOf(b);
+    if (aUrgency.bucket !== bUrgency.bucket) return aUrgency.bucket - bUrgency.bucket;
+    if (aUrgency.bucket === 0 && aUrgency.minutesOverdue !== bUrgency.minutesOverdue) {
+      return bUrgency.minutesOverdue - aUrgency.minutesOverdue;
+    }
+
     const aPlacement = a.placementNumber ? Number.parseInt(a.placementNumber, 10) : Number.NaN;
     const bPlacement = b.placementNumber ? Number.parseInt(b.placementNumber, 10) : Number.NaN;
     const aHasPlacement = Number.isFinite(aPlacement);
@@ -405,7 +433,11 @@ export function SickBayDashboard() {
 
   return (
     <div className="animate-fade-in">
-      <SickBayHeader onNewPatient={() => setShowIntake(true)} />
+      <SickBayHeader
+        onNewPatient={() => setShowIntake(true)}
+        overdueCount={overdueCount}
+        continuousCount={continuousCount}
+      />
 
       <IncomingCriticalPanel
         items={incomingItems}
@@ -549,7 +581,7 @@ export function SickBayDashboard() {
                           textAlign: 'left',
                         }}
                       >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                           <span style={{ fontWeight: 600 }}>{patient.fullName ?? patient.label ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
                           <span
                             style={{

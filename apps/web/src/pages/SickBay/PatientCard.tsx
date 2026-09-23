@@ -8,6 +8,7 @@ import {
 } from '@rkf/shared-types';
 import {
   calculateAgeYears,
+  FIELD_TRIAGE_STYLE,
   formatPatientAge,
   formatSickbayPlacement,
   GENDER_LABELS,
@@ -17,6 +18,8 @@ import {
   statusColors,
   statusLabels,
 } from '../../lib/constants';
+import { describeObservationDue, nextObservationDue } from '../../lib/observation';
+import { useNow } from '../../hooks/useNow';
 import type { SickBayPatient, MedicationRecord } from '../../lib/types';
 import { PatientVitalsDisplay } from './PatientVitalsDisplay';
 import { PatientActionButtons } from './PatientActionButtons';
@@ -106,36 +109,40 @@ export function PatientCard({
 
   const currentStatus = patient.status as keyof typeof STATUS_TRANSITIONS;
   const nextStatuses = STATUS_TRANSITIONS[currentStatus] ?? [];
+  // Copy follows the locked v3.1 sick bay flow spec.
   const actionCopy: Record<string, { label: string; icon: string }> = {
     'incoming:in_treatment': { label: 'Start behandling', icon: '▶' },
-    'incoming:observation': { label: 'Observasjon', icon: '⊕' },
-    'in_treatment:observation': { label: 'Observasjon', icon: '→' },
+    'incoming:observation': { label: 'Legg til observasjon', icon: '⊕' },
+    'in_treatment:observation': { label: 'Flytt til observasjon', icon: '→' },
     'observation:in_treatment': { label: 'Start behandling', icon: '▶' },
     'in_treatment:discharged': { label: 'Skriv ut', icon: '✓' },
     'observation:discharged': { label: 'Skriv ut', icon: '✓' },
-    'in_treatment:transferred': { label: 'Overfør', icon: '⇢' },
-    'observation:transferred': { label: 'Overfør', icon: '⇢' },
-    'discharged:observation': { label: 'Observasjon', icon: '↺' },
-    'transferred:observation': { label: 'Observasjon', icon: '↺' },
-    'discharged:in_treatment': { label: 'Start behandling', icon: '↺' },
-    'transferred:in_treatment': { label: 'Start behandling', icon: '↺' },
-    'in_treatment:incoming': { label: 'Innkommende', icon: '↩' },
-    'observation:incoming': { label: 'Innkommende', icon: '↩' },
+    'in_treatment:transferred': { label: 'Overfør (ambulanse/sykehus)', icon: '⇢' },
+    'observation:transferred': { label: 'Overfør (ambulanse/sykehus)', icon: '⇢' },
+    'discharged:observation': { label: 'Gjenåpne til observasjon', icon: '↺' },
+    'transferred:observation': { label: 'Gjenåpne til observasjon', icon: '↺' },
+    'discharged:in_treatment': { label: 'Gjenåpne behandling', icon: '↺' },
+    'transferred:in_treatment': { label: 'Gjenåpne behandling', icon: '↺' },
+    'in_treatment:incoming': { label: 'Tilbake til innkommende', icon: '↩' },
+    'observation:incoming': { label: 'Tilbake til innkommende', icon: '↩' },
   };
+  // The one transition that is obviously "next" for this status gets a real
+  // button; the rest stay in the dropdown behind the status badge.
+  const primaryNextStatus = currentStatus === 'incoming' ? 'in_treatment' : null;
 
   const news2 = patient.latestVitals ? calculateNEWS2(patient.latestVitals) : null;
   const n2colors = news2 ? news2Colors[news2.alertLevel] : null;
+
+  const now = useNow();
+  const isClosed = patient.status === 'discharged' || patient.status === 'transferred';
+  const observationDue = isClosed ? { kind: 'none' as const } : nextObservationDue(patient.latestVitals, now);
+  const observationText = describeObservationDue(observationDue);
+  const observationUrgent = observationDue.kind === 'overdue' || observationDue.kind === 'continuous';
 
   // Field reports carry a label (e.g. "Brudd / skade") and a free-text
   // description rather than a name and presenting complaint — fall back to
   // them so a patient arriving from a patrol is not shown as "Ukjent pasient".
   const patientName = patient.fullName ?? patient.label ?? patient.presentingComplaint ?? 'Ukjent pasient';
-  const FIELD_TRIAGE_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-    red:    { bg: '#fee2e2', text: '#b91c1c', label: 'Rød' },
-    yellow: { bg: '#fef9c3', text: '#854d0e', label: 'Gul' },
-    green:  { bg: '#dcfce7', text: '#166534', label: 'Grønn' },
-    black:  { bg: '#f1f5f9', text: '#1e293b', label: 'Svart' },
-  };
   const fieldTriage = patient.triageStatus ? FIELD_TRIAGE_STYLE[patient.triageStatus] ?? null : null;
   const patientAgeLabel = formatPatientAge({
     birthDate: patient.birthDate ?? null,
@@ -283,20 +290,24 @@ export function PatientCard({
   return (
     <article
       aria-label={`Pasient ${patientName}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
+      data-observation={observationDue.kind}
       style={{
         padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+        border: `${observationUrgent ? 2 : 1}px solid ${observationUrgent ? 'var(--color-status-critical)' : 'var(--color-border)'}`,
+        background: 'var(--color-surface)',
         display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', height: '100%',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 'var(--space-2)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      {/* Name column gets first claim on width; the badge group wraps under it
+          in a narrow grid column instead of clipping the name mid-word. */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: '1 1 160px' }}>
+          <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, minWidth: 0 }}>
             {fieldTriage && (
               <span
                 aria-label={`Felt-triage ${fieldTriage.label}`}
                 style={{
-                  flexShrink: 0, padding: '1px 7px', borderRadius: 'var(--radius-full)',
+                  flexShrink: 0, padding: '2px 8px', borderRadius: 'var(--radius-full)',
                   background: fieldTriage.bg, color: fieldTriage.text,
                   fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
                 }}
@@ -304,14 +315,28 @@ export function PatientCard({
                 {fieldTriage.label}
               </span>
             )}
-            <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{patientName}</span>
+            <span
+              style={{
+                fontWeight: 700, fontSize: 'var(--text-base)', lineHeight: 1.25,
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              }}
+            >
+              {patientName}
+            </span>
           </span>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{complaintText}</span>
+          <span
+            style={{
+              fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', lineHeight: 1.3,
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}
+          >
+            {complaintText}
+          </span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-            {`${placementLabel || 'Ikke satt'}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
+            {`${placementLabel || 'Plassering ikke satt'}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
           {news2 && n2colors && (
             <span
               title={`${news2MonitoringLabel(news2)}${news2MissingLabels.length > 0 ? ` · Mangler: ${news2MissingLabels.join(', ')}` : ''}`}
@@ -407,8 +432,44 @@ export function PatientCard({
         </div>
       </div>
 
+      {/* When is this patient due for a new set of observations — the thing a
+          busy clinician with six patients forgets first. */}
+      {observationText && (
+        <div
+          data-testid={`observation-due-${patient.id}`}
+          role={observationDue.kind === 'overdue' ? 'alert' : undefined}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            borderRadius: 'var(--radius-sm)',
+            background: observationUrgent ? 'var(--color-status-critical-bg)' : 'var(--color-surface-sunken)',
+            color: observationUrgent ? 'var(--color-status-critical)' : 'var(--color-text-muted)',
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: observationUrgent ? 700 : 500,
+          }}
+        >
+          <span aria-hidden="true">{observationDue.kind === 'overdue' ? '⏰' : observationDue.kind === 'continuous' ? '‼' : '⏱'}</span>
+          {observationText}
+        </div>
+      )}
+
       {patient.latestVitals && (
         <PatientVitalsDisplay vitals={patient.latestVitals} />
+      )}
+
+      {primaryNextStatus && (
+        <button
+          type="button"
+          data-testid={`primary-action-${patient.id}`}
+          onClick={() => onStatusChange(primaryNextStatus)}
+          style={{
+            minHeight: 'var(--touch-min)', width: '100%',
+            borderRadius: 'var(--radius-md)', border: 'none',
+            background: 'var(--color-brand)', color: 'white',
+            fontSize: 'var(--text-base)', fontWeight: 700, cursor: 'pointer',
+          }}
+        >
+          ▶ {actionCopy[`${currentStatus}:${primaryNextStatus}`]?.label ?? statusLabels[primaryNextStatus]}
+        </button>
       )}
 
       <PatientActionButtons
@@ -431,13 +492,13 @@ export function PatientCard({
           aria-expanded={showPlacementEditor}
           onClick={handleTogglePlacementEditor}
           style={{
-            minHeight: 28,
-            padding: '0 var(--space-2)',
+            minHeight: 44,
+            padding: '0 var(--space-3)',
             borderRadius: 'var(--radius-full)',
             border: `1px solid ${showPlacementEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
             background: showPlacementEditor ? 'var(--color-brand-dim)' : 'transparent',
-            fontSize: 'var(--text-xs)',
-            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
             color: showPlacementEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
             cursor: 'pointer',
             whiteSpace: 'nowrap',
@@ -453,13 +514,13 @@ export function PatientCard({
           data-testid={`demographics-editor-toggle-${patient.id}`}
           onClick={handleToggleDemographicsEditor}
           style={{
-            minHeight: 28,
-            padding: '0 var(--space-2)',
+            minHeight: 44,
+            padding: '0 var(--space-3)',
             borderRadius: 'var(--radius-full)',
             border: `1px solid ${showDemographicsEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
             background: showDemographicsEditor ? 'var(--color-brand-dim)' : 'transparent',
-            fontSize: 'var(--text-xs)',
-            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
             color: showDemographicsEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
             cursor: 'pointer',
             whiteSpace: 'nowrap',
@@ -475,13 +536,13 @@ export function PatientCard({
           data-testid={`complaint-editor-toggle-${patient.id}`}
           onClick={handleToggleComplaintEditor}
           style={{
-            minHeight: 28,
-            padding: '0 var(--space-2)',
+            minHeight: 44,
+            padding: '0 var(--space-3)',
             borderRadius: 'var(--radius-full)',
             border: `1px solid ${showComplaintEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
             background: showComplaintEditor ? 'var(--color-brand-dim)' : 'transparent',
-            fontSize: 'var(--text-xs)',
-            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
             color: showComplaintEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
             cursor: 'pointer',
             whiteSpace: 'nowrap',

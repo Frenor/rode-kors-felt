@@ -32,8 +32,14 @@ const labelStyle: React.CSSProperties = {
 
 const fieldStyle: React.CSSProperties = { marginBottom: 'var(--space-3)' };
 
+/** A patient needs at least something to be found by later: a name or what is wrong. */
+export function isIntakeFormValid(form: Pick<IntakeFormShape, 'fullName' | 'presentingComplaint'>): boolean {
+  return form.fullName.trim().length > 0 || form.presentingComplaint.trim().length > 0;
+}
+
 export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: PatientIntakeModalProps) {
   const previewAge = calculateAgeYears(form.birthDate);
+  const valid = isIntakeFormValid(form);
   return (
     <div
       role="dialog"
@@ -51,9 +57,12 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
           padding: 'var(--space-5)', maxWidth: 680, width: '100%',
           maxHeight: 'calc(100dvh - var(--space-8))', overflowY: 'auto',
         }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
+          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-1)' }}>
             Ny pasient
           </h2>
+          <p style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+            Fyll inn navn eller problemstilling nå — resten kan legges til på kortet etterpå.
+          </p>
 
           {/* Fullt navn — full width */}
           <div style={fieldStyle}>
@@ -142,18 +151,27 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
             </div>
           </div>
 
+          {!valid && (
+            <p
+              data-testid="intake-validation-hint"
+              style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--color-status-warning)', fontWeight: 600 }}
+            >
+              Skriv inn navn eller problemstilling for å registrere.
+            </p>
+          )}
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button onClick={onClose} className="touch-target" style={{
+            <button type="button" onClick={onClose} style={{
               flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text)',
-              cursor: 'pointer',
+              fontSize: 'var(--text-base)', cursor: 'pointer',
             }}>
               Avbryt
             </button>
-            <button onClick={onSubmit} className="touch-target" style={{
+            <button type="button" onClick={onSubmit} disabled={!valid} style={{
               flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-              border: 'none', background: 'var(--color-brand)', color: 'white', fontWeight: 600,
-              cursor: 'pointer',
+              border: 'none', background: valid ? 'var(--color-brand)' : 'var(--color-border)',
+              color: valid ? 'white' : 'var(--color-text-subtle)', fontWeight: 700,
+              fontSize: 'var(--text-base)', cursor: valid ? 'pointer' : 'not-allowed',
             }}>
               Registrer
             </button>
