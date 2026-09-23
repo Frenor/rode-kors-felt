@@ -30,7 +30,7 @@ vi.mock('../stores/notifications', () => ({
 
 type WsHandler = (msg: Record<string, unknown>) => void;
 const wsState = {
-  onMessage: vi.fn((_handler?: WsHandler) => () => {}),
+  onMessage: vi.fn((_handler: WsHandler) => () => {}),
   send: vi.fn(),
 };
 
@@ -745,7 +745,7 @@ describe('Live updates — field reports reach the sick bay without a reload', (
 
   it('refetches the patient list when a patient is created or updated elsewhere', async () => {
     let handler: ((msg: Record<string, unknown>) => void) | null = null;
-    wsState.onMessage.mockImplementation((h: (msg: Record<string, unknown>) => void) => {
+    wsState.onMessage.mockImplementation((h: WsHandler) => {
       handler = h;
       return () => {};
     });
