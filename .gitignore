@@ -47,3 +47,6 @@ infra/terraform/**/*.tfvars
 # Turbo
 .turbo/
 .claude/settings.local.json
+
+# Agent worktrees created by the Claude Code harness (never committed)
+.claude/worktrees/
