@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Wait a week before adopting a new release so a compromised or broken
+    # action version is caught upstream first.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

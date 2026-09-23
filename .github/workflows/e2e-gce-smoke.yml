@@ -15,13 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
-          version: 9.15.4
+          version: 10.34.5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: pnpm
@@ -29,15 +29,63 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check smoke target configuration
+        id: target
+        run: |
+          BASE_URL="$PLAYWRIGHT_GCE_BASE_URL"
+          HAS_AUTH_STATE="$HAS_AUTH_STATE"
+
+          if [ -z "$BASE_URL" ] || [ "$HAS_AUTH_STATE" != "true" ]; then
+            MISSING=""
+            if [ -z "$BASE_URL" ]; then
+              MISSING="repository variable PLAYWRIGHT_GCE_BASE_URL"
+            fi
+            if [ "$HAS_AUTH_STATE" != "true" ]; then
+              if [ -n "$MISSING" ]; then
+                MISSING="$MISSING and secret PLAYWRIGHT_GCE_AUTH_STATE"
+              else
+                MISSING="secret PLAYWRIGHT_GCE_AUTH_STATE"
+              fi
+            fi
+            NOTICE="Smoke test skipped: $MISSING not configured. Production deploys are paused."
+            echo "::notice::$NOTICE"
+            echo "$NOTICE" >> "$GITHUB_STEP_SUMMARY"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Probe reachability with 3 retries
+          for i in 1 2 3; do
+            echo "Attempt $i/3: checking reachability of $BASE_URL"
+            if curl -fsS --max-time 20 -o /dev/null "$BASE_URL"; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ $i -lt 3 ]; then
+              sleep 10
+            fi
+          done
+
+          ERROR_MSG="GCE smoke target $BASE_URL is not reachable — failing fast instead of waiting for the 15 minute timeout"
+          echo "::error::$ERROR_MSG"
+          echo "Error: $ERROR_MSG" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        env:
+          PLAYWRIGHT_GCE_BASE_URL: ${{ vars.PLAYWRIGHT_GCE_BASE_URL }}
+          HAS_AUTH_STATE: ${{ secrets.PLAYWRIGHT_GCE_AUTH_STATE != '' }}
+
       - name: Install Playwright browsers
+        if: steps.target.outputs.run == 'true'
         run: pnpm --filter @rkf/web exec playwright install --with-deps chromium
 
       - name: Prepare Playwright artifact directories
+        if: steps.target.outputs.run == 'true'
         run: |
           rm -rf apps/web/playwright-report/gce-prod-smoke apps/web/test-results/gce-prod-smoke
           mkdir -p apps/web/playwright-report apps/web/test-results
 
       - name: Run GCE smoke tests
+        if: steps.target.outputs.run == 'true'
         run: pnpm --filter @rkf/web test:e2e --project gce-prod-smoke
         env:
           PLAYWRIGHT_GCE_BASE_URL: ${{ vars.PLAYWRIGHT_GCE_BASE_URL }}
@@ -47,7 +95,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gce-prod-smoke-playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: apps/web/playwright-report/gce-prod-smoke/
@@ -56,7 +104,7 @@ jobs:
 
       - name: Upload test traces
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gce-prod-smoke-playwright-traces-${{ github.run_id }}-${{ github.run_attempt }}
           path: apps/web/test-results/gce-prod-smoke/

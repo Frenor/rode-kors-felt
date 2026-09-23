@@ -491,3 +491,52 @@ describe('multi-team patient engagement', () => {
     expect(engagements.some((e) => e.teamId === teamBId)).toBe(true);
   });
 });
+
+describe('GET /api/teams/:teamId/workspace — closed patients', () => {
+  it('drops discharged and transferred patients from every bucket', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const firstAiderToken = getFirstAiderToken(eventId);
+
+    const create = async (payload: Record<string, unknown>) => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/events/${eventId}/patients`,
+        headers: { authorization: `Bearer ${coordinatorToken}` },
+        payload,
+      });
+      expect(res.statusCode).toBe(201);
+      return res.json().patient.id as string;
+    };
+
+    const assignedOpenId = await create({ label: 'Åpen tildelt', assignedTeamId: teamId });
+    const assignedClosedId = await create({ label: 'Lukket tildelt', assignedTeamId: teamId });
+    const unassignedClosedId = await create({ label: 'Lukket utildelt' });
+
+    for (const [id, status] of [[assignedClosedId, 'discharged'], [unassignedClosedId, 'transferred']] as const) {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/patients/${id}`,
+        headers: { authorization: `Bearer ${coordinatorToken}` },
+        payload: { status },
+      });
+      expect(res.statusCode).toBe(200);
+    }
+
+    const ws = await app.inject({
+      method: 'GET',
+      url: `/api/teams/${teamId}/workspace`,
+      headers: { authorization: `Bearer ${firstAiderToken}` },
+    });
+    expect(ws.statusCode).toBe(200);
+    const body = ws.json();
+    const allIds = [
+      ...body.assignedPatients,
+      ...body.monitoredPatients,
+      ...body.unassignedPatients,
+    ].map((p: { id: string }) => p.id);
+
+    expect(allIds).toContain(assignedOpenId);
+    expect(allIds).not.toContain(assignedClosedId);
+    expect(allIds).not.toContain(unassignedClosedId);
+  });
+});

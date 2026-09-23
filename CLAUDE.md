@@ -40,10 +40,11 @@ The e2e suite starts real dev servers automatically. Run from the repo root:
 
 ```bash
 # Full local suite (code-entry, coordinator-flow, incident-flow, local-full)
-pnpm --filter @rkf/web test:e2e -- --project=local-full
+# (note: `pnpm ... test:e2e -- --project=...` passes a literal `--` to Playwright and finds no tests)
+pnpm --filter @rkf/web exec playwright test --project=local-full
 
 # Single spec
-pnpm --filter @rkf/web test:e2e -- --project=local-full apps/web/e2e/local-full.spec.ts
+pnpm --filter @rkf/web exec playwright test --project=local-full e2e/local-full.spec.ts
 ```
 
 **Available e2e projects:**

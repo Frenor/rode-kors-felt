@@ -568,13 +568,15 @@ export const demoStore = {
 
   getTeamWorkspace: (teamId: string): TeamWorkspaceResponse => {
     const teamState = ensureTeamState(teamId);
-    const assignedPatients = patients.filter((patient) => patient.assignedTeamId === teamId);
+    // Mirrors the API: closed patients (discharged/transferred) leave every bucket.
+    const openPatients = patients.filter((patient) => patient.status !== 'discharged' && patient.status !== 'transferred');
+    const assignedPatients = openPatients.filter((patient) => patient.assignedTeamId === teamId);
     const assignedSet = new Set(assignedPatients.map((patient) => patient.id));
-    const engagedPatients = patients.filter(
+    const engagedPatients = openPatients.filter(
       (patient) => teamState.patientStatusMap.has(patient.id) && !assignedSet.has(patient.id),
     );
     const engagedSet = new Set(engagedPatients.map((patient) => patient.id));
-    const unassignedPatients = patients.filter((patient) => !assignedSet.has(patient.id) && !engagedSet.has(patient.id));
+    const unassignedPatients = openPatients.filter((patient) => !assignedSet.has(patient.id) && !engagedSet.has(patient.id));
 
     return {
       teamId,
@@ -989,7 +991,12 @@ export const demoStore = {
 
   getEvent: (_id: string) => ({
     event: { ...demoEvent },
-    teams: DEMO_TEAMS,
+    teams: DEMO_TEAMS.map((team) => ({
+      ...team,
+      operationalStatus: teamWorkspaceState[team.id]?.latestStatus ?? 'available',
+      statusNote: null,
+      statusUpdatedAt: null,
+    })),
   }),
 
   getEvents: () => ({

@@ -1,3 +1,36 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# ─── Supply-chain hardening (pnpm ≥ 10) ───────────────────────────────
+# Do not adopt a newly published version until it has been public for 7 days
+# (minutes). Frozen installs from the lockfile are unaffected.
+minimumReleaseAge: 10080
+# Never let a dependency update lower the trust level (provenance /
+# trusted publishing) that a previously installed version had.
+trustPolicy: no-downgrade
+# Transitive dependencies must come from the registry, never git/URLs.
+blockExoticSubdeps: true
+
+# Dependency lifecycle scripts are ignored by default in pnpm 10; these two
+# ship native binaries via optional packages and only validate them here.
+onlyBuiltDependencies:
+  - esbuild
+  - "@swc/core"
+
+# pino 9.14.0 (the latest 9.x) was published without provenance while 9.13.1
+# and 10.x carry SLSA attestations, so `trustPolicy: no-downgrade` refuses it.
+# Pin the whole tree (direct dep and fastify's transitive) to the last
+# attested 9.x until the API moves to pino 10.
+overrides:
+  pino: 9.13.1
+
+# Locked versions the trust policy still refuses: each is an old release that
+# predates npm provenance while a newer release of the same package is
+# attested, so pnpm reads it as a "downgrade". They are unchanged from the
+# lockfile CI has run for months; excluded explicitly instead of turning the
+# policy off. Drop an entry once the dependency that pins it is upgraded.
+trustPolicyExclude:
+  - slow-redact   # 0.3.2 via pino 9.13.1 (pino 9.14 swapped it for @pinojs/redact)
+  - rollup        # legacy 2.80.0 (transitive), 4.x is attested
+  - semver        # legacy 6.3.1 (transitive), 7.x is attested

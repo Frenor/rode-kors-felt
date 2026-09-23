@@ -5,8 +5,11 @@
 
 # — Stage 1: Install dependencies —
 FROM node:20-alpine AS deps
-RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 WORKDIR /app
+# Skip husky's `prepare` lifecycle script — no .git/ exists in this build
+# context, so `husky` would fail before sources are even copied in.
+ENV HUSKY=0
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/shared-types/package.json packages/shared-types/
@@ -14,13 +17,21 @@ RUN pnpm install --frozen-lockfile --filter @rkf/api --filter @rkf/shared-types
 
 # — Stage 2: Build —
 FROM node:20-alpine AS build
-RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 WORKDIR /app
+ENV HUSKY=0
+ENV CI=true
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/shared-types/node_modules ./packages/shared-types/node_modules
 COPY . .
 RUN pnpm --filter @rkf/api build
+# `pnpm deploy` assembles a self-contained directory (dist/, package.json,
+# a real node_modules — not the symlink farm pnpm normally uses in a
+# workspace). Copying apps/api/node_modules directly would carry symlinks
+# into /app/node_modules/.pnpm/... that don't exist in the production
+# stage, leaving the image unable to start.
+RUN pnpm --filter @rkf/api --prod deploy --legacy /prod/api
 
 # — Stage 3: Production —
 FROM node:20-alpine AS production
@@ -30,9 +41,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
 
-COPY --from=build /app/apps/api/dist ./dist
-COPY --from=build /app/apps/api/package.json ./
-COPY --from=deps /app/apps/api/node_modules ./node_modules
+COPY --from=build --chown=node:node /prod/api /app
 
 USER node
 EXPOSE 4000

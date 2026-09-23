@@ -51,6 +51,45 @@ type AuthUser = {
   codeId?: string;
 };
 
+/** Patient statuses that are still "open" from a field team's point of view. */
+const ACTIVE_PATIENT_STATUSES = new Set(['incoming', 'in_treatment', 'observation']);
+
+export type TeamStatusSnapshot = {
+  status: TeamOperationalStatus;
+  note: string | null;
+  updatedAt: string;
+};
+
+/**
+ * Latest `team.status_set` action per team in an event, newest wins.
+ * Used by the coordinator overview so "Trenger bistand" is visible without
+ * having to wait for the next WebSocket event.
+ */
+export async function getLatestTeamStatuses(eventId: string): Promise<Map<string, TeamStatusSnapshot>> {
+  const rows = await db
+    .select()
+    .from(actionEvents)
+    .where(and(
+      eq(actionEvents.eventId, eventId),
+      eq(actionEvents.entityType, 'team'),
+      eq(actionEvents.actionType, 'team.status_set'),
+    ))
+    .orderBy(desc(actionEvents.createdAt));
+
+  const result = new Map<string, TeamStatusSnapshot>();
+  for (const row of rows) {
+    if (result.has(row.entityId)) continue;
+    const payload = row.payload as { status?: TeamOperationalStatus; note?: string | null };
+    if (!payload.status) continue;
+    result.set(row.entityId, {
+      status: payload.status,
+      note: payload.note ?? null,
+      updatedAt: row.createdAt.toISOString(),
+    });
+  }
+  return result;
+}
+
 function getActor(user: AuthUser): string {
   const actor = user.sub ?? user.email ?? (user.codeId ? `code:${user.codeId}` : undefined) ?? user.role;
   if (!actor) {
@@ -322,7 +361,7 @@ export async function teamRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
-    const [patientRows, teamActionRows] = await Promise.all([
+    const [allPatientRows, teamActionRows] = await Promise.all([
       db.select().from(patients).where(eq(patients.eventId, team.eventId)).orderBy(desc(patients.updatedAt)),
       db
         .select()
@@ -334,6 +373,11 @@ export async function teamRoutes(app: FastifyInstance) {
         ))
         .orderBy(desc(actionEvents.createdAt)),
     ]);
+
+    // Closed patients (discharged / transferred) are no longer the field team's
+    // concern — they must drop out of every bucket, otherwise "Egne pasienter"
+    // and "Utildelte pasienter" keep growing for the whole event.
+    const patientRows = allPatientRows.filter((row) => ACTIVE_PATIENT_STATUSES.has(row.status));
 
     // ── Assigned patients (directly assigned to this team) ────────────────────
     const assignedPatients = patientRows.filter((row) => row.assignedTeamId === team.id);

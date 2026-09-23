@@ -4,6 +4,7 @@ import { useOfflineTeamSync } from '../hooks/useOfflineTeamSync';
 
 const mocks = vi.hoisted(() => ({
   eventId: 'evt-1' as string | null,
+  accessToken: null as string | null,
   getRetryableTeamActions: vi.fn(),
   markTeamActionSyncing: vi.fn(),
   markTeamActionFailed: vi.fn(),
@@ -37,14 +38,61 @@ vi.mock('../stores/firstaid-workspace', () => ({
 }));
 
 vi.mock('../stores/auth', () => ({
-  useAuthStore: (selector: (state: { eventId: string | null }) => unknown) =>
-    selector({ eventId: mocks.eventId }),
+  useAuthStore: (selector: (state: { eventId: string | null; accessToken: string | null }) => unknown) =>
+    selector({ eventId: mocks.eventId, accessToken: mocks.accessToken }),
 }));
 
 describe('useOfflineTeamSync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.eventId = 'evt-1';
+    mocks.accessToken = null;
+  });
+
+  it('flushes leftover queue items on mount when authenticated and online', async () => {
+    mocks.accessToken = 'token';
+    mocks.getRetryableTeamActions.mockResolvedValue([
+      {
+        clientActionId: 'boot-1',
+        teamId: 'team-1',
+        payload: { type: 'team.status_set', status: 'available', clientActionId: 'boot-1' },
+      },
+    ]);
+    mocks.postTeamAction.mockResolvedValue({ action: { id: 'server-action' } });
+
+    renderHook(() => useOfflineTeamSync());
+
+    await waitFor(() => {
+      expect(mocks.postTeamAction).toHaveBeenCalledWith(
+        'team-1',
+        { type: 'team.status_set', status: 'available', clientActionId: 'boot-1' },
+        { skipOfflineQueue: true },
+      );
+      expect(mocks.removeTeamAction).toHaveBeenCalledWith('boot-1');
+    });
+  });
+
+  it('does not replay the same items twice when triggers overlap', async () => {
+    let resolveFirst: (() => void) | null = null;
+    mocks.getRetryableTeamActions
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFirst = () => resolve([
+          { clientActionId: 'act-1', teamId: 'team-1', payload: { type: 'team.status_set', status: 'available', clientActionId: 'act-1' } },
+        ]);
+      }))
+      .mockResolvedValue([]);
+    mocks.postTeamAction.mockResolvedValue({ action: { id: 'server-action' } });
+
+    renderHook(() => useOfflineTeamSync());
+    window.dispatchEvent(new Event('online'));
+    window.dispatchEvent(new Event('rkf:wsConnected'));
+    resolveFirst!();
+
+    await waitFor(() => {
+      expect(mocks.postTeamAction).toHaveBeenCalledTimes(1);
+      // First flush + exactly one coalesced follow-up read of the queue
+      expect(mocks.getRetryableTeamActions).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('flushes retryable team actions and updates synced timestamp', async () => {

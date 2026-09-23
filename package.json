@@ -6,9 +6,9 @@
   "license": "UNLICENSED",
   "engines": {
     "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
+    "pnpm": ">=10.0.0"
   },
-  "packageManager": "pnpm@9.15.4",
+  "packageManager": "pnpm@10.34.5",
   "scripts": {
     "dev": "pnpm --parallel --filter @rkf/* dev",
     "build": "pnpm --filter @rkf/* build",

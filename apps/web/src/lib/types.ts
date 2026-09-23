@@ -137,6 +137,12 @@ export interface SickBayPatient {
   status: string;
   presentingComplaint: string;
   assignedClinician: string;
+  /** Field-report fields — set when the patient was reported by a patrol or the coordinator. */
+  label?: string | null;
+  description?: string | null;
+  triageStatus?: 'green' | 'yellow' | 'red' | 'black' | null;
+  positionText?: string | null;
+  assignedTeamId?: string | null;
   vitalsHistory: VitalsReading[];
   latestVitals: VitalsReading | null;
   notes: PatientNote[];
@@ -158,6 +164,11 @@ export interface Team {
   contactPhone?: string | null;
   contactRadio?: string | null;
   currentPosition?: GeoPoint | null;
+  lastPositionUpdate?: string | null;
+  /** Latest team.status_set — provided by GET /events/:id and kept live via team.status_changed. */
+  operationalStatus?: TeamOperationalStatus;
+  statusNote?: string | null;
+  statusUpdatedAt?: string | null;
 }
 
 export interface TeamWorkspacePatient {

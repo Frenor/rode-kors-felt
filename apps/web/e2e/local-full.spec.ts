@@ -16,10 +16,16 @@ async function loginAsSickBay(page: import('@playwright/test').Page) {
 
 async function selectTeamIfNeeded(page: import('@playwright/test').Page) {
   const chooseTeam = page.getByRole('heading', { name: /Velg patrulje/i });
-  if (await chooseTeam.isVisible().catch(() => false)) {
-    const teamButton = page.locator('button.touch-target').first();
+  const workspaceReady = page.getByRole('button', { name: /Meld pasient/i });
+  // Wait until the dashboard has actually rendered one of its two initial
+  // states — a single isVisible() probe raced the first paint on cold starts
+  // and skipped team selection, which then failed every later assertion.
+  await expect(chooseTeam.or(workspaceReady).first()).toBeVisible({ timeout: 20_000 });
+  if (await chooseTeam.isVisible()) {
+    const teamButton = page.getByRole('button', { name: /^Alpha/ });
     await expect(teamButton).toBeVisible();
     await teamButton.click();
+    await expect(workspaceReady).toBeVisible({ timeout: 20_000 });
   }
 }
 
@@ -39,12 +45,24 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
   await page.getByRole('button', { name: 'Avbryt' }).click();
 
+  // "Meld pasient" against the real API (first aiders were getting 403 here).
+  const fieldLabel = `E2E feltpasient ${Date.now()}`;
+  await workspace.getByRole('button', { name: /Meld pasient/i }).click();
+  await workspace.getByRole('button', { name: 'Rød', exact: true }).click();
+  await workspace.getByLabel('Hvor er pasienten?').fill('Sektor B, ved scenen');
+  await workspace.getByPlaceholder(/Beskriv skaden/).fill(fieldLabel);
+  await workspace.getByRole('button', { name: 'Registrer pasient' }).click();
+  await expect(workspace.getByRole('button', { name: /Meld pasient/i })).toBeVisible({ timeout: 10_000 });
+  await expect(workspace.getByText(fieldLabel).first()).toBeVisible();
+
   await loginAsSickBay(page);
   await expect(page.getByRole('heading', { name: 'Sykestue' })).toBeVisible();
+  // The field report is visible to the sick bay under its label, with location text.
+  await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
-  await page.getByLabel('Problemstilling').fill('Brystsmerter under aktivitet');
-  await page.getByLabel('Behandler').fill('Testkliniker');
+  await page.getByRole('textbox', { name: 'Problemstilling', exact: true }).fill('Brystsmerter under aktivitet');
+  await page.getByRole('textbox', { name: 'Behandler', exact: true }).fill('Testkliniker');
   await page.getByRole('button', { name: 'Registrer' }).click();
 
   await page.getByTestId('patient-ring-113').first().click();
@@ -74,4 +92,9 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /MapLibre/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /3D-presentasjon/i })).toBeVisible();
+  // Coordinator sees the field report with its location and the team status overview.
+  await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Sektor B, ved scenen').first()).toBeVisible();
+  await expect(page.getByTestId('coordinator-team-status')).toBeVisible();
+  await expect(page.getByText('Patrulje Alpha').first()).toBeVisible();
 });

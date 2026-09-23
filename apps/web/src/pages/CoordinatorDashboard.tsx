@@ -11,14 +11,16 @@ import { APIKeyModal } from './Coordinator/APIKeyModal';
 import { DeteriorationAlertsPanel } from './Coordinator/DeteriorationAlertsPanel';
 import { StatsGrid } from './Coordinator/StatsGrid';
 import { TeamMessageStreamPanel } from './Coordinator/TeamMessageStreamPanel';
+import { TeamStatusPanel } from './Coordinator/TeamStatusPanel';
 import { PatientManagementPanel, type FieldPatient } from './Coordinator/PatientManagementPanel';
-import type { EventIndoorLayout, MapRuntimeConfig, TeamPatientEngagement } from '../lib/types';
+import { TEAM_OPERATIONAL_STATUS_LABELS } from '../lib/constants';
+import type { EventIndoorLayout, MapRuntimeConfig, Team, TeamOperationalStatus, TeamPatientEngagement } from '../lib/types';
 
 export function CoordinatorDashboard() {
   const { eventId } = useAuthStore();
   const onMessage = useWsStore((s) => s.onMessage);
   const addToast = useNotificationStore((s) => s.add);
-  const [teams, setTeams] = useState<any[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [eventIndoorLayout, setEventIndoorLayout] = useState<EventIndoorLayout | null>(null);
   const [mapRuntimeConfig, setMapRuntimeConfig] = useState<MapRuntimeConfig | null>(null);
   const [mapProvider, setMapProvider] = useState<'leaflet' | 'maplibre'>('leaflet');
@@ -91,9 +93,59 @@ export function CoordinatorDashboard() {
     fetchAll();
   }, [fetchAll]);
 
+  // Re-sync after a realtime gap — events missed while disconnected or while
+  // the laptop was asleep would otherwise leave the overview stale.
+  useEffect(() => {
+    const onResync = () => fetchAll();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) fetchAll();
+    };
+    window.addEventListener('rkf:wsConnected', onResync);
+    window.addEventListener('online', onResync);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('rkf:wsConnected', onResync);
+      window.removeEventListener('online', onResync);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [fetchAll]);
+
   useEffect(() => {
     const off = onMessage((msg) => {
-      if (msg.type === 'patient.deterioration_alert') {
+      if (msg.type === 'team.status_changed') {
+        const payload = (msg.payload as any) ?? {};
+        const teamId: string | undefined = payload.teamId;
+        const action = payload.action ?? {};
+        const status = action.payload?.status as TeamOperationalStatus | undefined;
+        if (!teamId || !status) return;
+        const note: string | null = action.payload?.note ?? null;
+        const updatedAt: string = action.createdAt ?? new Date().toISOString();
+        setTeams((prev) => {
+          const current = prev.find((t) => t.id === teamId);
+          if (current && current.operationalStatus !== 'needs_assistance' && status === 'needs_assistance') {
+            navigator.vibrate?.([300, 100, 300]);
+            addToast({
+              level: 'urgent',
+              autoDismissMs: 0,
+              message: `${current.name} trenger bistand${note ? `: ${note}` : ''}`,
+            });
+          } else if (current && current.operationalStatus === 'needs_assistance' && status !== 'needs_assistance') {
+            addToast({
+              level: 'info',
+              autoDismissMs: 6_000,
+              message: `${current.name} er nå ${TEAM_OPERATIONAL_STATUS_LABELS[status]?.toLowerCase() ?? status}`,
+            });
+          }
+          return prev.map((t) => (t.id === teamId
+            ? { ...t, operationalStatus: status, statusNote: note, statusUpdatedAt: updatedAt }
+            : t));
+        });
+      } else if (msg.type === 'team.transport_changed') {
+        const { teamId, transport } = (msg.payload as any) ?? {};
+        if (teamId && transport) {
+          setTeams((prev) => prev.map((t) => (t.id === teamId ? { ...t, transport } : t)));
+        }
+      } else if (msg.type === 'patient.deterioration_alert') {
         const { patientId, trend, news2Score } = (msg.payload as any) ?? {};
         if (patientId && trend) {
           setDeteriorationAlerts((prev) => {
@@ -136,10 +188,14 @@ export function CoordinatorDashboard() {
         }
       } else if (msg.type === 'patient.created') {
         const p = (msg.payload as any)?.patient;
-        if (p) setFieldPatients((prev) => [p as FieldPatient, ...prev]);
+        if (p) setFieldPatients((prev) => prev.some((fp) => fp.id === p.id) ? prev : [p as FieldPatient, ...prev]);
       } else if (msg.type === 'patient.updated') {
         const p = (msg.payload as any)?.patient;
-        if (p) setFieldPatients((prev) => prev.map((fp) => fp.id === p.id ? p as FieldPatient : fp));
+        if (p) {
+          setFieldPatients((prev) => prev.some((fp) => fp.id === p.id)
+            ? prev.map((fp) => fp.id === p.id ? p as FieldPatient : fp)
+            : [p as FieldPatient, ...prev]);
+        }
       } else if (msg.type === 'team.session_changed') {
         if (eventId) {
           api.getTeamPatientEngagements(eventId).then((res) => {
@@ -152,7 +208,11 @@ export function CoordinatorDashboard() {
       }
     });
     return off;
-  }, [eventId, onMessage]);
+  }, [eventId, onMessage, addToast]);
+
+  const teamMemberCounts = Object.fromEntries(
+    Object.entries(teamMemberPositions).map(([teamId, members]) => [teamId, Object.keys(members).length]),
+  );
 
   const handleDownloadReport = async () => {
     if (!eventId) return;
@@ -251,6 +311,8 @@ export function CoordinatorDashboard() {
         lastUpdatedAt={lastStatsUpdatedAt}
         prevStats={prevStats}
       />
+
+      <TeamStatusPanel teams={teams} memberCounts={teamMemberCounts} />
 
       <TeamMessageStreamPanel messages={teamMessages} teams={teams} />
 

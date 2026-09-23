@@ -273,3 +273,84 @@ describe('GET /api/events/:id/sickbay-incoming', () => {
     expect(item.criticalReasons).toContain('needs_assistance');
   });
 });
+
+describe('POST /api/events/:id/patients — field reporting', () => {
+  it('lets a first aider report a patient in their own event (Meld pasient)', async () => {
+    const token = getFirstAiderToken(eventId);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/events/${eventId}/patients`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        label: 'Feltpasient fra patrulje',
+        triageStatus: 'yellow',
+        positionText: 'Ved drikkestasjon 3',
+        lat: 59.96,
+        lon: 10.66,
+        assignedTeamId: teamId,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const patient = res.json().patient;
+    expect(patient.label).toBe('Feltpasient fra patrulje');
+    expect(patient.assignedTeamId).toBe(teamId);
+    expect(patient.positionText).toBe('Ved drikkestasjon 3');
+  });
+
+  it('rejects a first aider reporting into another event', async () => {
+    const token = getFirstAiderToken(crypto.randomUUID());
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/events/${eventId}/patients`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { label: 'Feil arrangement' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('GET /api/events/:id — team operational status', () => {
+  it('exposes the latest team status so the coordinator sees needs_assistance', async () => {
+    const firstAiderToken = getFirstAiderToken(eventId);
+    const coordinatorToken = getCoordinatorToken();
+
+    const statusRes = await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${firstAiderToken}` },
+      payload: {
+        type: 'team.status_set',
+        status: 'needs_assistance',
+        note: 'Bevisstløs pasient',
+        clientActionId: crypto.randomUUID(),
+      },
+    });
+    expect(statusRes.statusCode).toBe(201);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const team = res.json().teams.find((t: { id: string }) => t.id === teamId);
+    expect(team.operationalStatus).toBe('needs_assistance');
+    expect(team.statusNote).toBe('Bevisstløs pasient');
+    expect(typeof team.statusUpdatedAt).toBe('string');
+
+    // Teams without any status action default to available
+    const other = res.json().teams.find((t: { id: string }) => t.id !== teamId);
+    if (other) {
+      expect(other.operationalStatus).toBe('available');
+    }
+
+    // Reset so later tests are not affected
+    await app.inject({
+      method: 'POST',
+      url: `/api/teams/${teamId}/actions`,
+      headers: { authorization: `Bearer ${firstAiderToken}` },
+      payload: { type: 'team.status_set', status: 'available', clientActionId: crypto.randomUUID() },
+    });
+  });
+});

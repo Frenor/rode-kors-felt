@@ -104,3 +104,67 @@ describe('ApiClient — redeemCode()', () => {
 });
 
 // createIncident has been removed (incident management removed from the app)
+
+describe('ApiClient — access token refresh', () => {
+  function b64url(value: unknown): string {
+    return btoa(JSON.stringify(value)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  }
+  function jwt(expSecondsFromNow: number): string {
+    const exp = Math.floor(Date.now() / 1000) + expSecondsFromNow;
+    return `${b64url({ alg: 'HS256' })}.${b64url({ exp })}.sig`;
+  }
+
+  it('refreshes once and replays the request when the API answers 401', async () => {
+    const oldToken = jwt(600);
+    useAuthStore.setState({ accessToken: oldToken, refreshToken: 'refresh-1', isAuthenticated: true });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(makeFetchResponse({ error: 'Ugyldig eller utløpt token' }, false, 401))
+      .mockResolvedValueOnce(makeFetchResponse({ accessToken: 'fresh-token' }))
+      .mockResolvedValueOnce(makeFetchResponse({ events: [{ id: 'e1' }] }));
+
+    const result = await api.getEvents();
+
+    expect(result).toEqual({ events: [{ id: 'e1' }] });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[1]![0]).toBe('/api/auth/refresh');
+    const retryHeaders = fetchMock.mock.calls[2]![1]?.headers as Record<string, string>;
+    expect(retryHeaders['Authorization']).toBe('Bearer fresh-token');
+    expect(useAuthStore.getState().accessToken).toBe('fresh-token');
+  });
+
+  it('logs the user out and throws when the refresh is rejected', async () => {
+    useAuthStore.setState({ accessToken: jwt(600), refreshToken: 'stale', isAuthenticated: true });
+
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(makeFetchResponse({ error: 'Ugyldig eller utløpt token' }, false, 401))
+      .mockResolvedValueOnce(makeFetchResponse({ error: 'Ugyldig refresh token' }, false, 401));
+
+    await expect(api.getEvents()).rejects.toThrow('Ugyldig eller utløpt token');
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+  });
+
+  it('refreshes proactively before sending when the token is about to expire', async () => {
+    useAuthStore.setState({ accessToken: jwt(20), refreshToken: 'refresh-1', isAuthenticated: true });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(makeFetchResponse({ accessToken: 'fresh-token' }))
+      .mockResolvedValueOnce(makeFetchResponse({ events: [] }));
+
+    await api.getEvents();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/api/auth/refresh');
+    const headers = fetchMock.mock.calls[1]![1]?.headers as Record<string, string>;
+    expect(headers['Authorization']).toBe('Bearer fresh-token');
+  });
+
+  it('does not attempt a refresh for unauthenticated requests that fail with 401', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      makeFetchResponse({ error: 'Ugyldig eller utløpt kode' }, false, 401),
+    );
+
+    await expect(api.redeemCode('000000')).rejects.toThrow('Ugyldig eller utløpt kode');
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+});

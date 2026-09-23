@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../stores/auth';
 import { useNotificationStore } from '../stores/notifications';
 import { useWsStore } from '../stores/ws';
@@ -92,11 +92,45 @@ export function SickBayDashboard() {
     });
   };
 
+  const fetchPatientsRef = useRef(fetchPatients);
+  fetchPatientsRef.current = fetchPatients;
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Coalesce bursts of WebSocket events into one refetch. */
+  const scheduleRefetch = () => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(() => {
+      refetchTimer.current = null;
+      fetchPatientsRef.current();
+    }, 400);
+  };
+
   useEffect(() => {
     fetchPatients();
   }, [eventId]);
 
-  // Live vitals updates via WebSocket — update specific patient in state
+  // Re-sync when realtime comes back or the tablet wakes up — otherwise the
+  // sick bay works from a list that silently stopped updating.
+  useEffect(() => {
+    const onResync = () => fetchPatientsRef.current();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) fetchPatientsRef.current();
+    };
+    window.addEventListener('rkf:wsConnected', onResync);
+    window.addEventListener('online', onResync);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('rkf:wsConnected', onResync);
+      window.removeEventListener('online', onResync);
+      document.removeEventListener('visibilitychange', onVisible);
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    };
+  }, []);
+
+  // Live updates via WebSocket. Vitals patch the patient in place for speed;
+  // everything that changes the patient list (new field reports, status or
+  // assignment changes, a team calling for assistance) triggers a refetch.
+  // Before this the sick bay never saw a new incoming patient without a reload.
   useEffect(() => {
     const off = onMessage((msg) => {
       if (msg.type === 'patient.vitals_updated') {
@@ -109,7 +143,15 @@ export function SickBayDashboard() {
                 : p,
             ),
           );
+          // NEWS2 may now put the patient in the critical incoming panel.
+          scheduleRefetch();
         }
+      } else if (
+        msg.type === 'patient.created'
+        || msg.type === 'patient.updated'
+        || msg.type === 'team.status_changed'
+      ) {
+        scheduleRefetch();
       }
     });
     return off;
@@ -508,7 +550,7 @@ export function SickBayDashboard() {
                         }}
                       >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontWeight: 600 }}>{patient.fullName ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
+                          <span style={{ fontWeight: 600 }}>{patient.fullName ?? patient.label ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
                           <span
                             style={{
                               fontFamily: 'var(--font-mono)',

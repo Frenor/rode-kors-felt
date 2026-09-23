@@ -140,6 +140,10 @@ function PatientRow({
 
   const isClosed = patient.status === 'discharged' || patient.status === 'transferred';
   const assignedTeam = teams.find((t) => t.id === patient.assignedTeamId);
+  const hasCoords = patient.lat != null && patient.lon != null;
+  const coordsText = hasCoords ? `${patient.lat!.toFixed(5)}, ${patient.lon!.toFixed(5)}` : null;
+  // Field reports often carry GPS coordinates but no text — still show *something*.
+  const positionSummary = patient.positionText ?? (coordsText ? `GPS ${coordsText}` : null);
 
   return (
     <div style={{
@@ -172,9 +176,9 @@ function PatientRow({
             {assignedTeam.name}
           </span>
         )}
-        {patient.positionText && (
+        {positionSummary && (
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {patient.positionText}
+            {positionSummary}
           </span>
         )}
         <span style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)' }}>{expanded ? '▲' : '▼'}</span>
@@ -185,10 +189,10 @@ function PatientRow({
           {patient.description && (
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>{patient.description}</p>
           )}
-          {patient.positionText && (
+          {(patient.positionText || coordsText) && (
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-              <strong>Posisjon:</strong> {patient.positionText}
-              {patient.lat != null && patient.lon != null && ` (${patient.lat.toFixed(5)}, ${patient.lon.toFixed(5)})`}
+              <strong>Posisjon:</strong> {patient.positionText ?? 'Kun GPS'}
+              {coordsText && ` (${coordsText})`}
             </div>
           )}
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>

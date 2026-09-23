@@ -50,8 +50,12 @@ export function AppShell({ children }: AppShellProps) {
         ? 'Ikke synkronisert'
         : 'Synkronisert';
 
-  // Connect WebSocket for all authenticated roles
+  // Connect WebSocket for all authenticated roles. Demo mode is served from
+  // the in-memory demo store and must never dial a real backend: a dev API on
+  // the proxied port would reject the demo token, trigger a refresh, and log
+  // the demo session out.
   useEffect(() => {
+    if (IS_DEMO) return;
     if (accessToken) connect(accessToken, eventId);
     return () => disconnect();
   }, [accessToken, eventId, connect, disconnect]);
@@ -168,16 +172,20 @@ export function AppShell({ children }: AppShellProps) {
         {(() => {
           const connected = isOnline && wsStatus === 'connected';
           const reconnecting = isOnline && wsStatus === 'reconnecting';
-          const color = connected
-            ? 'var(--color-status-ok)'
-            : reconnecting
-              ? 'var(--color-status-warning)'
-              : 'var(--color-status-critical)';
-          const label = connected
-            ? 'Tilkoblet'
-            : reconnecting
-              ? 'Kobler til…'
-              : 'Frakoblet';
+          const color = IS_DEMO
+            ? 'var(--color-text-muted)'
+            : connected
+              ? 'var(--color-status-ok)'
+              : reconnecting
+                ? 'var(--color-status-warning)'
+                : 'var(--color-status-critical)';
+          const label = IS_DEMO
+            ? 'Demo — uten sanntid'
+            : connected
+              ? 'Tilkoblet'
+              : reconnecting
+                ? 'Kobler til…'
+                : 'Frakoblet';
           return (
             <div
               role="status"
@@ -262,7 +270,7 @@ export function AppShell({ children }: AppShellProps) {
       )}
 
       {/* WebSocket reconnecting banner (shown when online but WS dropped) */}
-      {isOnline && wsStatus === 'reconnecting' && (
+      {!IS_DEMO && isOnline && wsStatus === 'reconnecting' && (
         <div
           role="status"
           aria-live="polite"

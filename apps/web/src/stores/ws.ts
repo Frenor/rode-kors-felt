@@ -8,13 +8,19 @@
  *  reconnecting  — connection dropped, retrying with backoff
  *
  * On successful reconnect, dispatches 'rkf:wsConnected' on window so
- * useOfflineSync can flush the pending queue.
+ * useOfflineTeamSync can flush the pending queue and dashboards can refetch.
  *
  * On close code 4001 (auth error), refreshes the access token via
- * the auth store before reconnecting.
+ * lib/session before reconnecting.
+ *
+ * Every handler checks that it still belongs to the *current* socket. When
+ * AppShell reconnects (for example after a token refresh) the old socket's
+ * close event must not null out the new socket or schedule a duplicate
+ * connection — that silently dropped position broadcasts and chat messages.
  */
 
 import { create } from 'zustand';
+import { refreshAccessToken } from '../lib/session';
 
 export type WsStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -24,9 +30,13 @@ interface WsStore {
   status: WsStatus;
   connect: (token: string, eventId?: string | null) => void;
   disconnect: () => void;
-  send: (msg: Record<string, unknown>) => void;
+  /** Returns true when the message was handed to an open socket. */
+  send: (msg: Record<string, unknown>) => boolean;
   onMessage: (handler: MessageHandler) => () => void;
 }
+
+const READY_STATE_CONNECTING = 0;
+const READY_STATE_OPEN = 1;
 
 let socket: WebSocket | null = null;
 let attempt = 0;
@@ -39,6 +49,13 @@ const MAX_DELAY_MS = 30_000;
 
 function nextDelay(): number {
   return attempt < BACKOFF_DELAYS.length ? BACKOFF_DELAYS[attempt++]! : MAX_DELAY_MS;
+}
+
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
 }
 
 function getWsUrl(eventId?: string | null) {
@@ -58,52 +75,42 @@ function getWsProtocols(token: string): string[] {
   return ['rkf.v1', `rkf-auth.${token}`];
 }
 
-async function tryRefreshToken(): Promise<string | null> {
-  try {
-    // Lazy-import to avoid circular deps with auth store
-    const { useAuthStore } = await import('./auth');
-    const { refreshToken } = useAuthStore.getState();
-    if (!refreshToken) return null;
-
-    const res = await fetch('/api/auth/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-
-    if (!res.ok) {
-      console.warn('[ws] Token refresh failed — server returned', res.status);
-      return null;
-    }
-    const { accessToken } = (await res.json()) as { accessToken: string };
-    useAuthStore.setState({ accessToken });
-    return accessToken;
-  } catch (err) {
-    console.warn('[ws] Token refresh threw unexpectedly', err);
-    return null;
-  }
+function detachHandlers(ws: WebSocket) {
+  ws.onopen = null;
+  ws.onmessage = null;
+  ws.onerror = null;
+  ws.onclose = null;
 }
 
 export const useWsStore = create<WsStore>((set) => ({
   status: 'disconnected',
 
   connect(token: string, eventId?: string | null) {
-    if (socket && socket.readyState === WebSocket.OPEN) return;
-    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (
+      socket &&
+      (socket.readyState === READY_STATE_OPEN || socket.readyState === READY_STATE_CONNECTING)
+    ) {
+      return;
+    }
+    clearReconnectTimer();
 
     const isReconnect = attempt > 0;
     set({ status: isReconnect ? 'reconnecting' : 'connecting' });
-    socket = new WebSocket(getWsUrl(eventId), getWsProtocols(token));
+    const ws = new WebSocket(getWsUrl(eventId), getWsProtocols(token));
+    socket = ws;
 
-    socket.onopen = () => {
+    ws.onopen = () => {
+      if (socket !== ws) return;
       attempt = 0;
       set({ status: 'connected' });
 
-      // Signal successful reconnect so offline queue can flush
+      // Signal successful (re)connect so the offline queue can flush and
+      // dashboards can reconcile state they may have missed.
       window.dispatchEvent(new Event('rkf:wsConnected'));
     };
 
-    socket.onmessage = (event) => {
+    ws.onmessage = (event) => {
+      if (socket !== ws) return;
       try {
         const msg = JSON.parse(event.data) as Record<string, unknown>;
         for (const handler of handlers) handler(msg);
@@ -112,43 +119,55 @@ export const useWsStore = create<WsStore>((set) => ({
       }
     };
 
-    socket.onerror = () => {
+    ws.onerror = () => {
       // onerror is always followed by onclose — handle there
     };
 
-    socket.onclose = async (event) => {
+    ws.onclose = async (event) => {
+      // A socket that was replaced or explicitly disconnected must not
+      // touch shared state or schedule a reconnect.
+      if (socket !== ws) return;
       socket = null;
 
+      let nextToken = token;
       // Server closed with auth error → refresh token first
       if (event.code === 4001) {
-        const newToken = await tryRefreshToken();
-        set({ status: 'reconnecting' });
-        const delay = nextDelay();
-        reconnectTimer = setTimeout(
-              () => useWsStore.getState().connect(newToken ?? token, eventId),
-              delay,
-            );
-            return;
+        nextToken = (await refreshAccessToken()) ?? token;
+        // disconnect() or a newer connect() may have run while we awaited.
+        if (socket !== null || useWsStore.getState().status === 'disconnected') return;
       }
 
       set({ status: 'reconnecting' });
       const delay = nextDelay();
-      reconnectTimer = setTimeout(() => useWsStore.getState().connect(token, eventId), delay);
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        useWsStore.getState().connect(nextToken, eventId);
+      }, delay);
     };
   },
 
   disconnect() {
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    attempt = BACKOFF_DELAYS.length + 1; // prevent reconnect on next close
-    socket?.close();
+    clearReconnectTimer();
+    attempt = 0;
+    const ws = socket;
     socket = null;
+    if (ws) {
+      detachHandlers(ws);
+      try {
+        ws.close();
+      } catch {
+        // already closed
+      }
+    }
     set({ status: 'disconnected' });
   },
 
   send(msg: Record<string, unknown>) {
-    if (socket?.readyState === WebSocket.OPEN) {
+    if (socket?.readyState === READY_STATE_OPEN) {
       socket.send(JSON.stringify(msg));
+      return true;
     }
+    return false;
   },
 
   onMessage(handler: MessageHandler) {
