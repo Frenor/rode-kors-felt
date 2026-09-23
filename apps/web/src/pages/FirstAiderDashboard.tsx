@@ -16,7 +16,7 @@ import {
   type QueuedTeamEndpointPayload,
 } from '../lib/offline-firstaid-queue';
 import { api } from '../lib/api';
-import type { TeamOperationalStatus, TeamPatientStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
+import type { TeamMessage, TeamOperationalStatus, TeamPatientStatus, TeamWorkspacePatient, TeamWorkspaceResponse, TransportNeed } from '../lib/types';
 import type { TeamTransport } from '../stores/auth';
 import { VitalsEntryForm, EMPTY_VITALS_FORM, type VitalsFormShape } from './SickBay/VitalsEntryForm';
 import { PatientLocationRow } from './FirstAider/PatientLocationRow';
@@ -29,6 +29,12 @@ import { AssignmentBanner } from './FirstAider/AssignmentBanner';
 import { TriageChips } from './FirstAider/TriageChips';
 import { describeAssistanceNote } from './FirstAider/AssistanceReasonStep';
 import { resolveCloseOutcome } from './FirstAider/close-outcome';
+// Lane 8 batch 3 (field UI) — transport request, quick log, voice note, chat history.
+import { TransportRequestSheet } from './FirstAider/TransportRequestSheet';
+import { describeTransportStatus } from './FirstAider/transport-status';
+import { QuickLogSheet, type QuickLogSubmitPayload } from './FirstAider/QuickLogSheet';
+import { VoiceNoteButton } from './FirstAider/VoiceNoteButton';
+import { mergeTeamMessageHistory } from './FirstAider/team-message-history';
 import { Button, Icon, Pill, PatientNumberPill } from '../components/ui';
 import { sortByDistance } from '../lib/geo';
 import { patientNumber } from '../lib/patient-number';
@@ -136,6 +142,13 @@ export function FirstAiderDashboard() {
   const [perPatientTriageEdit, setPerPatientTriageEdit] = useState<Record<string, FieldTriageStatus>>({});
   const [perPatientTriageError, setPerPatientTriageError] = useState<Record<string, string>>({});
   const [showClosedPatients, setShowClosedPatients] = useState(false);
+  // Transport request (gap B3 / 8.26)
+  const [transportSheetPatientId, setTransportSheetPatientId] = useState<string | null>(null);
+  const [perPatientTransportError, setPerPatientTransportError] = useState<Record<string, string>>({});
+  // Quick log — "Behandlet på stedet" (gap A8 / 8.28)
+  const [showQuickLog, setShowQuickLog] = useState(false);
+  const [quickLogSubmitting, setQuickLogSubmitting] = useState(false);
+  const [quickLogError, setQuickLogError] = useState('');
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
 
@@ -203,14 +216,26 @@ export function FirstAiderDashboard() {
     }
   }, [eventId, selectedTeam, clearPatientStatus, setPatientStatus]);
 
+  // Chat history (gap B9 / 8.29) — merges the persisted message history into
+  // the live `messages` list: everyone-addressed, directed to this team, or
+  // sent by this team (marked `fromSelf`); receipts are not chat and are
+  // skipped; de-duplicated by id against whatever the socket already added.
+  const seedTeamMessages = useCallback((teamId: string, fetched: TeamMessage[]) => {
+    setMessages((prev) => mergeTeamMessageHistory(teamId, fetched, prev));
+  }, []);
+
   const loadWorkspace = useCallback(async () => {
     if (!eventId || !selectedTeam) return;
     setWorkspaceLoading(true);
     try {
-      const [ws, patientsRes] = await Promise.all([
+      const [ws, patientsRes, messagesRes] = await Promise.all([
         api.getTeamWorkspace(selectedTeam),
         api.getPatients(eventId, { assignedTeamId: selectedTeam }).catch((err) => {
           console.error('[firstaid] Failed to load assigned patients', err);
+          return null;
+        }),
+        api.getTeamMessages(eventId).catch((err) => {
+          console.error('[firstaid] Failed to load team message history', err);
           return null;
         }),
       ]);
@@ -223,6 +248,7 @@ export function FirstAiderDashboard() {
           : ws.assignedPatients,
       );
       reconcilePatientStatuses(ws);
+      if (messagesRes) seedTeamMessages(selectedTeam, messagesRes.messages);
       const hasPendingTeamStatus = (queuedTeamActionsRef.current ?? []).some((i) => i.payload.type === 'team.status_set');
       if (!hasPendingTeamStatus) setTeamStatus(eventId, selectedTeam, ws.latestStatus);
     } catch (err) {
@@ -231,7 +257,7 @@ export function FirstAiderDashboard() {
     } finally {
       setWorkspaceLoading(false);
     }
-  }, [eventId, selectedTeam, reconcilePatientStatuses, setTeamStatus, addToast]);
+  }, [eventId, selectedTeam, reconcilePatientStatuses, setTeamStatus, addToast, seedTeamMessages]);
 
   // Load on team change, and re-sync whenever we regain connectivity or the
   // user returns to the app (phones suspend background tabs for long periods).
@@ -471,7 +497,7 @@ export function FirstAiderDashboard() {
     return off;
   }, [onMessage, selectedTeam, eventId, setTeamStatus, setPatientStatus, clearPatientStatus]);
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!messageText.trim() || !eventId) return;
     const text = messageText.trim();
     const delivered = wsSend({
@@ -481,8 +507,34 @@ export function FirstAiderDashboard() {
       timestamp: new Date().toISOString(),
     });
     if (!delivered) {
-      // Chat is realtime-only: never pretend a message went out while offline.
-      addToast({ level: 'urgent', message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.', autoDismissMs: 6_000 });
+      // Demo mode has no socket, so `wsSend` always returns false there —
+      // fall back to the demo store's in-memory list instead of only
+      // toasting, so the demo chat flow actually works. In real mode
+      // `api.sendTeamMessage` throws (it is demo-only) and the catch below
+      // shows the same "not connected" toast as before: chat is
+      // realtime-only there, never a pretend send.
+      try {
+        const { message } = await api.sendTeamMessage(eventId, {
+          fromTeamId: selectedTeam ?? null,
+          fromLabel: selectedTeamData?.name ?? null,
+          text,
+        });
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: message.id,
+            text: message.text,
+            fromTeamId: message.fromTeamId ?? undefined,
+            toTeamId: message.toTeamId ?? null,
+            fromSelf: true,
+            sentAt: message.sentAt,
+          },
+        ]);
+        setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+        setMessageText('');
+      } catch {
+        addToast({ level: 'urgent', message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.', autoDismissMs: 6_000 });
+      }
       return;
     }
     // Add optimistically so the sender sees the message immediately.
@@ -863,6 +915,72 @@ export function FirstAiderDashboard() {
     }
   };
 
+  // "Be om transport" (gap B3 / 8.26).
+  const handleRequestTransport = async (patientId: string, need: TransportNeed, pickupText: string) => {
+    setPerPatientTransportError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    try {
+      await api.executePatientAction(patientId, { type: 'transport.requested', need, pickupText: pickupText || undefined });
+      setTransportSheetPatientId(null);
+      await loadWorkspace();
+    } catch {
+      setPerPatientTransportError((prev) => ({ ...prev, [patientId]: 'Kunne ikke be om transport — prøv igjen.' }));
+    }
+  };
+
+  const handleClearTransport = async (patientId: string) => {
+    setPerPatientTransportError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    try {
+      await api.executePatientAction(patientId, { type: 'transport.cleared' });
+      await loadWorkspace();
+    } catch {
+      setPerPatientTransportError((prev) => ({ ...prev, [patientId]: 'Kunne ikke avbryte transport — prøv igjen.' }));
+    }
+  };
+
+  // Quick log — "Behandlet på stedet" (gap A8 / 8.28): registers and closes
+  // the patient in one submit instead of a full report + close round trip.
+  const handleQuickLogSubmit = async (payload: QuickLogSubmitPayload) => {
+    if (!eventId) return;
+    setQuickLogSubmitting(true);
+    setQuickLogError('');
+    try {
+      const res = await api.createFieldPatient(eventId, {
+        label: payload.label,
+        triageStatus: payload.triageStatus,
+        description: payload.description,
+        positionText: payload.positionText,
+        lat: payload.lat,
+        lon: payload.lon,
+        assignedTeamId: selectedTeam,
+        ageGroup: payload.ageGroup,
+        fieldOutcome: 'treated_on_scene',
+        status: 'discharged',
+      });
+      setShowQuickLog(false);
+      const numberLabel = patientNumber(res.patient);
+      setClosedPatients((prev) => [
+        {
+          id: res.patient.id,
+          label: payload.label,
+          closedAt: new Date().toISOString(),
+          outcomeLabel: 'Behandlet på stedet',
+          extraNote: payload.description,
+          seq: res.patient.seq ?? null,
+        },
+        ...prev,
+      ]);
+      addToast({
+        level: 'info',
+        message: numberLabel ? `Loggført ${numberLabel} — behandlet på stedet` : 'Loggført — behandlet på stedet',
+        autoDismissMs: 3_000,
+      });
+    } catch {
+      setQuickLogError('Kunne ikke loggføre — prøv igjen.');
+    } finally {
+      setQuickLogSubmitting(false);
+    }
+  };
+
   // Assignment banner responses (gap A4).
   const handleAcceptAssignment = async (patientId: string) => {
     if (!eventId || !selectedTeam) return;
@@ -1145,6 +1263,19 @@ export function FirstAiderDashboard() {
         />
       )}
 
+      {/* Transport request bottom sheet (gap B3 / 8.26) */}
+      {transportSheetPatientId && (() => {
+        const transportPatient = combinedAssignedPatients.find((p) => p.id === transportSheetPatientId);
+        const initialPickupText = transportPatient ? ((transportPatient as TeamWorkspacePatient).positionText ?? '') : '';
+        return (
+          <TransportRequestSheet
+            initialPickupText={initialPickupText}
+            onSend={(need, pickupText) => { void handleRequestTransport(transportSheetPatientId, need, pickupText); }}
+            onClose={() => setTransportSheetPatientId(null)}
+          />
+        );
+      })()}
+
       {/* Settings panel */}
       {selectedTeam && showSettings && (
         <TeamSettingsPanel
@@ -1327,6 +1458,31 @@ export function FirstAiderDashboard() {
         </div>
       )}
 
+      {/* Behandlet på stedet — registers and closes in one step (gap A8 / 8.28) */}
+      {selectedTeam && (
+        <Button
+          variant="secondary"
+          size="lg"
+          block
+          icon="check"
+          data-testid="firstaid-quick-log"
+          onClick={() => setShowQuickLog(true)}
+        >
+          Behandlet på stedet
+        </Button>
+      )}
+
+      {showQuickLog && (
+        <QuickLogSheet
+          gps={{ position: gpsPosition, status: gpsStatus, accuracy: gpsAccuracy, updatedAt: gpsUpdatedAt }}
+          initialPositionText=""
+          submitting={quickLogSubmitting}
+          error={quickLogError}
+          onSubmit={handleQuickLogSubmit}
+          onClose={() => { setShowQuickLog(false); setQuickLogError(''); }}
+        />
+      )}
+
       {/* Patient list */}
       {selectedTeam && (
         <section aria-labelledby="patient-list-heading">
@@ -1364,6 +1520,17 @@ export function FirstAiderDashboard() {
               const seq = (p as TeamWorkspacePatient).seq ?? (p as any).seq ?? null;
               const amkNotifiedAt = (p as TeamWorkspacePatient).amkNotifiedAt ?? (p as any).amkNotifiedAt ?? null;
               const needs113 = triageStatus === 'red' || triageStatus === 'yellow';
+              // Transport request (gap B3 / 8.26)
+              const transportNeed = ((p as TeamWorkspacePatient).transportNeed ?? (p as any).transportNeed ?? null) as TransportNeed | null;
+              const transportRequestedAt = (p as TeamWorkspacePatient).transportRequestedAt ?? (p as any).transportRequestedAt ?? null;
+              const transportTeamId = (p as TeamWorkspacePatient).transportTeamId ?? (p as any).transportTeamId ?? null;
+              const transportTeam = transportTeamId ? teams.find((t) => t.id === transportTeamId) : null;
+              const transportStatus = describeTransportStatus({
+                transportNeed,
+                transportRequestedAt,
+                transportTeamId,
+                transportTeam: transportTeam ? { name: transportTeam.name, transport: transportTeam.transport } : null,
+              });
               return (
                 <div
                   key={p.id}
@@ -1425,6 +1592,44 @@ export function FirstAiderDashboard() {
                         serverStatus={patientServerStatus}
                         onSetStatus={handleSetPatientStatus}
                       />
+
+                      {/* 1a. Transport request (gap B3 / 8.26) */}
+                      {transportStatus ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                            <Pill
+                              data-testid={`firstaid-transport-status-${p.id}`}
+                              tone={transportStatus.tone === 'info'
+                                ? { color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)' }
+                                : { color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)' }}
+                            >
+                              {transportStatus.text}
+                            </Pill>
+                            <Button variant="ghost" size="sm" onClick={() => handleClearTransport(p.id)}>
+                              Avbryt transport
+                            </Button>
+                          </div>
+                          {perPatientTransportError[p.id] && (
+                            <div role="alert" style={errorTextStyle}>{perPatientTransportError[p.id]}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                          <Button
+                            variant="secondary"
+                            size="lg"
+                            block
+                            icon="truck"
+                            data-testid={`firstaid-transport-request-${p.id}`}
+                            onClick={() => setTransportSheetPatientId(p.id)}
+                          >
+                            Be om transport
+                          </Button>
+                          {perPatientTransportError[p.id] && (
+                            <div role="alert" style={errorTextStyle}>{perPatientTransportError[p.id]}</div>
+                          )}
+                        </div>
+                      )}
 
                       {/* 1b. 113 / AMK — only where it can matter (gap B2) */}
                       {needs113 && (
@@ -1506,6 +1711,13 @@ export function FirstAiderDashboard() {
                             placeholder="Hva ser dere? Hva er gjort?"
                             rows={2}
                             style={{ flex: 1, resize: 'none' }}
+                          />
+                          <VoiceNoteButton
+                            testIdSuffix={p.id}
+                            onTranscript={(text) => setPerPatientNoteText((prev) => {
+                              const current = prev[p.id]?.trim();
+                              return { ...prev, [p.id]: current ? `${current} ${text}` : text };
+                            })}
                           />
                           <Button variant="secondary" onClick={() => handleSubmitNote(p.id)} disabled={!perPatientNoteText[p.id]?.trim()} style={{ flexShrink: 0 }}>
                             Lagre

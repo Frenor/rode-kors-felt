@@ -35,6 +35,9 @@ const PATHS = {
   map: 'M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4zM8 2v16M16 6v16',
   bed: 'M2 4v16M2 8h18a2 2 0 0 1 2 2v10M2 17h20M6 8v9',
   refresh: 'M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15',
+  // Lane 8 batch 3 (field UI) — appended, not merged into the block above.
+  truck: 'M1 3h15v13H1zM16 8h4l3 3v5h-7zM3 18.5a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0M16 18.5a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0',
+  mic: 'M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8',
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -4,7 +4,7 @@
  */
 
 import type { News2Result } from '@rkf/shared-types';
-import type { TeamOperationalStatus, TeamPatientStatus } from './types';
+import type { TeamOperationalStatus, TeamPatientStatus, TransportNeed } from './types';
 
 export const ACVPU_OPTIONS: { value: string; label: string; short: string }[] = [
   { value: 'alert', label: 'Alert', short: 'A' },
@@ -278,3 +278,27 @@ export const ASSIGNMENT_ACK_MINUTES: Record<'warn' | 'escalate', number> = {
  * minutes shows "Ikke kvittert" in the message stream (gap B10 / item 8.24).
  */
 export const MESSAGE_UNACKED_MINUTES = 3;
+
+/**
+ * Transport request chip / pill labels (gap B3 / item 8.26) — what a patrol
+ * asks for when a patient cannot walk out under their own power.
+ */
+export const TRANSPORT_NEED_LABELS: Record<TransportNeed, string> = {
+  stretcher: 'Båre',
+  atv: 'ATV',
+  ambulance: 'Ambulanse',
+};
+
+/**
+ * Quick log complaint chips (gap A8 / item 8.28) — "Behandlet på stedet" is
+ * almost always one of these; the chip's label becomes the patient label
+ * unless "Annet" is picked, which requires its own free text instead.
+ */
+export const QUICK_LOG_COMPLAINTS: Array<{ id: string; label: string }> = [
+  { id: 'blister', label: 'Gnagsår' },
+  { id: 'cut', label: 'Kutt' },
+  { id: 'sprain', label: 'Forstuing' },
+  { id: 'headache', label: 'Hodepine' },
+  { id: 'nausea', label: 'Kvalme' },
+  { id: 'other', label: 'Annet' },
+];

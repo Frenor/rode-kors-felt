@@ -65,6 +65,19 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await expect(closeForm.getByRole('radio', { name: 'Falsk alarm' })).toBeVisible();
   await closeForm.getByRole('button', { name: 'Avbryt' }).click();
 
+  // Quick log — "Behandlet på stedet" (gap A8 / 8.28): registers and closes a
+  // patient in one step; it lands in "Avsluttede pasienter" with its number.
+  await workspace.getByTestId('firstaid-quick-log').click();
+  const quickLogSheet = page.getByTestId('firstaid-quick-log-sheet');
+  await expect(quickLogSheet).toBeVisible();
+  await quickLogSheet.getByTestId('firstaid-quick-log-complaint-blister').click();
+  await quickLogSheet.getByTestId('firstaid-quick-log-submit').click();
+  await expect(quickLogSheet).toBeHidden();
+  await workspace.getByRole('button', { name: /Avsluttede pasienter/ }).click();
+  const closedPatientsList = workspace.getByRole('button', { name: /Avsluttede pasienter/ }).locator('..');
+  await expect(closedPatientsList.getByText('Gnagsår')).toBeVisible();
+  await expect(closedPatientsList.getByTestId(/^patient-number-/)).toBeVisible();
+
   // Shared patient number (gap A5): every own-patient row carries "#<n>".
   const sofiaCard = workspace.getByTestId('firstaid-patient-demo-pat-4');
   await expect(sofiaCard.getByTestId('patient-number-demo-pat-4')).toBeVisible();
@@ -88,6 +101,17 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   // after logging in as sick bay, against the seed's untouched state (the
   // in-memory demo store resets on the persona-switch navigation).
   await sofiaCard.getByText('Bruddmistanke ankel').click();
+
+  // Transport request (gap B3 / 8.26): ask for ATV; the status pill shows it
+  // immediately, before any assignment.
+  await sofiaCard.getByTestId('firstaid-transport-request-demo-pat-4').click();
+  const transportSheet = page.getByTestId('firstaid-transport-sheet');
+  await expect(transportSheet).toBeVisible();
+  await transportSheet.getByTestId('firstaid-transport-need-atv').click();
+  await transportSheet.getByTestId('firstaid-transport-sheet-send').click();
+  await expect(transportSheet).toBeHidden();
+  await expect(sofiaCard.getByTestId('firstaid-transport-status-demo-pat-4')).toContainText('ATV');
+
   await sofiaCard.getByRole('button', { name: 'Avslutt pasient' }).click();
   const sofiaCloseForm = sofiaCard.getByTestId('firstaid-close-form-demo-pat-4');
   await sofiaCloseForm.getByRole('radio', { name: 'Overlevert sykestue' }).click();
