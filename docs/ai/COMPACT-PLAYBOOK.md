@@ -36,7 +36,7 @@ Single source of truth for AI agents in RKF. Keep prompts short, deterministic, 
 2. Refresh flow validates token type.
 3. Role + event-scope enforcement on sensitive routes.
 4. No token in URL query for WebSocket.
-5. No persistent auth token in localStorage.
+5. Coordinator/admin tokens are never persisted in localStorage (sessionStorage only). Field roles (first aider, sick bay) keep their code-based session in localStorage so the PWA survives background kills and app switches in the field.
 
 ## Validation Baseline
 - API: scoped tests for auth/scope/realtime and touched routes.
