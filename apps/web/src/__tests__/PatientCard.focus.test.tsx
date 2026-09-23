@@ -90,7 +90,8 @@ describe('PatientCard editor — focus and draft stability on parent re-render',
     const patient = makePatient();
     const { rerender } = render(<PatientCard {...defaultProps(patient)} />);
 
-    // Open the complaint editor
+    // Open the complaint editor (behind the "Rediger detaljer" row)
+    fireEvent.click(screen.getByTestId('edit-details-toggle-pat-focus-1'));
     fireEvent.click(screen.getByTestId('complaint-editor-toggle-pat-focus-1'));
 
     const input = screen.getByPlaceholderText('F.eks. Smerter i brystet') as HTMLInputElement;
@@ -116,6 +117,7 @@ describe('PatientCard editor — focus and draft stability on parent re-render',
     const { rerender } = render(<PatientCard {...defaultProps(patient)} />);
 
     // Open → type → close (without saving)
+    fireEvent.click(screen.getByTestId('edit-details-toggle-pat-focus-1'));
     fireEvent.click(screen.getByTestId('complaint-editor-toggle-pat-focus-1'));
     const input = screen.getByPlaceholderText('F.eks. Smerter i brystet') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'Ufullstendig innskriving' } });
@@ -135,7 +137,8 @@ describe('PatientCard editor — focus and draft stability on parent re-render',
     const patient = makePatient();
     const { rerender } = render(<PatientCard {...defaultProps(patient)} />);
 
-    // Open the demographics editor
+    // Open the demographics editor (behind the "Rediger detaljer" row)
+    fireEvent.click(screen.getByTestId('edit-details-toggle-pat-focus-1'));
     fireEvent.click(screen.getByTestId('demographics-editor-toggle-pat-focus-1'));
 
     const input = screen.getByPlaceholderText('Fornavn Etternavn') as HTMLInputElement;
@@ -157,7 +160,8 @@ describe('PatientCard editor — focus and draft stability on parent re-render',
     const patient = makePatient();
     const { rerender } = render(<PatientCard {...defaultProps(patient)} />);
 
-    // Open the placement editor
+    // Open the placement editor (behind the "Rediger detaljer" row)
+    fireEvent.click(screen.getByTestId('edit-details-toggle-pat-focus-1'));
     fireEvent.click(screen.getByRole('button', { name: 'Rediger plassering' }));
 
     const input = screen.getByPlaceholderText('F.eks. 12') as HTMLInputElement;

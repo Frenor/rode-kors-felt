@@ -89,10 +89,7 @@ export function StatsGrid({ stats, lastUpdatedAt, prevStats }: StatsGridProps) {
 
   return (
     <div style={{ marginBottom: 'var(--space-4)' }}>
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-        gap: 'var(--space-2)',
-      }}>
+      <div className="stats-grid">
         {STAT_ENTRIES.map(({ key, label }) => (
           <StatCard
             key={key}

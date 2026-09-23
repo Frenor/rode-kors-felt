@@ -121,6 +121,31 @@ describe('AttentionQueuePanel', () => {
     await waitFor(() => expect(onAssignTeam).toHaveBeenCalledWith('p1', 't-alpha'));
   });
 
+  it('lets the coordinator message a patrol or stand it down after confirming', async () => {
+    const onClearTeamAssistance = vi.fn().mockResolvedValue(undefined);
+    const onMessageTeam = vi.fn();
+    render(
+      <AttentionQueuePanel
+        teams={TEAMS}
+        patients={[]}
+        alerts={[]}
+        onAssignTeam={vi.fn()}
+        onDismissAlert={vi.fn()}
+        onClearTeamAssistance={onClearTeamAssistance}
+        onMessageTeam={onMessageTeam}
+        now={NOW}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('attention-message-t-bravo'));
+    expect(onMessageTeam).toHaveBeenCalledWith('t-bravo');
+
+    // One tap asks, the second confirms — a distress call must not vanish by accident.
+    fireEvent.click(screen.getByTestId('attention-clear-t-bravo'));
+    expect(onClearTeamAssistance).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('attention-clear-confirm-t-bravo'));
+    await waitFor(() => expect(onClearTeamAssistance).toHaveBeenCalledWith('t-bravo'));
+  });
+
   it('dismisses an alert', () => {
     const onDismissAlert = vi.fn();
     render(

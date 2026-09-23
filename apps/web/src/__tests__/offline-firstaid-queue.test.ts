@@ -28,6 +28,18 @@ describe('offline first-aider team action queue', () => {
     expect(item?.status).toBe('pending');
   });
 
+  it('keeps a vitals set recorded offline, with its patient and values', async () => {
+    await enqueueTeamAction('team-1', {
+      type: 'patient.vitals_record',
+      patientId: 'pat-1',
+      vitals: { pulse: 112, spo2: 93, acvpu: 'alert' },
+      clientActionId: 'v-1',
+    });
+    const item = await offlineFirstAiderQueueDb.queue.get('v-1');
+    expect(item?.payload).toMatchObject({ type: 'patient.vitals_record', patientId: 'pat-1', vitals: { pulse: 112 } });
+    expect(item?.status).toBe('pending');
+  });
+
   it('returns pending-only items from getPendingTeamActions', async () => {
     await enqueueTeamAction('team-1', { type: 'team.monitor_started', patientId: 'pat-1', clientActionId: 'act-1' });
     await enqueueTeamAction('team-1', { type: 'team.monitor_stopped', patientId: 'pat-1', clientActionId: 'act-2' });

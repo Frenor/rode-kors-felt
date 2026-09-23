@@ -635,33 +635,38 @@ export function EventMap({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'space-between',
-          gap: 'var(--space-2)',
-          padding: 'var(--space-2) var(--space-3)',
-          borderBottom: '1px solid var(--color-border)',
-          background: 'var(--color-surface)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 600,
-          color: 'var(--color-text-muted)',
-        }}
-      >
-        <div>
-          Kartmotor: <strong>{requestedProvider === 'maplibre' ? 'MapLibre' : 'Leaflet'}</strong>
-          {layerCount > 0 && <> · Lag: <strong className="data">{layerCount}</strong></>}
+      {/* The engine name lives in "Kartinnstillinger"; this strip only appears
+          when the map is not in its plain state (3D on, or a fallback in use). */}
+      {(presentation3d || (usingMapLibreFallback && mapLibreLoadAttempted)) && (
+        <div
+          data-testid="map-status-caption"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            borderBottom: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            color: 'var(--color-text-muted)',
+          }}
+        >
+          <div>
+            Kartmotor: <strong>{requestedProvider === 'maplibre' ? 'MapLibre' : 'Leaflet'}</strong>
+            {layerCount > 0 && <> · Lag: <strong className="data">{layerCount}</strong></>}
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            {presentation3d && <span style={{ color: 'var(--color-brand)' }}>3D-presentasjon aktiv</span>}
+            {usingMapLibreFallback && mapLibreLoadAttempted && (
+              <span style={{ color: 'var(--color-status-warning)' }}>
+                MapLibre-runtime ikke tilgjengelig, bruker Leaflet-fallback
+              </span>
+            )}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          {presentation3d && <span style={{ color: 'var(--color-brand)' }}>3D-presentasjon aktiv</span>}
-          {usingMapLibreFallback && mapLibreLoadAttempted && (
-            <span style={{ color: 'var(--color-status-warning)' }}>
-              MapLibre-runtime ikke tilgjengelig, bruker Leaflet-fallback
-            </span>
-          )}
-        </div>
-      </div>
+      )}
 
       {isPicking && (
         <div

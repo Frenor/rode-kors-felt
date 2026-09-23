@@ -9,7 +9,7 @@ import {
   news2MonitoringLabel,
   type News2Result,
 } from '@rkf/shared-types';
-import type { SickBayPatient, MedicationRecord, SickbayIncomingItem } from '../lib/types';
+import type { SickBayPatient, MedicationRecord, SickbayIncomingItem, TeamPatientEngagement } from '../lib/types';
 import { SickBayHeader } from './SickBay/SickBayHeader';
 import { PatientIntakeModal, isIntakeFormValid, type IntakeFormShape } from './SickBay/PatientIntakeModal';
 import { PatientDischargeModal, type DischargeFormShape, EMPTY_DISCHARGE_FORM, buildDischargeNote } from './SickBay/PatientDischargeModal';
@@ -59,6 +59,8 @@ export function SickBayDashboard() {
 
   const [medications, setMedications] = useState<Record<string, MedicationRecord[]>>({});
   const [incomingItems, setIncomingItems] = useState<SickbayIncomingItem[]>([]);
+  /** Which patrol is with which patient (på vei / transporterer / overvåker), by patient id. */
+  const [fieldEngagements, setFieldEngagements] = useState<Record<string, TeamPatientEngagement[]>>({});
   const [expandedClosedCards, setExpandedClosedCards] = useState<Record<string, boolean>>({});
   const now = useNow();
   const UNDO_WINDOW_MS = 10_000;
@@ -94,6 +96,9 @@ export function SickBayDashboard() {
       console.error('[sickbay] Failed to load patients', err);
       setLoading(false);
     });
+    api.getTeamPatientEngagements(eventId).then((res) => {
+      setFieldEngagements(res.engagements as Record<string, TeamPatientEngagement[]>);
+    }).catch((err) => console.error('[sickbay] Failed to load team engagements', err));
   };
 
   const fetchPatientsRef = useRef(fetchPatients);
@@ -154,6 +159,7 @@ export function SickBayDashboard() {
         msg.type === 'patient.created'
         || msg.type === 'patient.updated'
         || msg.type === 'team.status_changed'
+        || msg.type === 'team.session_changed'
       ) {
         scheduleRefetch();
       }
@@ -442,6 +448,7 @@ export function SickBayDashboard() {
 
       <IncomingCriticalPanel
         items={incomingItems}
+        engagements={fieldEngagements}
         onStartTreatment={handleStartTreatment}
         onAssignPlacement={(patientId, placementType, placementNumber) =>
           handleUpdatePlacement(patientId, placementType, placementNumber)}
@@ -536,6 +543,7 @@ export function SickBayDashboard() {
                           key={patient.id}
                           patient={patient}
                           medications={medications[patient.id] ?? []}
+                          fieldEngagements={fieldEngagements[patient.id] ?? []}
                           onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
                           onSubmitVitals={(form) => handleRecordVitals(patient, form)}
                           onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
@@ -621,6 +629,7 @@ export function SickBayDashboard() {
                             <PatientCard
                               patient={patient}
                               medications={medications[patient.id] ?? []}
+                              fieldEngagements={fieldEngagements[patient.id] ?? []}
                               onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
                               onSubmitVitals={(form) => handleRecordVitals(patient, form)}
                               onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}

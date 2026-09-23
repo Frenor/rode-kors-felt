@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { TeamStatusPanel } from '../pages/Coordinator/TeamStatusPanel';
 import type { Team } from '../lib/types';
 
@@ -37,6 +37,16 @@ describe('TeamStatusPanel', () => {
   it('announces how many teams need assistance', () => {
     render(<TeamStatusPanel teams={teams} />);
     expect(screen.getByTestId('team-status-needs-assistance-count')).toHaveTextContent('1 trenger bistand');
+  });
+
+  it('offers stand-down and message actions only for teams needing assistance', () => {
+    const onClearAssistance = vi.fn();
+    render(<TeamStatusPanel teams={teams} onClearAssistance={onClearAssistance} onMessageTeam={vi.fn()} />);
+    expect(screen.getByTestId('team-status-clear-t-bravo')).toBeInTheDocument();
+    expect(screen.queryByTestId('team-status-clear-t-alpha')).toBeNull();
+    fireEvent.click(screen.getByTestId('team-status-clear-t-bravo'));
+    fireEvent.click(screen.getByTestId('team-status-clear-confirm-t-bravo'));
+    expect(onClearAssistance).toHaveBeenCalledWith('t-bravo');
   });
 
   it('treats a team without a recorded status as available', () => {

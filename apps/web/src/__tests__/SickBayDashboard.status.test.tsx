@@ -61,6 +61,7 @@ vi.mock('../lib/api', () => ({
   api: {
     getPatients: vi.fn(),
     getSickbayIncoming: vi.fn().mockResolvedValue({ items: [] }),
+    getTeamPatientEngagements: vi.fn().mockResolvedValue({ engagements: {} }),
     executePatientAction: (...args: unknown[]) => mockExecutePatientAction(...args),
     addPatientNote: (...args: unknown[]) => mockAddPatientNote(...args),
     createPatient: vi.fn(),
@@ -675,6 +676,7 @@ describe('Demographics editor — edit patient info from PatientCard', () => {
       birthDate: '1990-06-15',
     });
 
+    fireEvent.click(screen.getByTestId(`edit-details-toggle-${patient.id}`));
     const toggle = screen.getByTestId(`demographics-editor-toggle-${patient.id}`);
     expect(screen.queryByTestId(`demographics-editor-${patient.id}`)).not.toBeInTheDocument();
 
@@ -691,6 +693,7 @@ describe('Demographics editor — edit patient info from PatientCard', () => {
       birthDate: '',
     });
 
+    fireEvent.click(screen.getByTestId(`edit-details-toggle-${patient.id}`));
     fireEvent.click(screen.getByTestId(`demographics-editor-toggle-${patient.id}`));
 
     const editor = screen.getByTestId(`demographics-editor-${patient.id}`);
@@ -722,6 +725,7 @@ describe('Demographics editor — edit patient info from PatientCard', () => {
   it('closes the demographics editor after saving', async () => {
     const { patient } = await renderWithPatient('incoming', { id: 'pat-close-demo' });
 
+    fireEvent.click(screen.getByTestId(`edit-details-toggle-${patient.id}`));
     fireEvent.click(screen.getByTestId(`demographics-editor-toggle-${patient.id}`));
     expect(screen.getByTestId(`demographics-editor-${patient.id}`)).toBeInTheDocument();
 

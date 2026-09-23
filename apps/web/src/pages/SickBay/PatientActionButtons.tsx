@@ -13,8 +13,9 @@ interface PatientActionButtonsProps {
 }
 
 /**
- * The five card actions. "Ring 113" is the only critical one and reads as
- * such; the four openers are neutral toggles that show their open state.
+ * The five card actions. "Ring 113" is the only critical one: it gets a row of
+ * its own above the four neutral openers (2 × 2), so nothing sits alone in a
+ * half-empty row and the call button is never mistaken for a toggle.
  */
 export function PatientActionButtons({
   showVitals,
@@ -29,7 +30,7 @@ export function PatientActionButtons({
 }: PatientActionButtonsProps) {
   return (
     <div className="patient-action-grid">
-      <Button variant="danger-soft" size="sm" pill icon="phone" onClick={onOpenAmk} data-testid="patient-ring-113">
+      <Button variant="danger-soft" size="sm" pill icon="phone" onClick={onOpenAmk} data-testid="patient-ring-113" className="patient-action-grid__call">
         Ring 113
       </Button>
 

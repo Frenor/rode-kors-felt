@@ -10,11 +10,16 @@
 import { TEAM_OPERATIONAL_STATUS_LABELS, TEAM_OPERATIONAL_STATUS_STYLE } from '../../lib/constants';
 import type { Team, TeamOperationalStatus } from '../../lib/types';
 import { Pill } from '../../components/ui';
+import { TeamAssistanceActions } from './TeamAssistanceActions';
 
 interface TeamStatusPanelProps {
   teams: Team[];
   /** Optional: how many devices are broadcasting per team (from live positions). */
   memberCounts?: Record<string, number>;
+  /** Stand a patrol down after its call for help is resolved (confirmed inline). */
+  onClearAssistance?: (teamId: string) => Promise<void> | void;
+  /** Open the message compose addressed to this patrol. */
+  onMessageTeam?: (teamId: string) => void;
 }
 
 const STATUS_STYLE = TEAM_OPERATIONAL_STATUS_STYLE;
@@ -41,7 +46,7 @@ function formatClock(iso?: string | null): string | null {
   return d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function TeamStatusPanel({ teams, memberCounts = {} }: TeamStatusPanelProps) {
+export function TeamStatusPanel({ teams, memberCounts = {}, onClearAssistance, onMessageTeam }: TeamStatusPanelProps) {
   const rows = [...teams].sort((a, b) => {
     const pa = STATUS_PRIORITY[(a.operationalStatus ?? 'available') as TeamOperationalStatus] ?? 9;
     const pb = STATUS_PRIORITY[(b.operationalStatus ?? 'available') as TeamOperationalStatus] ?? 9;
@@ -120,6 +125,9 @@ export function TeamStatusPanel({ teams, memberCounts = {} }: TeamStatusPanelPro
                   {members ? <span><span className="data">{members}</span> enhet{members === 1 ? '' : 'er'}</span> : null}
                   {updated && <span>kl. <span className="data">{updated}</span></span>}
                 </span>
+                {isCritical && (
+                  <TeamAssistanceActions team={team} onClear={onClearAssistance} onMessage={onMessageTeam} testIdPrefix="team-status" />
+                )}
               </li>
             );
           })}

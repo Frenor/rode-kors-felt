@@ -102,4 +102,7 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   // Scoped to the team panel: the attention queue's assign select also lists
   // every team name as an <option>.
   await expect(page.getByTestId('coordinator-team-status').getByText('Patrulje Alpha')).toBeVisible();
+  // Messages can be composed from the dashboard, to everyone or to one patrol.
+  await expect(page.getByTestId('coordinator-message-compose')).toBeVisible();
+  await expect(page.getByTestId('coordinator-message-to').locator('option', { hasText: 'Patrulje Alpha' })).toHaveCount(1);
 });

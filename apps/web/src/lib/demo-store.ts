@@ -392,6 +392,11 @@ const teamWorkspaceState: Record<string, {
   ]),
 );
 
+// Delta has claimed Sofia (demo-pat-4) and is on its way — the sick bay and the
+// coordinator both see who is bringing her in.
+teamWorkspaceState['team-delta']!.patientStatusMap.set('demo-pat-4', 'en_route_to_patient');
+teamWorkspaceState['team-delta']!.latestStatus = 'en_route';
+
 let demoEvent: any = {
   id: 'demo-event',
   name: 'Holmenkollen Skimaraton 2026',
@@ -466,6 +471,7 @@ const mapWorkspacePatient = (patient: any, teamPatientStatus: TeamPatientStatus 
   lon: patient.lon ?? null,
   positionText: patient.positionText ?? null,
   teamPatientStatus,
+  latestVitals: patient.latestVitals ?? null,
 });
 
 const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({

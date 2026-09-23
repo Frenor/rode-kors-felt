@@ -144,8 +144,12 @@ body {
    "Ring 113" never breaks onto two lines in a narrow sick bay column. */
 .patient-action-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
+}
+
+.patient-action-grid__call {
+  grid-column: 1 / -1;
 }
 
 .patient-action-grid .btn {
@@ -166,8 +170,30 @@ body {
 }
 
 @media (max-width: 479px) {
-  .app-header-conn-label {
+  .app-header-btn-label {
     display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   COORDINATOR STATS — six counters that always fill
+   their rows: 6 / 3+3 / 2+2+2, never 5+1.
+═══════════════════════════════════════════════ */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+@media (max-width: 1023px) {
+  .stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 479px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

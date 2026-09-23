@@ -13,6 +13,7 @@ import {
   markTeamActionSyncing,
   removeTeamAction,
   type QueuedTeamActionPayload,
+  type QueuedTeamEndpointPayload,
 } from '../lib/offline-firstaid-queue';
 import { api } from '../lib/api';
 import type { TeamOperationalStatus, TeamPatientStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
@@ -23,6 +24,7 @@ import { PatientEngagementPicker } from './FirstAider/PatientEngagementPicker';
 import { TeamSettingsPanel, TRANSPORT_LABELS } from './FirstAider/TeamSettingsPanel';
 import { TeamStatusPickerSheet } from './FirstAider/TeamStatusPickerSheet';
 import { TeamChatSection } from './FirstAider/TeamChatSection';
+import { LastVitalsLine, News2Pill } from './FirstAider/LastVitalsLine';
 import { Button, Icon, Pill } from '../components/ui';
 import {
   FIELD_TRIAGE_ORDER,
@@ -362,6 +364,8 @@ export function FirstAiderDashboard() {
         const payload = (msg.payload as any) ?? {};
         // Skip server echo of our own messages — they were added optimistically in sendMessage.
         if (payload.fromTeamId === selectedTeam) return;
+        // A message addressed to another patrol is not ours to read.
+        if (payload.toTeamId && payload.toTeamId !== selectedTeam) return;
         setMessages((prev) => [
           ...prev,
           {
@@ -515,7 +519,7 @@ export function FirstAiderDashboard() {
     (p) => !assignedPatients.some((a) => a.id === p.id),
   );
 
-  const queueAndSyncTeamAction = async (teamId: string, payload: QueuedTeamActionPayload) => {
+  const queueAndSyncTeamAction = async (teamId: string, payload: QueuedTeamEndpointPayload) => {
     await enqueueTeamAction(teamId, payload);
     if (!navigator.onLine) return;
     try {
@@ -598,11 +602,24 @@ export function FirstAiderDashboard() {
       temperature: form.temp ? parseFloat(form.temp) : undefined,
       acvpu: form.acvpu || undefined,
     };
+    // No network: keep the set locally and say so. The team header counts it
+    // as "venter på sending" until the sync hook has replayed it.
+    if (!navigator.onLine && selectedTeam) {
+      await enqueueTeamAction(selectedTeam, {
+        type: 'patient.vitals_record', patientId, vitals: payload, clientActionId: crypto.randomUUID(),
+      });
+      setPerPatientVitalsForm((prev) => ({ ...prev, [patientId]: EMPTY_VITALS_FORM }));
+      setPerPatientVitalsError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'warning', message: 'Ingen nett — vitale tegn er lagret lokalt og sendes når tilkoblingen er tilbake', autoDismissMs: 6_000 });
+      return;
+    }
     try {
       await api.recordVitals(patientId, payload as Record<string, number | undefined>);
       setPerPatientVitalsForm((prev) => ({ ...prev, [patientId]: EMPTY_VITALS_FORM }));
       setPerPatientVitalsError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
       addToast({ level: 'info', message: 'Vitale tegn lagret', autoDismissMs: 2_500 });
+      // Show the set (and its NEWS2) on the card straight away.
+      void loadWorkspace();
     } catch {
       setPerPatientVitalsError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre vitals — prøv igjen.' }));
     }
@@ -612,6 +629,15 @@ export function FirstAiderDashboard() {
     const text = perPatientNoteText[patientId]?.trim();
     if (!text) return;
     const author = selectedTeamData?.name ?? 'Ukjent lag';
+    if (!navigator.onLine && selectedTeam) {
+      await enqueueTeamAction(selectedTeam, {
+        type: 'patient.note_add', patientId, text, author, clientActionId: crypto.randomUUID(),
+      });
+      setPerPatientNoteText((prev) => ({ ...prev, [patientId]: '' }));
+      setPerPatientNoteError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'warning', message: 'Ingen nett — notatet er lagret lokalt og sendes når tilkoblingen er tilbake', autoDismissMs: 6_000 });
+      return;
+    }
     try {
       await api.addPatientNote(patientId, text, author);
       setPerPatientNoteText((prev) => ({ ...prev, [patientId]: '' }));
@@ -1182,6 +1208,7 @@ export function FirstAiderDashboard() {
                       <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', flex: 1, textAlign: 'left' }}>
                         {label}
                       </span>
+                      {p.latestVitals && <News2Pill vitals={p.latestVitals} />}
                       {isFlashing && (
                         <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-status-warning)', flexShrink: 0 }}>
                           Oppdatert
@@ -1225,6 +1252,7 @@ export function FirstAiderDashboard() {
                       {/* 3. Vitals */}
                       <div>
                         <div className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Vitale tegn</div>
+                        {p.latestVitals && <LastVitalsLine patientId={p.id} vitals={p.latestVitals} />}
                         <VitalsEntryForm
                           patientId={p.id}
                           form={getPatientVitalsForm(p.id)}

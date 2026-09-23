@@ -182,6 +182,7 @@ export interface TeamWorkspacePatient {
   lon: number | null;
   positionText: string | null;
   teamPatientStatus?: TeamPatientStatus | null;
+  latestVitals?: VitalsReading | null;
 }
 
 export interface TeamWorkspaceResponse {

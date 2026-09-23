@@ -6,8 +6,6 @@ import { useNavigate } from 'react-router-dom';
 import { ToastContainer } from './ToastContainer';
 import { DemoBanner } from './DemoBanner';
 import { DemoWalkthrough } from './DemoWalkthrough';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { offlineFirstAiderQueueDb } from '../lib/offline-firstaid-queue';
 import { applyTheme, nextTheme, persistTheme, readStoredTheme, THEME_LABELS, type ThemeChoice } from '../lib/theme';
 import { Button } from './ui';
 
@@ -32,27 +30,6 @@ export function AppShell({ children }: AppShellProps) {
 
   // Offline sync for first aiders
   useOfflineTeamSync();
-
-  // Pending queue count for banner
-  const firstAidQueueCounts = useLiveQuery(
-    async () => {
-      const [pending, syncing, failed] = await Promise.all([
-        offlineFirstAiderQueueDb.queue.where('status').equals('pending').count(),
-        offlineFirstAiderQueueDb.queue.where('status').equals('syncing').count(),
-        offlineFirstAiderQueueDb.queue.where('status').equals('failed').count(),
-      ]);
-      return { pending, syncing, failed };
-    },
-    [],
-    { pending: 0, syncing: 0, failed: 0 },
-  );
-  const firstAidSyncLabel = !isOnline
-    ? 'Laget lokalt'
-    : (firstAidQueueCounts.pending + firstAidQueueCounts.syncing) > 0
-      ? 'Synkroniserer'
-      : firstAidQueueCounts.failed > 0
-        ? 'Ikke synkronisert'
-        : 'Synkronisert';
 
   // Connect WebSocket for all authenticated roles. Demo mode is served from
   // the in-memory demo store and must never dial a real backend: a dev API on
@@ -186,6 +163,8 @@ export function AppShell({ children }: AppShellProps) {
               : reconnecting
                 ? 'Kobler til…'
                 : 'Frakoblet';
+          // The full label needs room; a phone header gets the short form.
+          const visibleLabel = IS_DEMO ? 'Demo' : label;
           return (
             <div
               role="status"
@@ -207,7 +186,7 @@ export function AppShell({ children }: AppShellProps) {
                 background: color,
                 flexShrink: 0,
               }} />
-              <span className="app-header-conn-label">{label}</span>
+              <span className="app-header-conn-label" title={label} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{visibleLabel}</span>
             </div>
           );
         })()}
@@ -223,39 +202,24 @@ export function AppShell({ children }: AppShellProps) {
           data-testid="theme-toggle"
           style={{ flexShrink: 0 }}
         >
-          {THEME_LABELS[theme]}
+          <span className="app-header-btn-label">{THEME_LABELS[theme]}</span>
         </Button>
 
-        {/* Logout */}
-        <Button size="sm" variant="ghost" icon="logout" onClick={handleLogout} style={{ flexShrink: 0 }}>
-          Logg ut
+        {/* Logout — icon only on a phone, the label returns from tablet width */}
+        <Button size="sm" variant="ghost" icon="logout" aria-label="Logg ut" onClick={handleLogout} style={{ flexShrink: 0 }}>
+          <span className="app-header-btn-label">Logg ut</span>
         </Button>
       </header>
 
-      {/* Network offline banner */}
-      {!isOnline && (
+      {/* One status strip, only while something is degraded. Offline wins over a
+          dropped realtime socket; the header dot and the team card carry the
+          nominal state, so nothing sits between the header and the content
+          when all is well (review X6). */}
+      {(!isOnline || (!IS_DEMO && wsStatus === 'reconnecting')) && (
         <div
-          role="alert"
-          aria-live="assertive"
-          style={{
-            background: 'var(--color-status-warning-bg)',
-            borderBottom: '1px solid var(--color-status-warning-border)',
-            padding: 'var(--space-2) var(--space-4)',
-            textAlign: 'center',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 600,
-            color: 'var(--color-status-warning)',
-          }}
-        >
-          Frakoblet — hendelser lagres lokalt og synkroniseres når tilkoblingen er tilbake
-        </div>
-      )}
-
-      {/* WebSocket reconnecting banner (shown when online but WS dropped) */}
-      {!IS_DEMO && isOnline && wsStatus === 'reconnecting' && (
-        <div
-          role="status"
-          aria-live="polite"
+          role={!isOnline ? 'alert' : 'status'}
+          aria-live={!isOnline ? 'assertive' : 'polite'}
+          data-testid="connection-strip"
           style={{
             background: 'var(--color-status-warning-bg)',
             borderBottom: '1px solid var(--color-status-warning-border)',
@@ -270,40 +234,21 @@ export function AppShell({ children }: AppShellProps) {
             gap: 'var(--space-2)',
           }}
         >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 8, height: 8,
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--color-status-warning)',
-              animation: 'pulse 1.5s ease-in-out infinite',
-              flexShrink: 0,
-            }}
-          />
-          Gjenoppretter sanntidsforbindelsen — siste data kan mangle
-        </div>
-      )}
-
-      {/* Always-visible first aider sync banner */}
-      {role === 'first_aider' && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            background: 'var(--color-surface-sunken)',
-            borderBottom: '1px solid var(--color-border)',
-            padding: 'var(--space-2) var(--space-4)',
-            textAlign: 'center',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 600,
-            color: firstAidSyncLabel === 'Ikke synkronisert'
-              ? 'var(--color-status-critical)'
-              : firstAidSyncLabel === 'Synkroniserer' || firstAidSyncLabel === 'Laget lokalt'
-                ? 'var(--color-status-warning)'
-                : 'var(--color-status-ok)',
-          }}
-        >
-          {firstAidSyncLabel}
+          {isOnline && (
+            <span
+              aria-hidden="true"
+              style={{
+                width: 8, height: 8,
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--color-status-warning)',
+                animation: 'pulse 1.5s ease-in-out infinite',
+                flexShrink: 0,
+              }}
+            />
+          )}
+          {!isOnline
+            ? 'Frakoblet — hendelser lagres lokalt og synkroniseres når tilkoblingen er tilbake'
+            : 'Gjenoppretter sanntidsforbindelsen — siste data kan mangle'}
         </div>
       )}
 

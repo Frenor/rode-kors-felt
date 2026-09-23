@@ -20,7 +20,8 @@ import {
 } from '../../lib/constants';
 import { describeObservationDue, nextObservationDue } from '../../lib/observation';
 import { useNow } from '../../hooks/useNow';
-import type { SickBayPatient, MedicationRecord } from '../../lib/types';
+import type { SickBayPatient, MedicationRecord, TeamPatientEngagement } from '../../lib/types';
+import { FieldEngagementLine } from './FieldEngagementLine';
 import { PatientVitalsDisplay } from './PatientVitalsDisplay';
 import { PatientActionButtons } from './PatientActionButtons';
 import { VitalsEntryForm, type VitalsFormShape } from './VitalsEntryForm';
@@ -51,6 +52,8 @@ export interface DemographicsFormShape {
 interface PatientCardProps {
   patient: SickBayPatient;
   medications: MedicationRecord[];
+  /** Patrols currently with this patient (på vei / transporterer / overvåker). */
+  fieldEngagements?: TeamPatientEngagement[];
   onStatusChange: (status: string) => void;
   onSubmitVitals: (form: VitalsFormShape) => void;
   onSubmitNote: (text: string, author: string) => void;
@@ -65,6 +68,7 @@ interface PatientCardProps {
 export function PatientCard({
   patient,
   medications,
+  fieldEngagements = [],
   onStatusChange,
   onSubmitVitals,
   onSubmitNote,
@@ -76,6 +80,8 @@ export function PatientCard({
   onUpdateComplaint,
 }: PatientCardProps) {
   const [showVitals, setShowVitals] = useState(false);
+  // The three secondary editors sit behind one row so a resting card stays short.
+  const [showEditors, setShowEditors] = useState(false);
   const [showMeds, setShowMeds] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -423,6 +429,8 @@ export function PatientCard({
         </div>
       </div>
 
+      {!isClosed && <FieldEngagementLine patientId={patient.id} engagements={fieldEngagements} />}
+
       {/* When is this patient due for a new set of observations — the thing a
           busy clinician with six patients forgets first. */}
       {observationText && (
@@ -472,7 +480,22 @@ export function PatientCard({
         onOpenAmk={onOpenAmk}
       />
 
-      {/* Secondary edits — three neutral toggles in one row */}
+      {/* Secondary edits — one disclosure row; the three toggles appear when it opens */}
+      <button
+        type="button"
+        className="disclosure"
+        data-testid={`edit-details-toggle-${patient.id}`}
+        aria-expanded={showEditors}
+        onClick={() => setShowEditors((open) => !open)}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Icon name="edit" size="sm" />
+          Rediger detaljer
+        </span>
+        <Icon name={showEditors ? 'chevronUp' : 'chevronDown'} />
+      </button>
+
+      {showEditors && (
       <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
         <Button
           variant="ghost"
@@ -515,6 +538,7 @@ export function PatientCard({
           Beskrivelse
         </Button>
       </div>
+      )}
 
       {showPlacementEditor && (
           <div

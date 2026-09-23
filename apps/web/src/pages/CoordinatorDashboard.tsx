@@ -21,6 +21,7 @@ import type { EventIndoorLayout, MapRuntimeConfig, Team, TeamOperationalStatus, 
 export function CoordinatorDashboard() {
   const { eventId } = useAuthStore();
   const onMessage = useWsStore((s) => s.onMessage);
+  const wsSend = useWsStore((s) => s.send);
   const addToast = useNotificationStore((s) => s.add);
   const now = useNow();
   const [teams, setTeams] = useState<Team[]>([]);
@@ -47,9 +48,13 @@ export function CoordinatorDashboard() {
     id: string;
     text: string;
     fromTeamId?: string | null;
+    fromLabel?: string | null;
     toTeamId?: string | null;
     sentAt: string;
   }>>([]);
+  /** "Melding" on a team row: which team to preselect, and a nonce so the same team can be picked twice. */
+  const [composeTeamId, setComposeTeamId] = useState<string | null>(null);
+  const [composeNonce, setComposeNonce] = useState(0);
 
   const { apiKey, setApiKey, hasKey, isDemo } = useLLMApiKey();
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
@@ -182,6 +187,7 @@ export function CoordinatorDashboard() {
                 id: payload.id ?? crypto.randomUUID(),
                 text: payload.text,
                 fromTeamId: payload.fromTeamId ?? null,
+                fromLabel: typeof payload.fromLabel === 'string' ? payload.fromLabel : null,
                 toTeamId: payload.toTeamId ?? null,
                 sentAt: payload.sentAt ?? new Date().toISOString(),
               },
@@ -271,6 +277,59 @@ export function CoordinatorDashboard() {
     }
   };
 
+  // Stand a patrol down from the desk. Optimistic so the realtime echo of our
+  // own status change does not raise a second "er nå ledig" toast; reverted
+  // if the API refuses.
+  const handleClearTeamAssistance = async (teamId: string) => {
+    const previous = teams.find((t) => t.id === teamId);
+    if (!previous) return;
+    const note = 'Avklart av koordinator';
+    setTeams((prev) => prev.map((t) => (t.id === teamId
+      ? { ...t, operationalStatus: 'available', statusNote: note, statusUpdatedAt: new Date().toISOString() }
+      : t)));
+    try {
+      await api.postTeamAction(
+        teamId,
+        { type: 'team.status_set', status: 'available', note, clientActionId: crypto.randomUUID() },
+        { skipOfflineQueue: true },
+      );
+      addToast({ level: 'info', autoDismissMs: 4_000, message: `${previous.name} er satt ledig` });
+    } catch (err) {
+      console.error('[coordinator] Failed to clear team assistance', err);
+      setTeams((prev) => prev.map((t) => (t.id === teamId ? previous : t)));
+      addToast({ level: 'urgent', autoDismissMs: 6_000, message: `Kunne ikke sette ${previous.name} ledig — prøv igjen.` });
+    }
+  };
+
+  const handleMessageTeam = (teamId: string) => {
+    setComposeTeamId(teamId);
+    setComposeNonce((n) => n + 1);
+  };
+
+  // Chat is realtime-only: the server echoes the message back into the
+  // stream, so nothing is added here unless there is no server (demo).
+  const handleSendTeamMessage = async (toTeamId: string | null, text: string): Promise<boolean> => {
+    if (isDemo) {
+      setTeamMessages((prev) => [
+        { id: crypto.randomUUID(), text, fromTeamId: null, fromLabel: 'Koordinator', toTeamId, sentAt: new Date().toISOString() },
+        ...prev,
+      ].slice(0, 100));
+      addToast({ level: 'info', autoDismissMs: 4_000, message: 'Demo — meldingen vises bare her' });
+      return true;
+    }
+    const delivered = wsSend({
+      type: 'team.message',
+      eventId,
+      payload: { fromTeamId: null, fromLabel: 'Koordinator', toTeamId, text },
+      timestamp: new Date().toISOString(),
+    });
+    if (!delivered) {
+      addToast({ level: 'urgent', autoDismissMs: 6_000, message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.' });
+      return false;
+    }
+    return true;
+  };
+
   const handleClosePatient = async (id: string, reason: 'false_alarm' | 'disappeared') => {
     const reasonText = reason === 'false_alarm' ? 'Lukket: Falsk alarm' : 'Lukket: Forsvunnet';
     try {
@@ -320,6 +379,8 @@ export function CoordinatorDashboard() {
         alerts={deteriorationAlerts}
         onAssignTeam={handleAssignTeam}
         onDismissAlert={(patientId) => setDeteriorationAlerts((prev) => prev.filter((a) => a.patientId !== patientId))}
+        onClearTeamAssistance={handleClearTeamAssistance}
+        onMessageTeam={handleMessageTeam}
         now={now}
       />
 
@@ -344,9 +405,20 @@ export function CoordinatorDashboard() {
             onPickLocation={(patientId) => setPickingPatientId(patientId)}
           />
 
-          <TeamStatusPanel teams={teams} memberCounts={teamMemberCounts} />
+          <TeamStatusPanel
+            teams={teams}
+            memberCounts={teamMemberCounts}
+            onClearAssistance={handleClearTeamAssistance}
+            onMessageTeam={handleMessageTeam}
+          />
 
-          <TeamMessageStreamPanel messages={teamMessages} teams={teams} />
+          <TeamMessageStreamPanel
+            messages={teamMessages}
+            teams={teams}
+            onSend={handleSendTeamMessage}
+            composeTeamId={composeTeamId}
+            composeNonce={composeNonce}
+          />
         </div>
 
         <div

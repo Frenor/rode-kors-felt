@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   markTeamActionFailed: vi.fn(),
   removeTeamAction: vi.fn(),
   postTeamAction: vi.fn(),
+  recordVitals: vi.fn(),
+  addPatientNote: vi.fn(),
   addToast: vi.fn(),
   setTeamSyncedAt: vi.fn(),
 }));
@@ -24,6 +26,8 @@ vi.mock('../lib/offline-firstaid-queue', () => ({
 vi.mock('../lib/api', () => ({
   api: {
     postTeamAction: mocks.postTeamAction,
+    recordVitals: mocks.recordVitals,
+    addPatientNote: mocks.addPatientNote,
   },
 }));
 
@@ -133,8 +137,36 @@ describe('useOfflineTeamSync', () => {
       { skipOfflineQueue: true },
     );
     expect(mocks.addToast).toHaveBeenCalledWith(
-      expect.objectContaining({ message: '2 laghandlinger synkronisert', level: 'info' }),
+      expect.objectContaining({ message: '2 handlinger synkronisert', level: 'info' }),
     );
+  });
+
+  it('replays vitals and notes recorded offline against the patient endpoints', async () => {
+    mocks.getRetryableTeamActions.mockResolvedValue([
+      {
+        clientActionId: 'v-1',
+        teamId: 'team-1',
+        payload: { type: 'patient.vitals_record', patientId: 'pat-1', vitals: { pulse: 112, spo2: 93 }, clientActionId: 'v-1' },
+      },
+      {
+        clientActionId: 'n-1',
+        teamId: 'team-1',
+        payload: { type: 'patient.note_add', patientId: 'pat-1', text: 'Kald og blek', author: 'Alpha', clientActionId: 'n-1' },
+      },
+    ]);
+    mocks.recordVitals.mockResolvedValue({ vitals: {} });
+    mocks.addPatientNote.mockResolvedValue({ patient: {} });
+
+    renderHook(() => useOfflineTeamSync());
+    window.dispatchEvent(new Event('online'));
+
+    await waitFor(() => {
+      expect(mocks.recordVitals).toHaveBeenCalledWith('pat-1', { pulse: 112, spo2: 93 });
+      expect(mocks.addPatientNote).toHaveBeenCalledWith('pat-1', 'Kald og blek', 'Alpha');
+      expect(mocks.removeTeamAction).toHaveBeenCalledWith('v-1');
+      expect(mocks.removeTeamAction).toHaveBeenCalledWith('n-1');
+    });
+    expect(mocks.postTeamAction).not.toHaveBeenCalled();
   });
 
   it('marks failed actions and skips teamSyncedAt when no eventId is available', async () => {
@@ -193,7 +225,7 @@ describe('useOfflineTeamSync', () => {
 
     await waitFor(() => {
       expect(mocks.addToast).toHaveBeenCalledWith(
-        expect.objectContaining({ message: '1 laghandling synkronisert', level: 'info' }),
+        expect.objectContaining({ message: '1 handling synkronisert', level: 'info' }),
       );
     });
   });

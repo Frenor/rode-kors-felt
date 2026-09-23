@@ -1,10 +1,13 @@
-import { useState } from 'react';
-import type { SickbayIncomingItem } from '../../lib/types';
+import { useEffect, useRef, useState } from 'react';
+import type { SickbayIncomingItem, TeamPatientEngagement } from '../../lib/types';
 import { FIELD_TRIAGE_STYLE, type FieldTriageStatus } from '../../lib/constants';
 import { Button, Icon, Pill } from '../../components/ui';
+import { FieldEngagementLine } from './FieldEngagementLine';
 
 interface IncomingCriticalPanelProps {
   items: SickbayIncomingItem[];
+  /** Patrol engagements by patient id — who is bringing the patient in. */
+  engagements?: Record<string, TeamPatientEngagement[]>;
   onStartTreatment: (patientId: string) => void;
   onAssignPlacement: (patientId: string, placementType: 'chair' | 'bed' | '', placementNumber: string) => void;
 }
@@ -16,12 +19,31 @@ const reasonLabels: Record<string, string> = {
   news2_high: 'NEWS2 høy — kontinuerlig overvåkning',
 };
 
-export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlacement }: IncomingCriticalPanelProps) {
+export function IncomingCriticalPanel({ items, engagements = {}, onStartTreatment, onAssignPlacement }: IncomingCriticalPanelProps) {
   const [expandedPlacementRows, setExpandedPlacementRows] = useState<Record<string, boolean>>({});
   const [placementFormByPatient, setPlacementFormByPatient] = useState<Record<string, {
     placementType: 'chair' | 'bed' | '';
     placementNumber: string;
   }>>({});
+
+  // Screen readers hear a new critical patient once, when it arrives — not the
+  // whole panel again on every refetch (review S8). The first render seeds the
+  // seen set silently; announcing everything already on screen is noise.
+  const seenIds = useRef<Set<string> | null>(null);
+  const [announcement, setAnnouncement] = useState('');
+  useEffect(() => {
+    if (seenIds.current === null) {
+      seenIds.current = new Set(items.map((item) => item.patientId));
+      return;
+    }
+    const fresh = items.filter((item) => !seenIds.current!.has(item.patientId));
+    for (const item of items) seenIds.current.add(item.patientId);
+    if (fresh.length > 0) {
+      const names = fresh.map((item) => item.label ?? `Pasient ${item.patientId.slice(0, 8)}`).join(', ');
+      setAnnouncement(`Ny kritisk innkommende: ${names}`);
+    }
+  }, [items]);
+
   if (items.length === 0) return null;
 
   const sortedItems = [...items].sort((a, b) => {
@@ -52,16 +74,18 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
   return (
     <section
       data-testid="sickbay-critical-banner"
-      role="alert"
-      aria-live="assertive"
+      aria-labelledby="sickbay-critical-title"
       className="card card--critical"
       style={{
         marginBottom: 'var(--space-4)',
         padding: 'var(--space-3)',
       }}
     >
+      <div className="sr-only" role="status" aria-live="assertive" data-testid="sickbay-critical-announcer">
+        {announcement}
+      </div>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
-        <h2 style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--color-status-critical)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <h2 id="sickbay-critical-title" style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--color-status-critical)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <Icon name="alert" />
           Kritisk innkommende nå
         </h2>
@@ -105,6 +129,7 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
                 <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text)', fontWeight: 600 }}>
                   {item.criticalReasons.map((reason) => reasonLabels[reason] ?? reason).join(' · ')}
                 </div>
+                <FieldEngagementLine patientId={item.patientId} engagements={engagements[item.patientId] ?? []} />
                 <div className="data" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
                   {item.latestVitals
                     ? [

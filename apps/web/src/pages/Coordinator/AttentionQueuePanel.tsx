@@ -18,6 +18,7 @@ import { formatRelativeAge } from '../../lib/observation';
 import type { DeteriorationAlert, Team } from '../../lib/types';
 import { fieldPatientName, type FieldPatient } from './PatientManagementPanel';
 import { Button, Icon, Pill } from '../../components/ui';
+import { TeamAssistanceActions } from './TeamAssistanceActions';
 
 interface AttentionQueuePanelProps {
   teams: Team[];
@@ -25,6 +26,10 @@ interface AttentionQueuePanelProps {
   alerts: DeteriorationAlert[];
   onAssignTeam: (patientId: string, teamId: string) => Promise<void> | void;
   onDismissAlert: (patientId: string) => void;
+  /** Stand a patrol down after its call for help is resolved (confirmed inline). */
+  onClearTeamAssistance?: (teamId: string) => Promise<void> | void;
+  /** Open the message compose addressed to this patrol. */
+  onMessageTeam?: (teamId: string) => void;
   now?: Date;
 }
 
@@ -55,6 +60,8 @@ export function AttentionQueuePanel({
   alerts,
   onAssignTeam,
   onDismissAlert,
+  onClearTeamAssistance,
+  onMessageTeam,
   now = new Date(),
 }: AttentionQueuePanelProps) {
   const [assigning, setAssigning] = useState<Record<string, boolean>>({});
@@ -145,6 +152,7 @@ export function AttentionQueuePanel({
                         {team.contactPhone && <><Icon name="phone" size="sm" /><span className="data">{team.contactPhone}</span></>}
                       </span>
                     )}
+                    <TeamAssistanceActions team={team} onClear={onClearTeamAssistance} onMessage={onMessageTeam} testIdPrefix="attention" />
                   </li>
                 ))}
               </ul>

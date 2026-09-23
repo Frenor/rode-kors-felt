@@ -97,6 +97,12 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   // button on the card, not a dropdown entry.
   await expect(page.getByTestId(/^primary-action-/).first()).toHaveText(/Start behandling/);
 
+  // A patrol on its way is visible on the incoming card (Delta → Sofia in the demo seed),
+  // and the three secondary editors sit behind one "Rediger detaljer" row.
+  await expect(page.getByTestId('field-engagement-demo-pat-4')).toContainText('Delta · På vei');
+  await expect(page.getByTestId('edit-details-toggle-demo-pat-4')).toBeVisible();
+  await expect(page.getByTestId('demographics-editor-toggle-demo-pat-4')).toBeHidden();
+
   // Typing vitals shows a live NEWS2 preview before anything is saved.
   await page.getByRole('button', { name: 'Vitale', exact: true }).first().click();
   await page.getByLabel('Puls').first().fill('115'); // pulse 111–130 scores 2
@@ -135,4 +141,9 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   // Team status overview must be present so "Trenger bistand" is visible to the coordinator.
   await expect(page.getByTestId('coordinator-team-status')).toBeVisible();
   await expect(page.getByTestId('team-status-row-team-alpha')).toBeVisible();
+  // The coordinator can write to the patrols from the dashboard (demo: shown locally).
+  await page.getByTestId('coordinator-message-text').fill('Samling ved mål kl. 14');
+  await page.getByTestId('coordinator-message-send').click();
+  await expect(page.getByText('Koordinator → Alle')).toBeVisible();
+  await expect(page.getByText('Samling ved mål kl. 14')).toBeVisible();
 });
