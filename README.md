@@ -52,7 +52,7 @@ rkf/
 ### Prerequisites
 
 - Node.js >= 20 LTS
-- pnpm >= 9
+- pnpm >= 10
 - Docker & Docker Compose (for local development)
 - PostgreSQL 16 (or use Docker)
 - Redis 7 (or use Docker)

@@ -102,6 +102,12 @@
     Dockerfiles use `pnpm deploy` for a self-contained runtime; GitHub Actions pinned to commit SHAs
     with Dependabot; Semgrep runs from the official container; nginx WebSocket proxy only forwards
     `Upgrade: websocket`; GCE smoke workflow fails fast or skips with a notice.
+  - Toolchain: pnpm 9.15.4 → 10.34.5 everywhere (packageManager, CI, Dockerfiles); pnpm-workspace.yaml
+    enables `minimumReleaseAge`, `trustPolicy: no-downgrade`, `blockExoticSubdeps` and allow-lists
+    esbuild/@swc/core build scripts; `pnpm deploy --legacy` keeps the Docker runtime layout.
+    `trustPolicy` refused pino 9.14.0 (published without provenance) — pinned to attested 9.13.1 via
+    `overrides`; three legacy transitive versions (slow-redact, rollup 2.x, semver 6.x) are listed in
+    `trustPolicyExclude` with rationale. Frozen installs never hit trust checks; `pnpm deploy` does.
 - `(pending commit)` `docs(ai): compact ai instruction files for lower token usage`
   - Centralized shared AI operating rules in `docs/ai/COMPACT-PLAYBOOK.md`.
   - Rewrote `AGENTS.md` and `CLAUDE.md` to compact pointer-based versions.
@@ -239,5 +245,5 @@ Legend: `P0` blocks field use, `P1` degrades the flow, `P2` polish. Status refer
 | 20 | P1 | CI Security Scan red on `main`: nginx H2C-smuggling pattern in the WebSocket proxy, 44 unpinned (mutable) action tags, archived `returntocorp/semgrep-action`. | Fixed (map-based upgrade allow-list, SHA pins + Dependabot, official Semgrep container) |
 | 21 | P1 | Scheduled GCE production smoke hung 15 min / failed daily because deploys are paused and the target is unset or unreachable. | Fixed (fails fast, skips with a notice when unconfigured) |
 | 22 | P2 | Load test still targeted the removed `/api/incidents` endpoint and ignored non-2xx responses. | Fixed |
-| 23 | P2 | Semgrep supply-chain rules want `minimumReleaseAge`/`trustPolicy`/`blockExoticSubdeps`, which need pnpm 10. Annotated with rationale; upgrade pnpm when ready. | Open |
+| 23 | P2 | Semgrep supply-chain rules want `minimumReleaseAge`/`trustPolicy`/`blockExoticSubdeps`, which need pnpm 10. | Fixed (workspace upgraded to pnpm 10.34.5; settings enabled) |
 
