@@ -277,6 +277,8 @@ export const TeamWorkspacePatient = z.object({
   lon: z.number().nullable(),
   positionText: z.string().nullable(),
   teamPatientStatus: TeamPatientStatus.nullable().optional(),
+  /** Newest reading, so a patrol sees what it last recorded and the NEWS2 it implies. */
+  latestVitals: VitalReading.partial().nullable().optional(),
 });
 export type TeamWorkspacePatient = z.infer<typeof TeamWorkspacePatient>;
 

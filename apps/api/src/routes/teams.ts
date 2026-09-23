@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   TeamActionRequest,
@@ -8,7 +8,7 @@ import {
   type TeamPatientStatus,
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
-import { actionEvents, patients, teams } from '../db/schema.js';
+import { actionEvents, patients, teams, vitalReadings } from '../db/schema.js';
 import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { mapAction } from './action-events.js';
 import { broadcast } from './ws.js';
@@ -439,6 +439,22 @@ export async function teamRoutes(app: FastifyInstance) {
       (row) => !assignedSet.has(row.id) && !engagedSet.has(row.id),
     );
 
+    // ── Latest vitals for the patients this team is working with ──────────
+    // A patrol that has just saved a set must see it (and its NEWS2) on the
+    // card; unassigned patients only need label and position.
+    const ownPatientIds = [...assignedPatients, ...engagedPatients].map((row) => row.id);
+    const latestVitalsByPatient = new Map<string, ReturnType<typeof mapVitals>>();
+    if (ownPatientIds.length > 0) {
+      const vitalsRows = await db
+        .select()
+        .from(vitalReadings)
+        .where(inArray(vitalReadings.patientId, ownPatientIds))
+        .orderBy(desc(vitalReadings.timestamp));
+      for (const row of vitalsRows) {
+        if (!latestVitalsByPatient.has(row.patientId)) latestVitalsByPatient.set(row.patientId, mapVitals(row));
+      }
+    }
+
     const toWorkspacePatient = (row: typeof assignedPatients[number]) => ({
       id: row.id,
       status: row.status,
@@ -450,6 +466,7 @@ export async function teamRoutes(app: FastifyInstance) {
       lon: row.lon ?? null,
       positionText: row.positionText ?? null,
       teamPatientStatus: patientStatusMap.get(row.id) ?? null,
+      latestVitals: latestVitalsByPatient.get(row.id) ?? null,
     });
 
     const response = TeamWorkspaceResponse.parse({
@@ -465,4 +482,19 @@ export async function teamRoutes(app: FastifyInstance) {
 
     return response;
   });
+}
+
+function mapVitals(row: typeof vitalReadings.$inferSelect) {
+  return {
+    id: row.id,
+    timestamp: row.timestamp.toISOString(),
+    pulse: row.pulse ?? undefined,
+    spo2: row.spo2 ?? undefined,
+    respiratoryRate: row.respiratoryRate ?? undefined,
+    painScore: row.painScore ?? undefined,
+    systolicBP: row.systolicBp ?? undefined,
+    temperature: row.temperature ?? undefined,
+    onSupplementalOxygen: row.onSupplementalOxygen ?? undefined,
+    acvpu: row.acvpu ?? undefined,
+  };
 }

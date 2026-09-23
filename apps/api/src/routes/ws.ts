@@ -139,6 +139,8 @@ export async function wsHandler(app: FastifyInstance) {
             payload: {
               id: crypto.randomUUID(),
               fromTeamId: message.payload?.fromTeamId,
+              // Who sent it when it was not a patrol (the coordinator desk).
+              fromLabel: typeof message.payload?.fromLabel === 'string' ? message.payload.fromLabel : null,
               toTeamId: message.payload?.toTeamId ?? null,
               text: message.payload?.text,
               sentAt: new Date().toISOString(),
