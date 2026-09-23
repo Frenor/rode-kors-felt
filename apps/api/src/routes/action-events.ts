@@ -12,8 +12,10 @@ type AuthUser = {
   eventId?: string;
 };
 
-type PatientActionBody =
-  | { type: 'status.set'; status: string };
+export type PatientActionBody =
+  | { type: 'status.set'; status: string }
+  | { type: 'amk.notified'; by?: string }
+  | { type: 'amk.cleared' };
 
 type ActionMeta = {
   actionType?: string;
@@ -89,6 +91,20 @@ export async function getActionHistoryByEntityIds(params: {
   return grouped;
 }
 
+const AMK_NOTIFIED_BY_MAX_LENGTH = 100;
+
+/** Mirrors patients.ts's mapPatient date handling for the subset returned by patient actions. */
+function mapActionPatient(row: typeof patients.$inferSelect) {
+  return {
+    ...row,
+    arrivalTime: row.arrivalTime.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    handedOverAt: row.handedOverAt ? row.handedOverAt.toISOString() : null,
+    amkNotifiedAt: row.amkNotifiedAt ? row.amkNotifiedAt.toISOString() : null,
+  };
+}
+
 export async function applyPatientAction(params: {
   patientId: string;
   user: AuthUser;
@@ -100,43 +116,87 @@ export async function applyPatientAction(params: {
     return { error: { code: 404, message: 'Pasient ikke funnet' } };
   }
 
-  if (params.body.type !== 'status.set') {
-    return { error: { code: 400, message: 'Ugyldig handling' } };
+  if (params.body.type === 'status.set') {
+    const previousStatus = patient.status;
+    const [updated] = await db
+      .update(patients)
+      .set({
+        status: params.body.status as typeof patients.$inferInsert['status'],
+        updatedAt: new Date(),
+      })
+      .where(eq(patients.id, patient.id))
+      .returning();
+
+    const action = await logAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patient.id,
+      actionType: params.meta?.actionType ?? 'patient.status_set',
+      payload: {
+        previousStatus,
+        nextStatus: params.body.status,
+        reason: params.meta?.reason,
+      },
+      createdBy: getActor(params.user),
+      undoOfActionId: params.meta?.undoOfActionId,
+    });
+
+    return { patient: mapActionPatient(updated!), action };
   }
 
-  const previousStatus = patient.status;
-  const [updated] = await db
-    .update(patients)
-    .set({
-      status: params.body.status as typeof patients.$inferInsert['status'],
-      updatedAt: new Date(),
-    })
-    .where(eq(patients.id, patient.id))
-    .returning();
+  if (params.body.type === 'amk.notified') {
+    const by = params.body.by?.trim();
+    if (by !== undefined && by.length > AMK_NOTIFIED_BY_MAX_LENGTH) {
+      return { error: { code: 400, message: `Varslingskilde er for lang (maks ${AMK_NOTIFIED_BY_MAX_LENGTH} tegn)` } };
+    }
 
-  const action = await logAction({
-    eventId: patient.eventId,
-    entityType: 'patient',
-    entityId: patient.id,
-    actionType: params.meta?.actionType ?? 'patient.status_set',
-    payload: {
-      previousStatus,
-      nextStatus: params.body.status,
-      reason: params.meta?.reason,
-    },
-    createdBy: getActor(params.user),
-    undoOfActionId: params.meta?.undoOfActionId,
-  });
+    // Idempotent: once AMK has been notified, a repeat call keeps the first
+    // time and does not log a new action or change anything.
+    if (patient.amkNotifiedAt) {
+      return { patient: mapActionPatient(patient), action: null };
+    }
 
-  return {
-    patient: {
-      ...updated!,
-      arrivalTime: updated!.arrivalTime.toISOString(),
-      createdAt: updated!.createdAt.toISOString(),
-      updatedAt: updated!.updatedAt.toISOString(),
-    },
-    action,
-  };
+    const actor = getActor(params.user);
+    const amkNotifiedBy = by || actor;
+    const now = new Date();
+    const [updated] = await db
+      .update(patients)
+      .set({ amkNotifiedAt: now, amkNotifiedBy, updatedAt: now })
+      .where(eq(patients.id, patient.id))
+      .returning();
+
+    const action = await logAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patient.id,
+      actionType: 'amk.notified',
+      payload: { amkNotifiedAt: now.toISOString(), amkNotifiedBy },
+      createdBy: actor,
+    });
+
+    return { patient: mapActionPatient(updated!), action };
+  }
+
+  if (params.body.type === 'amk.cleared') {
+    const [updated] = await db
+      .update(patients)
+      .set({ amkNotifiedAt: null, amkNotifiedBy: null, updatedAt: new Date() })
+      .where(eq(patients.id, patient.id))
+      .returning();
+
+    const action = await logAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patient.id,
+      actionType: 'amk.cleared',
+      payload: {},
+      createdBy: getActor(params.user),
+    });
+
+    return { patient: mapActionPatient(updated!), action };
+  }
+
+  return { error: { code: 400, message: 'Ugyldig handling' } };
 }
 
 export async function undoActionById(params: {

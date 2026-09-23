@@ -124,3 +124,84 @@ describe('Reversible action APIs', () => {
     expect(readRes.json().patient.status).toBe('incoming');
   });
 });
+
+describe('AMK notified action (gap B2 data half)', () => {
+  it('sets amkNotifiedAt/amkNotifiedBy and is idempotent on a second call', async () => {
+    const patient = await createPatientForActions();
+    const token = getFirstAiderToken(eventId);
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patient.id}/actions`,
+      headers: { Authorization: `Bearer ${token}` },
+      payload: { type: 'amk.notified', by: 'Alpha' },
+    });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json();
+    expect(firstBody.patient.amkNotifiedBy).toBe('Alpha');
+    expect(firstBody.patient.amkNotifiedAt).toBeTruthy();
+    expect(firstBody.action.actionType).toBe('amk.notified');
+    const firstNotifiedAt = firstBody.patient.amkNotifiedAt as string;
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patient.id}/actions`,
+      headers: { Authorization: `Bearer ${token}` },
+      payload: { type: 'amk.notified', by: 'Bravo' },
+    });
+    expect(second.statusCode).toBe(200);
+    const secondBody = second.json();
+    // Idempotent: keeps the first time and the first "by", no new action logged.
+    expect(secondBody.patient.amkNotifiedAt).toBe(firstNotifiedAt);
+    expect(secondBody.patient.amkNotifiedBy).toBe('Alpha');
+    expect(secondBody.action).toBeNull();
+  });
+
+  it('defaults "by" to the actor when not provided', async () => {
+    const patient = await createPatientForActions();
+    const token = getSickbayToken(eventId);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patient.id}/actions`,
+      headers: { Authorization: `Bearer ${token}` },
+      payload: { type: 'amk.notified' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().patient.amkNotifiedBy).toBe('sickbay');
+  });
+
+  it('amk.cleared nulls amkNotifiedAt/amkNotifiedBy', async () => {
+    const patient = await createPatientForActions();
+    const token = getFirstAiderToken(eventId);
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patient.id}/actions`,
+      headers: { Authorization: `Bearer ${token}` },
+      payload: { type: 'amk.notified', by: 'Alpha' },
+    });
+
+    const clearRes = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patient.id}/actions`,
+      headers: { Authorization: `Bearer ${token}` },
+      payload: { type: 'amk.cleared' },
+    });
+    expect(clearRes.statusCode).toBe(200);
+    const body = clearRes.json();
+    expect(body.patient.amkNotifiedAt).toBeNull();
+    expect(body.patient.amkNotifiedBy).toBeNull();
+    expect(body.action.actionType).toBe('amk.cleared');
+
+    // A second amk.notified after clearing sets a fresh time again.
+    const renotify = await app.inject({
+      method: 'POST',
+      url: `/api/patients/${patient.id}/actions`,
+      headers: { Authorization: `Bearer ${token}` },
+      payload: { type: 'amk.notified' },
+    });
+    expect(renotify.statusCode).toBe(200);
+    expect(renotify.json().patient.amkNotifiedAt).toBeTruthy();
+  });
+});

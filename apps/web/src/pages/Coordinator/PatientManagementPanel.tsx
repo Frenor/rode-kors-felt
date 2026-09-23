@@ -6,7 +6,7 @@ import {
   type FieldTriageStatus,
 } from '../../lib/constants';
 import { formatRelativeAge } from '../../lib/observation';
-import type { TeamPatientEngagement, TeamPatientStatus } from '../../lib/types';
+import type { FieldOutcome, TeamPatientEngagement, TeamPatientStatus } from '../../lib/types';
 import { Button, Icon, Pill } from '../../components/ui';
 
 export type { FieldTriageStatus } from '../../lib/constants';
@@ -24,6 +24,12 @@ export interface FieldPatient {
   assignedTeamId: string | null;
   updatedAt: string;
   status?: string | null;
+  /** Hand-over model (gap A1) — set once the field team has handed the patient off. */
+  handedOverAt?: string | null;
+  handedOverByTeamId?: string | null;
+  fieldOutcome?: FieldOutcome | null;
+  /** Shared patient number (gap A5). */
+  seq?: number | null;
 }
 
 interface Team {

@@ -16,6 +16,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -75,6 +76,8 @@ export const events = pgTable('events', {
   }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Atomic counter for `patients.seq` — the shared, human-facing patient number. */
+  patientCounter: integer('patient_counter').notNull().default(0),
 });
 
 export const fieldTriageStatusEnum = pgEnum('field_triage_status', ['green', 'yellow', 'red', 'black']);
@@ -135,9 +138,20 @@ export const patients = pgTable('patients', {
   lat: real('lat'),
   lon: real('lon'),
   assignedTeamId: uuid('assigned_team_id').references(() => teams.id, { onDelete: 'set null' }),
+  /** Hand-over model (gap A1): set when the field team hands the patient off. */
+  handedOverAt: timestamp('handed_over_at', { withTimezone: true }),
+  handedOverByTeamId: uuid('handed_over_by_team_id').references(() => teams.id, { onDelete: 'set null' }),
+  fieldOutcome: varchar('field_outcome', { length: 32 }),
+  /** Shared patient number (gap A5): human-facing `#<seq>`, unique per event. */
+  seq: integer('seq'),
+  /** AMK notified (gap B2 data half). */
+  amkNotifiedAt: timestamp('amk_notified_at', { withTimezone: true }),
+  amkNotifiedBy: varchar('amk_notified_by', { length: 100 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex('patients_event_id_seq_idx').on(table.eventId, table.seq),
+]);
 
 export const medicationRecords = pgTable('medication_records', {
   id: uuid('id').primaryKey().defaultRandom(),

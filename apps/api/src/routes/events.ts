@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { events, patients, teams, actionEvents, vitalReadings } from '../db/schema.js';
 import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 import { getLatestTeamStatuses } from './teams.js';
+import { mapPatient } from './patients.js';
 import { calculateNEWS2 } from '@rkf/shared-types';
 
 type AuthUser = { role?: string; eventId?: string };
@@ -251,6 +252,10 @@ export async function eventRoutes(app: FastifyInstance) {
         latestVitals: mappedVitals,
         news2: news2 ? { total: news2.total, alertLevel: news2.alertLevel } : null,
         updatedAt: patient.updatedAt.toISOString(),
+        seq: patient.seq ?? null,
+        handedOverAt: patient.handedOverAt ? patient.handedOverAt.toISOString() : null,
+        handedOverByTeamId: patient.handedOverByTeamId ?? null,
+        fieldOutcome: patient.fieldOutcome ?? null,
       };
     });
 
@@ -410,35 +415,36 @@ export async function eventRoutes(app: FastifyInstance) {
       if (!teamRow || teamRow.eventId !== eventId) return reply.code(400).send({ error: 'Ukjent lag' });
     }
 
-    const [created] = await db
-      .insert(patients)
-      .values({
-        eventId,
-        label,
-        triageStatus: body.triageStatus as 'green' | 'yellow' | 'red' | 'black' | undefined,
-        description: body.description ?? null,
-        positionText: body.positionText ?? null,
-        lat: body.lat ?? null,
-        lon: body.lon ?? null,
-        assignedTeamId: body.assignedTeamId ?? null,
-        notes: [],
-        diagnosisFlags: [],
-      })
-      .returning();
+    // Shared patient number (gap A5): allocate the next seq atomically in the
+    // same transaction as the insert, so a field report and a sick bay intake
+    // in the same event never collide.
+    const created = await db.transaction(async (tx) => {
+      const [counter] = await tx
+        .update(events)
+        .set({ patientCounter: sql`${events.patientCounter} + 1` })
+        .where(eq(events.id, eventId))
+        .returning({ patientCounter: events.patientCounter });
 
-    const mapped = {
-      ...created!,
-      label: created!.label ?? null,
-      triageStatus: created!.triageStatus ?? null,
-      description: created!.description ?? null,
-      positionText: created!.positionText ?? null,
-      lat: created!.lat ?? null,
-      lon: created!.lon ?? null,
-      assignedTeamId: created!.assignedTeamId ?? null,
-      arrivalTime: created!.arrivalTime.toISOString(),
-      createdAt: created!.createdAt.toISOString(),
-      updatedAt: created!.updatedAt.toISOString(),
-    };
+      const [row] = await tx
+        .insert(patients)
+        .values({
+          eventId,
+          seq: counter?.patientCounter,
+          label,
+          triageStatus: body.triageStatus as 'green' | 'yellow' | 'red' | 'black' | undefined,
+          description: body.description ?? null,
+          positionText: body.positionText ?? null,
+          lat: body.lat ?? null,
+          lon: body.lon ?? null,
+          assignedTeamId: body.assignedTeamId ?? null,
+          notes: [],
+          diagnosisFlags: [],
+        })
+        .returning();
+      return row!;
+    });
+
+    const mapped = mapPatient(created);
 
     broadcast({
       type: 'patient.created',

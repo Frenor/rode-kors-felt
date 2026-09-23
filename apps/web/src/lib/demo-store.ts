@@ -93,6 +93,7 @@ let patients: any[] = [
   {
     id: 'demo-pat-1',
     eventId: 'demo-event',
+    seq: 1,
     label: null,
     triageStatus: 'yellow',
     assignedTeamId: 'team-bravo',
@@ -172,6 +173,7 @@ let patients: any[] = [
   {
     id: 'demo-pat-2',
     eventId: 'demo-event',
+    seq: 2,
     label: null,
     triageStatus: 'green',
     assignedTeamId: null,
@@ -237,6 +239,7 @@ let patients: any[] = [
   {
     id: 'demo-pat-3',
     eventId: 'demo-event',
+    seq: 3,
     label: null,
     triageStatus: 'green',
     assignedTeamId: null,
@@ -291,6 +294,7 @@ let patients: any[] = [
   {
     id: 'demo-pat-4',
     eventId: 'demo-event',
+    seq: 4,
     label: null,
     triageStatus: 'yellow',
     assignedTeamId: 'team-alpha',
@@ -316,6 +320,7 @@ let patients: any[] = [
   {
     id: 'demo-pat-5',
     eventId: 'demo-event',
+    seq: 5,
     label: 'Bevisstløs person ved løypebok',
     triageStatus: 'red',
     assignedTeamId: null,
@@ -339,6 +344,10 @@ let patients: any[] = [
     updatedAt: minsAgo(1),
   },
 ];
+
+// Shared patient number (gap A5): mirrors events.patient_counter — seeded
+// patients hold 1..5, so the next created patient gets 6.
+let patientCounter = 5;
 
 const medications: Record<string, any[]> = {
   'demo-pat-1': [
@@ -400,9 +409,6 @@ teamWorkspaceState['team-alpha']!.latestStatus = 'en_route';
 let demoEvent: any = {
   id: 'demo-event',
   name: 'Holmenkollen Skimaraton 2026',
-  mciActive: false,
-  mciActivatedBy: null,
-  mciSummaryHtml: null as string | null,
   createdAt: minsAgo(120),
 };
 
@@ -472,6 +478,10 @@ const mapWorkspacePatient = (patient: any, teamPatientStatus: TeamPatientStatus 
   positionText: patient.positionText ?? null,
   teamPatientStatus,
   latestVitals: patient.latestVitals ?? null,
+  seq: patient.seq ?? null,
+  handedOverAt: patient.handedOverAt ?? null,
+  handedOverByTeamId: patient.handedOverByTeamId ?? null,
+  fieldOutcome: patient.fieldOutcome ?? null,
 });
 
 const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({
@@ -574,8 +584,12 @@ export const demoStore = {
 
   getTeamWorkspace: (teamId: string): TeamWorkspaceResponse => {
     const teamState = ensureTeamState(teamId);
-    // Mirrors the API: closed patients (discharged/transferred) leave every bucket.
-    const openPatients = patients.filter((patient) => patient.status !== 'discharged' && patient.status !== 'transferred');
+    // Mirrors the API: closed patients (discharged/transferred) leave every
+    // bucket, and so does a patient already handed over to the tent — it is
+    // no longer this field team's concern even while its status stays open.
+    const openPatients = patients.filter(
+      (patient) => patient.status !== 'discharged' && patient.status !== 'transferred' && !patient.handedOverAt,
+    );
     const assignedPatients = openPatients.filter((patient) => patient.assignedTeamId === teamId);
     const assignedSet = new Set(assignedPatients.map((patient) => patient.id));
     const engagedPatients = openPatients.filter(
@@ -635,6 +649,10 @@ export const demoStore = {
           latestVitals,
           news2: news2 ? { total: news2.total, alertLevel: news2.alertLevel } : null,
           updatedAt: patient.updatedAt,
+          seq: patient.seq ?? null,
+          handedOverAt: patient.handedOverAt ?? null,
+          handedOverByTeamId: patient.handedOverByTeamId ?? null,
+          fieldOutcome: patient.fieldOutcome ?? null,
         };
       })
       .filter((item) => item.critical)
@@ -673,6 +691,7 @@ export const demoStore = {
     const gender = data.gender === 'male' || data.gender === 'female' || data.gender === 'other'
       ? data.gender
       : undefined;
+    patientCounter += 1;
     const patient = {
       id: `demo-pat-${Date.now()}`,
       status: 'incoming',
@@ -686,6 +705,8 @@ export const demoStore = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       ...data,
+      // Shared patient number (gap A5): always server-allocated, never client input.
+      seq: patientCounter,
     };
     patients = [patient, ...patients];
     return { patient };
@@ -786,20 +807,66 @@ export const demoStore = {
     return { escalation, action };
   },
 
-  executePatientAction: (patientId: string, data: { type: 'status.set'; status: string }) => {
+  executePatientAction: (
+    patientId: string,
+    data:
+      | { type: 'status.set'; status: string }
+      | { type: 'amk.notified'; by?: string }
+      | { type: 'amk.cleared' },
+  ) => {
     const patient = patients.find((p) => p.id === patientId);
     if (!patient) throw new Error('Pasient ikke funnet');
-    const previousStatus = patient.status;
+
+    if (data.type === 'status.set') {
+      const previousStatus = patient.status;
+      patients = patients.map((p) =>
+        p.id === patientId ? { ...p, status: data.status, updatedAt: new Date().toISOString() } : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'patient.status_set',
+        payload: { previousStatus, nextStatus: data.status },
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    if (data.type === 'amk.notified') {
+      // Idempotent: a repeat call keeps the first time — mirrors the API.
+      if (patient.amkNotifiedAt) {
+        return { patient: mapWithHistory('patient', patient), action: null };
+      }
+      const amkNotifiedBy = data.by?.trim() || 'demo-user';
+      const amkNotifiedAt = new Date().toISOString();
+      patients = patients.map((p) =>
+        p.id === patientId ? { ...p, amkNotifiedAt, amkNotifiedBy, updatedAt: amkNotifiedAt } : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'amk.notified',
+        payload: { amkNotifiedAt, amkNotifiedBy },
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    // amk.cleared
     patients = patients.map((p) =>
-      p.id === patientId ? { ...p, status: data.status, updatedAt: new Date().toISOString() } : p,
+      p.id === patientId
+        ? { ...p, amkNotifiedAt: null, amkNotifiedBy: null, updatedAt: new Date().toISOString() }
+        : p,
     );
     const updated = patients.find((p) => p.id === patientId)!;
     const action = createAction({
       eventId: updated.eventId,
       entityType: 'patient',
       entityId: updated.id,
-      actionType: 'patient.status_set',
-      payload: { previousStatus, nextStatus: data.status },
+      actionType: 'amk.cleared',
+      payload: {},
     });
     return { patient: mapWithHistory('patient', updated), action };
   },
@@ -1013,31 +1080,4 @@ export const demoStore = {
     events: [{ id: demoEvent.id, name: demoEvent.name, active: demoEvent.active, createdAt: demoEvent.createdAt }],
   }),
 
-  toggleMci: (eventId: string, mciActive: boolean, mciSectors?: string[]) => {
-    if (!mciActive) {
-      const triage = incidents.reduce(
-        (acc, incident) => {
-          const key = incident.triageTag ?? 'untagged';
-          acc[key] = (acc[key] ?? 0) + 1;
-          return acc;
-        },
-        { immediate: 0, delayed: 0, minor: 0, expectant: 0, untagged: 0 } as Record<string, number>,
-      );
-
-      demoEvent.mciSummaryHtml = `<!doctype html><html lang="nb"><head><meta charset="utf-8"><title>MCI-overlevering</title><style>body{font-family:Arial,sans-serif;margin:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}</style></head><body><h1>MCI-overlevering (demo)</h1><p>Arrangement: ${demoEvent.name}</p><p>Generert: ${new Date().toLocaleString('nb-NO')}</p><table><thead><tr><th>Triage</th><th>Antall</th></tr></thead><tbody><tr><td>Umiddelbar</td><td>${triage.immediate}</td></tr><tr><td>Utsatt</td><td>${triage.delayed}</td></tr><tr><td>Mindre</td><td>${triage.minor}</td></tr><tr><td>Forventet</td><td>${triage.expectant}</td></tr><tr><td>Uklassifisert</td><td>${triage.untagged}</td></tr></tbody></table></body></html>`;
-    }
-    demoEvent = {
-      ...demoEvent,
-      id: eventId,
-      mciActive,
-      mciSectors: mciSectors ?? demoEvent.mciSectors,
-      mciActivatedBy: mciActive ? 'Koordinator' : null,
-    };
-    return { event: { ...demoEvent } };
-  },
-
-  downloadMciSummary: (_eventId: string): Blob => {
-    const html = demoEvent.mciSummaryHtml ?? '<html><body><h1>Ingen MCI-overlevering ennå</h1></body></html>';
-    return new Blob([html], { type: 'text/html' });
-  },
 };

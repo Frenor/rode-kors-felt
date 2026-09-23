@@ -5,11 +5,12 @@ import {
   AmkCallLog,
   ConfirmAmkAssistRequest,
   CreateAmkCallLogRequest,
+  FieldOutcome,
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
-import { actionEvents, medicationRecords, patients, teams, vitalReadings } from '../db/schema.js';
+import { actionEvents, events, medicationRecords, patients, teams, vitalReadings } from '../db/schema.js';
 import { canAccessEvent, requireAuth } from '../middleware/auth.js';
-import { applyPatientAction, getActionHistoryByEntityIds } from './action-events.js';
+import { applyPatientAction, getActionHistoryByEntityIds, type PatientActionBody } from './action-events.js';
 import { broadcast } from './ws.js';
 import { generateAmkAssistDraft } from '../lib/ai-assist.js';
 
@@ -256,24 +257,37 @@ export async function patientRoutes(app: FastifyInstance) {
     const fullName = body.fullName?.trim() || undefined;
     const placementType = parsedPlacement?.placementType ?? undefined;
     const placementNumber = parsedPlacement?.placementNumber ?? undefined;
-    const [patient] = await db
-      .insert(patients)
-      .values({
-        eventId,
-        ageGroup: body.ageGroup,
-        gender: normalizedGender,
-        fullName,
-        birthDate: parsedBirthDate,
-        placementType,
-        placementNumber,
-        presentingComplaint: body.presentingComplaint,
-        assignedClinician: body.assignedClinician,
-        notes: [],
-        diagnosisFlags: [],
-      })
-      .returning();
 
-    return reply.code(201).send({ patient: mapPatient(patient!) });
+    // Shared patient number (gap A5): allocate the next seq atomically in the
+    // same transaction as the insert, so two concurrent intakes never collide.
+    const patient = await db.transaction(async (tx) => {
+      const [counter] = await tx
+        .update(events)
+        .set({ patientCounter: sql`${events.patientCounter} + 1` })
+        .where(eq(events.id, eventId))
+        .returning({ patientCounter: events.patientCounter });
+
+      const [created] = await tx
+        .insert(patients)
+        .values({
+          eventId,
+          seq: counter?.patientCounter,
+          ageGroup: body.ageGroup,
+          gender: normalizedGender,
+          fullName,
+          birthDate: parsedBirthDate,
+          placementType,
+          placementNumber,
+          presentingComplaint: body.presentingComplaint,
+          assignedClinician: body.assignedClinician,
+          notes: [],
+          diagnosisFlags: [],
+        })
+        .returning();
+      return created!;
+    });
+
+    return reply.code(201).send({ patient: mapPatient(patient) });
   });
 
   // Update patient
@@ -298,6 +312,10 @@ export async function patientRoutes(app: FastifyInstance) {
       lat: number | null;
       lon: number | null;
       assignedTeamId: string | null;
+      // Hand-over model (gap A1)
+      handedOverAt: string | null;
+      handedOverByTeamId: string | null;
+      fieldOutcome: string | null;
     }>;
 
     const [existing] = await db
@@ -336,7 +354,48 @@ export async function patientRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: parsedPlacement.error });
     }
 
-    if (body.status) {
+    // Hand-over model (gap A1): handedOverAt (ISO or null), handedOverByTeamId
+    // (must belong to this patient's event, or null), fieldOutcome (enum or null).
+    let parsedHandedOverAt: Date | null | undefined;
+    if (body.handedOverAt !== undefined) {
+      if (body.handedOverAt === null) {
+        parsedHandedOverAt = null;
+      } else {
+        const date = new Date(body.handedOverAt);
+        if (Number.isNaN(date.getTime())) {
+          return reply.code(400).send({ error: 'Ugyldig overleveringstidspunkt' });
+        }
+        parsedHandedOverAt = date;
+      }
+    }
+
+    if (body.handedOverByTeamId !== undefined && body.handedOverByTeamId !== null) {
+      const [handoverTeam] = await db
+        .select({ id: teams.id, eventId: teams.eventId })
+        .from(teams)
+        .where(eq(teams.id, body.handedOverByTeamId))
+        .limit(1);
+      if (!handoverTeam || handoverTeam.eventId !== existing.eventId) {
+        return reply.code(400).send({ error: 'Ukjent lag for overlevering' });
+      }
+    }
+
+    if (body.fieldOutcome !== undefined && body.fieldOutcome !== null && !FieldOutcome.safeParse(body.fieldOutcome).success) {
+      return reply.code(400).send({ error: 'Ugyldig utfall' });
+    }
+
+    // A status change is a patient action (audit trail + undo). When it comes
+    // alone it is applied directly; when other fields ride along (the field's
+    // close flow sends `fieldOutcome` + `status` together) the fields are
+    // written first and the status action follows, so nothing is dropped.
+    const OTHER_FIELDS = [
+      'assignedClinician', 'diagnosisFlags', 'fullName', 'gender', 'birthDate', 'ageGroup',
+      'placementType', 'placementNumber', 'presentingComplaint', 'label', 'triageStatus',
+      'description', 'positionText', 'lat', 'lon', 'assignedTeamId',
+      'handedOverAt', 'handedOverByTeamId', 'fieldOutcome',
+    ] as const;
+    const hasOtherFields = OTHER_FIELDS.some((key) => (body as Record<string, unknown>)[key] !== undefined);
+    if (body.status && !hasOtherFields) {
       const result = await applyPatientAction({
         patientId: id,
         user,
@@ -360,6 +419,11 @@ export async function patientRoutes(app: FastifyInstance) {
     }
 
     // Compute changedFields by comparing with existing
+    const existingHandedOverAtIso = existing.handedOverAt ? existing.handedOverAt.toISOString() : null;
+    const newHandedOverAtIso = parsedHandedOverAt !== undefined
+      ? (parsedHandedOverAt ? parsedHandedOverAt.toISOString() : null)
+      : undefined;
+
     const changedFields: string[] = [];
     const fieldChecks: Array<[string, unknown, unknown]> = [
       ['label', existing.label, body.label],
@@ -372,6 +436,9 @@ export async function patientRoutes(app: FastifyInstance) {
       ['assignedClinician', existing.assignedClinician, body.assignedClinician],
       ['fullName', existing.fullName, body.fullName !== undefined ? body.fullName?.trim() : undefined],
       ['presentingComplaint', existing.presentingComplaint, body.presentingComplaint],
+      ['handedOverAt', existingHandedOverAtIso, newHandedOverAtIso],
+      ['handedOverByTeamId', existing.handedOverByTeamId, body.handedOverByTeamId],
+      ['fieldOutcome', existing.fieldOutcome, body.fieldOutcome],
     ];
     for (const [field, oldVal, newVal] of fieldChecks) {
       if (newVal !== undefined && newVal !== oldVal) changedFields.push(field);
@@ -397,6 +464,9 @@ export async function patientRoutes(app: FastifyInstance) {
         ...(body.lat !== undefined && { lat: body.lat }),
         ...(body.lon !== undefined && { lon: body.lon }),
         ...(body.assignedTeamId !== undefined && { assignedTeamId: body.assignedTeamId }),
+        ...(parsedHandedOverAt !== undefined && { handedOverAt: parsedHandedOverAt }),
+        ...(body.handedOverByTeamId !== undefined && { handedOverByTeamId: body.handedOverByTeamId }),
+        ...(body.fieldOutcome !== undefined && { fieldOutcome: body.fieldOutcome }),
         updatedAt: new Date(),
       })
       .where(eq(patients.id, id))
@@ -410,13 +480,27 @@ export async function patientRoutes(app: FastifyInstance) {
       timestamp: mapped.updatedAt,
     });
 
+    if (body.status) {
+      const result = await applyPatientAction({
+        patientId: id,
+        user,
+        body: { type: 'status.set', status: body.status },
+      });
+      if (result.error) {
+        return reply.code(result.error.code).send({ error: result.error.message });
+      }
+      return result;
+    }
+
     return { patient: mapped };
   });
 
+  // Allowed for every role (first_aider, sickbay, coordinator, admin) — same
+  // set requireAuth already permits, so no extra role check is needed here.
   app.post('/:id/actions', { preHandler: requireAuth }, async (request, reply) => {
     const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
-    const body = request.body as { type: 'status.set'; status: string };
+    const body = request.body as PatientActionBody;
     const [patient] = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
     if (!patient) return reply.code(404).send({ error: 'Pasient ikke funnet' });
     if (!canAccessEvent(user, patient.eventId)) {
@@ -428,6 +512,19 @@ export async function patientRoutes(app: FastifyInstance) {
       body,
     });
     if (result.error) return reply.code(result.error.code).send({ error: result.error.message });
+
+    // AMK notified (gap B2 data half): broadcast the change so every open
+    // dashboard sees the pill without a refresh. Idempotent no-ops (action is
+    // null) change nothing, so nothing is broadcast.
+    if ((body.type === 'amk.notified' || body.type === 'amk.cleared') && result.action) {
+      broadcast({
+        type: 'patient.updated',
+        eventId: patient.eventId,
+        payload: { patient: result.patient, changedFields: ['amkNotifiedAt'] },
+        timestamp: result.patient!.updatedAt,
+      });
+    }
+
     return result;
   });
 
@@ -754,7 +851,7 @@ export async function patientRoutes(app: FastifyInstance) {
   });
 }
 
-function mapPatient(row: typeof patients.$inferSelect, extras?: { actionHistory?: unknown[] }) {
+export function mapPatient(row: typeof patients.$inferSelect, extras?: { actionHistory?: unknown[] }) {
   const birthDateString = typeof row.birthDate === 'string' ? row.birthDate : undefined;
   const ageYears = birthDateString ? calculateAgeYears(birthDateString) : undefined;
   return {
@@ -773,6 +870,15 @@ function mapPatient(row: typeof patients.$inferSelect, extras?: { actionHistory?
     lat: row.lat ?? null,
     lon: row.lon ?? null,
     assignedTeamId: row.assignedTeamId ?? null,
+    // Hand-over model (gap A1)
+    handedOverAt: row.handedOverAt ? row.handedOverAt.toISOString() : null,
+    handedOverByTeamId: row.handedOverByTeamId ?? null,
+    fieldOutcome: row.fieldOutcome ?? null,
+    // Shared patient number (gap A5)
+    seq: row.seq ?? null,
+    // AMK notified (gap B2 data half)
+    amkNotifiedAt: row.amkNotifiedAt ? row.amkNotifiedAt.toISOString() : null,
+    amkNotifiedBy: row.amkNotifiedBy ?? null,
     arrivalTime: row.arrivalTime.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

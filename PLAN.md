@@ -9,7 +9,7 @@
 - Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
 - Lane 6 (Field Trial Remediation — production readiness): `In progress`
 - Lane 7 (UX Review — field teams / sick bay / coordinator): `Done` (review, three fix passes, design system and presentation export landed; backlog in the review doc §7)
-- Lane 8 (Gap review implementation — see section 13): `In progress` (batch 1 API foundation)
+- Lane 8 (Gap review implementation — see section 13): `In progress` (batch 1 API foundation done; batch 2 UI pending)
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -385,6 +385,12 @@ building from the specs below; the specs are the contract.
   `amkNotifiedAt?`, `amkNotifiedBy?`.
 - Tests: API action test; demo store test.
 
+**Batch 1 e2e note (13.0 rule 5):** no-impact — this batch is API/data-foundation only
+(schema, migration, routes, shared-types, demo-store parity, and the new `lib/patient-number.ts`
+helper). No page or component under `apps/web/src/pages` or `apps/web/src/components` changed,
+so there is no new user-visible web flow and `apps/web/e2e/pages-demo.spec.ts` is unaffected.
+Batch 2 (which builds the hand-over/number/AMK UI on top of this) updates it instead.
+
 **8.4 Assistance reason (gap A3, P1)** — no API change: `team.status_set` already accepts `note`.
 **8.5 Assignment acknowledgement (gap A4, P1)** — no API change: `team.patient_status_set`
 with `en_route_to_patient` is the acknowledgement; the coordinator derives "bekreftet".
@@ -497,7 +503,7 @@ with `en_route_to_patient` is the acknowledgement; the coordinator derives "bekr
 ### 13.4 Order and status
 | Step | Items | Status |
 |---|---|---|
-| Batch 1 | 8.1, 8.2, 8.3 | `In progress` |
+| Batch 1 | 8.1, 8.2, 8.3 | `Done` |
 | Batch 2 field | 8.6–8.13 | `Pending` |
 | Batch 2 sick bay | 8.14–8.18 | `Pending` |
 | Batch 2 coordinator | 8.19–8.25 | `Pending` |

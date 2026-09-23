@@ -19,9 +19,6 @@ Built or being built; verification still owed. Move a row down when it has evide
 
 | Feature | Area | Build status | Verification owed | Ref |
 |---|---|---|---|---|
-| Hand-over model: `handedOverAt`, `handedOverByTeamId`, `fieldOutcome`; workspace drops handed-over patients | API | In build (lane 8, 8.1) | API unit (PATCH validation, workspace bucket), demo parity unit | PLAN §13.1 |
-| Per-event patient number `seq` with atomic allocation; `#12` helper | API + web | In build (8.2) | API unit (sequential, concurrent inserts unique), helper unit | PLAN §13.1 |
-| AMK notified / cleared patient actions | API | In build (8.3) | API unit (idempotent set, clear, broadcast) | PLAN §13.1 |
 | Field close flow → outcomes (hand-over keeps the patient open) | Field | Planned (8.6) | unit, e2e-demo (hand-over keeps the patient visible to the sick bay) | gap A1 |
 | Assistance reason chips after "Trenger bistand" | Field | Planned (8.7) | unit, e2e-demo | gap A3 |
 | Unassigned patients sorted by distance with "≈ 1,2 km NØ" | Field | Planned (8.8) | unit (sorting), manual | gap A10 |
@@ -84,6 +81,9 @@ Built or being built; verification still owed. Move a row down when it has evide
 | Map: Leaflet, MapLibre with fallback, 3D toggle, settings disclosure, indoor layout | Coordinator | `unit` (EventMap.maplibre, EventMap.runtime), `e2e-demo`, `e2e-local` | 2026-09-23 |
 | Stats counters with trend; debrief report download | Coordinator | `manual` | 2026-09-23 |
 | Auth: login, code redemption, refresh, rate limits; event-scope 403s | API | `unit` (api tests, session) | 2026-09-23 |
+| Hand-over model on patients (`handedOverAt`, `handedOverByTeamId`, `fieldOutcome`); handed-over patients leave the field workspace; PATCH with `status` keeps the other fields | API | `unit` (patients.test: validation, payload, workspace exclusion), demo parity `unit` (demo-store.test) | 2026-09-23 |
+| Per-event patient number `seq`, allocated atomically on both create paths; `patientNumber()` helper | API, web | `unit` (patients.test: sequential + 5 concurrent inserts unique; patient-number.test) | 2026-09-23 |
+| AMK notified / cleared patient actions, idempotent, audited | API | `unit` (actions.test) | 2026-09-23 |
 | Patients, vitals (append-only), notes, medications, AMK call logs, actions with undo | API | `unit` (patients.test) | 2026-09-23 |
 | Team actions with client-id de-duplication; derived team status; workspace buckets | API | `unit` (teams.test, actions.test) | 2026-09-23 |
 | WebSocket heartbeat, reconnect with backoff, token refresh | API, web | `unit` (ws.store, session) | 2026-09-23 |
@@ -97,7 +97,7 @@ Built or being built; verification still owed. Move a row down when it has evide
 | Feature | Removed | Why | Record |
 |---|---|---|---|
 | Incidents ("Hendelse"): `/api/incidents`, incident form, Hendelser tab, escalations | 2026 (before the field trial) | Patients are the unit of work; a separate incident object duplicated them and confused patrols | `docs/removed-features/HENDELSE_MCI.md` |
-| Mass casualty mode (MCI): event flags, sectors, activation, summary export | 2026; decided out of scope for good 2026-09-23 | Not needed for the events the tool serves; a per-patient tool with triage colours covers what patrols do; the last code remnants (demo store, event columns) are removed with lane 8 batch 1 | `docs/removed-features/HENDELSE_MCI.md` |
+| Mass casualty mode (MCI): event flags, sectors, activation, summary export | 2026; decided out of scope for good 2026-09-23 | Not needed for the events the tool serves; a per-patient tool with triage colours covers what patrols do; code remnants (demo store toggles, event columns) removed 2026-09-23 | `docs/removed-features/HENDELSE_MCI.md` |
 | Bottom tab bar on the field dashboard (Pasienter / Hendelser / Lag / Chat) | PR #51 | Single scroll with "Meld pasient" at the top beat four tabs for gloved use; the ideation doc that describes the tabs is historical | `docs/design/ideation-ui-2026.md` (stale) |
 | "Meld hendelse" button and the demo e2e assertion for it | with incidents | see Incidents | PLAN §12 row 13 |
 | `DeteriorationAlertsPanel` | lane 7 | Folded into "Krever handling" (`AttentionQueuePanel`) | `docs/design/ux-review-2026-09.md` C1, C4 |

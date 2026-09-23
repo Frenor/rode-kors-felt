@@ -376,8 +376,12 @@ export async function teamRoutes(app: FastifyInstance) {
 
     // Closed patients (discharged / transferred) are no longer the field team's
     // concern — they must drop out of every bucket, otherwise "Egne pasienter"
-    // and "Utildelte pasienter" keep growing for the whole event.
-    const patientRows = allPatientRows.filter((row) => ACTIVE_PATIENT_STATUSES.has(row.status));
+    // and "Utildelte pasienter" keep growing for the whole event. A patient with
+    // handedOverAt set has already left the field for the tent, so it drops out
+    // the same way even while its status is still open.
+    const patientRows = allPatientRows.filter(
+      (row) => ACTIVE_PATIENT_STATUSES.has(row.status) && !row.handedOverAt,
+    );
 
     // ── Assigned patients (directly assigned to this team) ────────────────────
     const assignedPatients = patientRows.filter((row) => row.assignedTeamId === team.id);
@@ -467,6 +471,10 @@ export async function teamRoutes(app: FastifyInstance) {
       positionText: row.positionText ?? null,
       teamPatientStatus: patientStatusMap.get(row.id) ?? null,
       latestVitals: latestVitalsByPatient.get(row.id) ?? null,
+      seq: row.seq ?? null,
+      handedOverAt: row.handedOverAt ? row.handedOverAt.toISOString() : null,
+      handedOverByTeamId: row.handedOverByTeamId ?? null,
+      fieldOutcome: row.fieldOutcome ?? null,
     });
 
     const response = TeamWorkspaceResponse.parse({

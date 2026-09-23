@@ -247,7 +247,13 @@ class ApiClient {
     return this.request<{ items: SickbayIncomingItem[] }>(`/events/${eventId}/sickbay-incoming`);
   }
 
-  async executePatientAction(patientId: string, data: { type: 'status.set'; status: string }) {
+  async executePatientAction(
+    patientId: string,
+    data:
+      | { type: 'status.set'; status: string }
+      | { type: 'amk.notified'; by?: string }
+      | { type: 'amk.cleared' },
+  ) {
     if (DEMO) return demoStore.executePatientAction(patientId, data);
     return this.request<{ patient: any; action: any }>(`/patients/${patientId}/actions`, {
       method: 'POST',

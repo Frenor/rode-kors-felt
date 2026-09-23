@@ -1,11 +1,11 @@
-import type { AcvpuLevel as SharedAcvpuLevel } from '@rkf/shared-types';
+import type { AcvpuLevel as SharedAcvpuLevel, FieldOutcome as SharedFieldOutcome } from '@rkf/shared-types';
 
 /**
  * Shared frontend types — replaces `any` in both dashboards.
  * Enums are re-exported from @rkf/shared-types where available.
  */
 
-export type { AcvpuLevel, PatientStatus as PatientStatusKey } from '@rkf/shared-types';
+export type { AcvpuLevel, PatientStatus as PatientStatusKey, FieldOutcome } from '@rkf/shared-types';
 
 export interface VitalsReading {
   id?: string;
@@ -143,6 +143,15 @@ export interface SickBayPatient {
   triageStatus?: 'green' | 'yellow' | 'red' | 'black' | null;
   positionText?: string | null;
   assignedTeamId?: string | null;
+  /** Hand-over model (gap A1) — set once the field team has handed the patient off. */
+  handedOverAt?: string | null;
+  handedOverByTeamId?: string | null;
+  fieldOutcome?: SharedFieldOutcome | null;
+  /** Shared patient number (gap A5) — human-facing `#<seq>`, see lib/patient-number.ts. */
+  seq?: number | null;
+  /** AMK notified (gap B2 data half). */
+  amkNotifiedAt?: string | null;
+  amkNotifiedBy?: string | null;
   vitalsHistory: VitalsReading[];
   latestVitals: VitalsReading | null;
   notes: PatientNote[];
@@ -183,6 +192,10 @@ export interface TeamWorkspacePatient {
   positionText: string | null;
   teamPatientStatus?: TeamPatientStatus | null;
   latestVitals?: VitalsReading | null;
+  seq?: number | null;
+  handedOverAt?: string | null;
+  handedOverByTeamId?: string | null;
+  fieldOutcome?: SharedFieldOutcome | null;
 }
 
 export interface TeamWorkspaceResponse {
@@ -218,6 +231,10 @@ export interface SickbayIncomingItem {
   latestVitals?: VitalsReading | null;
   news2?: { total: number; alertLevel: 'routine' | 'low' | 'medium' | 'high' } | null;
   updatedAt: string;
+  seq?: number | null;
+  handedOverAt?: string | null;
+  handedOverByTeamId?: string | null;
+  fieldOutcome?: SharedFieldOutcome | null;
 }
 
 export interface DeteriorationAlert {

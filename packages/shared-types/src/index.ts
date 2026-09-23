@@ -30,6 +30,16 @@ export type PatientStatus = z.infer<typeof PatientStatus>;
 export const FieldTriageStatus = z.enum(['green', 'yellow', 'red', 'black']);
 export type FieldTriageStatus = z.infer<typeof FieldTriageStatus>;
 
+/** How a field patient's engagement ended (gap A1 — hand-over model). */
+export const FieldOutcome = z.enum([
+  'handed_to_sickbay',
+  'handed_to_ambulance',
+  'treated_on_scene',
+  'false_alarm',
+  'disappeared',
+]);
+export type FieldOutcome = z.infer<typeof FieldOutcome>;
+
 export const TeamTransport = z.enum(['foot', 'bike', 'vehicle', 'atv']);
 export type TeamTransport = z.infer<typeof TeamTransport>;
 
@@ -171,6 +181,15 @@ export const Patient = z.object({
   lat: z.number().nullable().optional(),
   lon: z.number().nullable().optional(),
   assignedTeamId: z.string().uuid().nullable().optional(),
+  // Hand-over model (gap A1)
+  handedOverAt: z.string().datetime().nullable().optional(),
+  handedOverByTeamId: z.string().uuid().nullable().optional(),
+  fieldOutcome: FieldOutcome.nullable().optional(),
+  // Shared patient number (gap A5)
+  seq: z.number().int().nullable().optional(),
+  // AMK notified (gap B2 data half)
+  amkNotifiedAt: z.string().datetime().nullable().optional(),
+  amkNotifiedBy: z.string().max(100).nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -279,6 +298,10 @@ export const TeamWorkspacePatient = z.object({
   teamPatientStatus: TeamPatientStatus.nullable().optional(),
   /** Newest reading, so a patrol sees what it last recorded and the NEWS2 it implies. */
   latestVitals: VitalReading.partial().nullable().optional(),
+  seq: z.number().int().nullable().optional(),
+  handedOverAt: z.string().datetime().nullable().optional(),
+  handedOverByTeamId: z.string().uuid().nullable().optional(),
+  fieldOutcome: FieldOutcome.nullable().optional(),
 });
 export type TeamWorkspacePatient = z.infer<typeof TeamWorkspacePatient>;
 
@@ -329,6 +352,10 @@ export const SickbayIncomingItem = z.object({
     alertLevel: z.enum(['routine', 'low', 'medium', 'high']),
   }).nullable().optional(),
   updatedAt: z.string().datetime(),
+  seq: z.number().int().nullable().optional(),
+  handedOverAt: z.string().datetime().nullable().optional(),
+  handedOverByTeamId: z.string().uuid().nullable().optional(),
+  fieldOutcome: FieldOutcome.nullable().optional(),
 });
 export type SickbayIncomingItem = z.infer<typeof SickbayIncomingItem>;
 
