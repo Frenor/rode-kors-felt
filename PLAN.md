@@ -491,8 +491,8 @@ with `en_route_to_patient` is the acknowledgement; the coordinator derives "bekr
   scheduled purge for events archived > 30 days; device logout clears IndexedDB queues.
 - 8.34 (A7) Distance in the sick bay's "På vei" line — folded into 8.14.
 - 8.35 (C2) Web Push via the service worker for assignment, directed message, needs-assistance.
-- 8.36 (C1) MCI mode — decision first; spec after the season plan.
-- 8.37 (C3, C4, C5) People per team; voice notes; archive the stale ideation doc.
+- Mass casualty mode is out of scope for good (2026-09-23); see `docs/FEATURES.md` → Removed.
+- 8.36 (C3, C4, C5) People per team; voice notes; archive the stale ideation doc.
 
 ### 13.4 Order and status
 | Step | Items | Status |
@@ -501,4 +501,4 @@ with `en_route_to_patient` is the acknowledgement; the coordinator derives "bekr
 | Batch 2 field | 8.6–8.13 | `Pending` |
 | Batch 2 sick bay | 8.14–8.18 | `Pending` |
 | Batch 2 coordinator | 8.19–8.25 | `Pending` |
-| Batch 3 | 8.26–8.37 | `Pending` |
+| Batch 3 | 8.26–8.36 | `Pending` |

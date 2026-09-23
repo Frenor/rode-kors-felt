@@ -52,7 +52,6 @@ Severity: `P0` wrong data or a broken hand-over, `P1` a real job the tool cannot
 
 | # | Sev | Finding | Recommendation | Size |
 |---|---|---|---|---|
-| C1 | P2 | **No mass-casualty mode.** Incident and MCI were removed (`docs/removed-features/HENDELSE_MCI.md`); the improvement plan's Sprint 4 planned it. A chairlift failure or a bus in the ditch is where a per-patient tool collapses. | A light "MCI-modus": the field counts tags (colour + location + running number, no vitals); the coordinator sees colour totals per sector and a collection point. Decide whether this is in scope before the next season. | L |
 | C2 | P2 | **No push notifications in the background.** Vibration fires only while the app is open. | Web Push through the existing service worker for assignments, directed messages and "trenger bistand". Radio stays primary. | M |
 | C3 | P3 | **No people, only teams.** Who is on Alpha today, their phone, who recorded a note (author is the team name). Matters for hand-over at shift change and for the journal. | Optional member names per team for the shift; author = member when known. | M |
 | C4 | P3 | **No voice notes.** Gloves in the dark: dictating beats typing (improvement plan 5.2). | Web Speech API, `nb-NO`, hidden when unsupported. | S |
@@ -70,7 +69,8 @@ Severity: `P0` wrong data or a broken hand-over, `P1` a real job the tool cannot
    full season.
 6. **B5** — event set-up, so the next event does not need a developer.
 7. The P2 flow items (A2, A6–A10, B4, B6, B9, B10), each small.
-8. C1 as a scoped decision; C2 once the field flows above are in.
+8. C2 once the field flows above are in. Mass casualty mode is out of scope for good; it is
+   recorded under Removed in `docs/FEATURES.md`.
 
 ## What was not found
 
