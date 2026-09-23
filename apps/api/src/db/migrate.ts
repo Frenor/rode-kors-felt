@@ -294,6 +294,26 @@ export async function runMigrations(): Promise<void> {
       ON action_events (event_id, action_type, created_at DESC);
     `);
 
+    // ── Lane 8 batch 3 (B): messages, settings, set-up ──
+    await client.query(`
+      ALTER TABLE teams ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS settings JSONB;
+
+      CREATE TABLE IF NOT EXISTS team_messages (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id      UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        from_team_id  UUID REFERENCES teams(id) ON DELETE SET NULL,
+        from_label    VARCHAR(100),
+        to_team_id    VARCHAR(64),
+        text          TEXT NOT NULL,
+        ack_of        UUID,
+        sent_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_team_messages_event_sent_at
+      ON team_messages (event_id, sent_at DESC);
+    `);
+
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

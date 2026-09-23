@@ -13,6 +13,9 @@ import type {
   TeamPatientStatus,
   TeamWorkspaceResponse,
 } from './types';
+// Lane 8 batch 3 (B): a second import block, appended rather than merged into
+// the one above, so this change never collides with edits to it elsewhere.
+import type { AccessCode, EventSettings, TeamMessage } from './types';
 
 // Demo mode: env var (build-time) OR ?demo URL parameter (runtime)
 // Persist runtime flag to sessionStorage so it survives in-app navigation
@@ -391,6 +394,84 @@ class ApiClient {
   async getMedications(patientId: string) {
     if (DEMO) return demoStore.getMedications(patientId);
     return this.request<{ medications: any[] }>(`/patients/${patientId}/medications`);
+  }
+
+  // ── Lane 8 batch 3 (B): chat history (gap B9 / 8.29) ──────────────────────
+  async getTeamMessages(eventId: string, limit?: number) {
+    if (DEMO) return demoStore.getTeamMessages(eventId);
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request<{ messages: TeamMessage[] }>(`/events/${eventId}/messages${query}`);
+  }
+
+  // Demo-only: production sends chat through the WebSocket's `team.message`
+  // relay (routes/ws.ts persists it); the demo has no socket, so this appends
+  // straight to the in-memory list `getTeamMessages` reads.
+  async sendTeamMessage(
+    eventId: string,
+    payload: { fromTeamId?: string | null; fromLabel?: string | null; toTeamId?: string | null; text: string; ackOf?: string | null },
+  ) {
+    if (DEMO) return demoStore.sendTeamMessage(eventId, payload);
+    throw new Error('sendTeamMessage er kun tilgjengelig i demo-modus — send via WebSocket team.message ellers');
+  }
+
+  // ── Lane 8 batch 3 (B): capacity settings (gap B6 / 8.30) ─────────────────
+  async updateEventSettings(eventId: string, settings: EventSettings) {
+    if (DEMO) return demoStore.updateEventSettings(eventId, settings);
+    return this.request<{ settings: EventSettings }>(`/events/${eventId}/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  // ── Lane 8 batch 3 (B): event set-up (gap B5 / 8.31) ──────────────────────
+  async updateEvent(eventId: string, data: { name?: string; startDate?: string; endDate?: string; status?: string }) {
+    if (DEMO) return demoStore.updateEvent(eventId, data);
+    return this.request<{ event: any }>(`/events/${eventId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async createTeam(
+    eventId: string,
+    data: { name: string; transport?: string; contactPhone?: string | null; contactRadio?: string | null },
+  ) {
+    if (DEMO) return demoStore.createTeam(eventId, data);
+    return this.request<{ team: any }>(`/events/${eventId}/teams`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTeam(
+    teamId: string,
+    data: { name?: string; transport?: string; contactPhone?: string | null; contactRadio?: string | null; active?: boolean },
+  ) {
+    if (DEMO) return demoStore.updateTeam(teamId, data);
+    return this.request<{ team: any }>(`/teams/${teamId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getAccessCodes(eventId: string) {
+    if (DEMO) return demoStore.getAccessCodes(eventId);
+    return this.request<{ codes: AccessCode[] }>(`/events/${eventId}/access-codes`);
+  }
+
+  async createAccessCode(eventId: string, data: { role: string; hours?: number }) {
+    if (DEMO) return demoStore.createAccessCode(eventId, data);
+    return this.request<{ code: AccessCode }>(`/events/${eventId}/access-codes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async revokeAccessCode(codeId: string) {
+    if (DEMO) return demoStore.revokeAccessCode(codeId);
+    return this.request<{ code: AccessCode }>(`/access-codes/${codeId}/revoke`, {
+      method: 'POST',
+    });
   }
 }
 

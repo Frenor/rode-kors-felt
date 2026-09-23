@@ -8,6 +8,9 @@ import type {
   TeamWorkspaceResponse,
 } from './types';
 import { calculateAgeYears, normalizeAmkCriticality } from './constants';
+// Lane 8 batch 3 (B): appended rather than merged into the import above, so
+// this change never collides with edits to it elsewhere.
+import type { AccessCode, EventSettings, TeamMessage } from './types';
 
 /**
  * Demo mode — in-memory store
@@ -381,12 +384,12 @@ const medications: Record<string, any[]> = {
 };
 
 const DEMO_TEAMS = [
-  { id: 'team-alpha',   name: 'Alpha',   transport: 'foot',    currentPosition: { lat: 59.9645, lng: 10.6660 } },
-  { id: 'team-bravo',   name: 'Bravo',   transport: 'bike',    currentPosition: { lat: 59.9655, lng: 10.6682 } },
-  { id: 'team-charlie', name: 'Charlie', transport: 'foot',    currentPosition: { lat: 59.9622, lng: 10.6702 } },
-  { id: 'team-delta',   name: 'Delta',   transport: 'atv',     currentPosition: { lat: 59.9608, lng: 10.6720 } },
-  { id: 'team-echo',    name: 'Echo',    transport: 'vehicle', currentPosition: { lat: 59.9672, lng: 10.6638 } },
-  { id: 'team-foxtrot', name: 'Foxtrot', transport: 'foot',    currentPosition: null },
+  { id: 'team-alpha',   name: 'Alpha',   transport: 'foot',    currentPosition: { lat: 59.9645, lng: 10.6660 }, active: true },
+  { id: 'team-bravo',   name: 'Bravo',   transport: 'bike',    currentPosition: { lat: 59.9655, lng: 10.6682 }, active: true },
+  { id: 'team-charlie', name: 'Charlie', transport: 'foot',    currentPosition: { lat: 59.9622, lng: 10.6702 }, active: true },
+  { id: 'team-delta',   name: 'Delta',   transport: 'atv',     currentPosition: { lat: 59.9608, lng: 10.6720 }, active: true },
+  { id: 'team-echo',    name: 'Echo',    transport: 'vehicle', currentPosition: { lat: 59.9672, lng: 10.6638 }, active: true },
+  { id: 'team-foxtrot', name: 'Foxtrot', transport: 'foot',    currentPosition: null,                           active: true },
 ];
 
 const teamWorkspaceState: Record<string, {
@@ -410,9 +413,25 @@ let demoEvent: any = {
   id: 'demo-event',
   name: 'Holmenkollen Skimaraton 2026',
   createdAt: minsAgo(120),
+  // Capacity settings (gap B6 / 8.30) — demo default matches the spec.
+  settings: { sickbay: { chairs: 16, beds: 4 } },
 };
 
 let actionEvents: any[] = [];
+
+// ── Lane 8 batch 3 (B): chat history (gap B9 / 8.29) ────────────────────────
+// The demo has no socket, so `sendTeamMessage` appends here directly instead
+// of going through a WebSocket relay.
+let demoTeamMessages: TeamMessage[] = [];
+
+// ── Lane 8 batch 3 (B): access codes (gap B5 / 8.31) ────────────────────────
+let demoAccessCodes: AccessCode[] = [];
+
+// ── Lane 8 batch 3 (B): event set-up (gap B5 / 8.31) ────────────────────────
+// A plain counter, not Date.now() alone — two teams (or codes) created within
+// the same millisecond (e.g. back-to-back in a test) must never collide on id.
+let demoTeamIdCounter = 0;
+let demoCodeIdCounter = 0;
 
 const createAction = (params: {
   eventId: string;
@@ -1072,7 +1091,9 @@ export const demoStore = {
 
   getEvent: (_id: string) => ({
     event: { ...demoEvent },
-    teams: DEMO_TEAMS.map((team) => ({
+    // Event set-up (gap B5 / 8.31): mirrors the API default (excludes
+    // inactive teams — there is no ?includeInactive=1 support in demo mode).
+    teams: DEMO_TEAMS.filter((team) => team.active !== false).map((team) => ({
       ...team,
       operationalStatus: teamWorkspaceState[team.id]?.latestStatus ?? 'available',
       statusNote: null,
@@ -1083,5 +1104,102 @@ export const demoStore = {
   getEvents: () => ({
     events: [{ id: demoEvent.id, name: demoEvent.name, active: demoEvent.active, createdAt: demoEvent.createdAt }],
   }),
+
+  // ── Lane 8 batch 3 (B): chat history (gap B9 / 8.29) ───────────────────────
+  getTeamMessages: (_eventId: string) => ({ messages: demoTeamMessages }),
+
+  sendTeamMessage: (
+    _eventId: string,
+    payload: { fromTeamId?: string | null; fromLabel?: string | null; toTeamId?: string | null; text: string; ackOf?: string | null },
+  ) => {
+    const message: TeamMessage = {
+      id: `demo-msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      fromTeamId: payload.fromTeamId ?? null,
+      fromLabel: payload.fromLabel ?? null,
+      toTeamId: payload.toTeamId ?? null,
+      text: payload.text,
+      ackOf: payload.ackOf ?? null,
+      sentAt: new Date().toISOString(),
+    };
+    demoTeamMessages = [...demoTeamMessages, message];
+    return { message };
+  },
+
+  // ── Lane 8 batch 3 (B): capacity settings (gap B6 / 8.30) ──────────────────
+  updateEventSettings: (_eventId: string, settings: EventSettings) => {
+    const currentSickbay = (demoEvent.settings as EventSettings | undefined)?.sickbay;
+    demoEvent = {
+      ...demoEvent,
+      settings: {
+        ...demoEvent.settings,
+        sickbay: settings.sickbay === undefined ? currentSickbay : { ...currentSickbay, ...settings.sickbay },
+      },
+    };
+    return { settings: demoEvent.settings };
+  },
+
+  // ── Lane 8 batch 3 (B): event set-up (gap B5 / 8.31) ────────────────────────
+  updateEvent: (_eventId: string, data: Record<string, unknown>) => {
+    demoEvent = { ...demoEvent, ...data };
+    return { event: { ...demoEvent } };
+  },
+
+  createTeam: (
+    _eventId: string,
+    data: { name: string; transport?: string; contactPhone?: string | null; contactRadio?: string | null },
+  ) => {
+    demoTeamIdCounter += 1;
+    const team = {
+      id: `demo-team-${Date.now()}-${demoTeamIdCounter}`,
+      name: data.name,
+      transport: data.transport ?? 'foot',
+      contactPhone: data.contactPhone ?? null,
+      contactRadio: data.contactRadio ?? null,
+      currentPosition: null,
+      active: true,
+    };
+    DEMO_TEAMS.push(team);
+    teamWorkspaceState[team.id] = {
+      latestStatus: 'available',
+      monitoredPatientIds: [],
+      activePatientId: null,
+      patientStatusMap: new Map<string, TeamPatientStatus>(),
+    };
+    return { team };
+  },
+
+  updateTeam: (
+    teamId: string,
+    data: Partial<{ name: string; transport: string; contactPhone: string | null; contactRadio: string | null; active: boolean }>,
+  ) => {
+    const idx = DEMO_TEAMS.findIndex((t) => t.id === teamId);
+    if (idx === -1) throw new Error('Lag ikke funnet');
+    DEMO_TEAMS[idx] = { ...DEMO_TEAMS[idx], ...data } as (typeof DEMO_TEAMS)[number];
+    return { team: DEMO_TEAMS[idx] };
+  },
+
+  getAccessCodes: (_eventId: string) => ({ codes: demoAccessCodes }),
+
+  createAccessCode: (_eventId: string, data: { role: string; hours?: number }) => {
+    const hours = data.hours ?? 24;
+    demoCodeIdCounter += 1;
+    const code: AccessCode = {
+      id: `demo-code-${Date.now()}-${demoCodeIdCounter}`,
+      role: data.role as AccessCode['role'],
+      code: String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0'),
+      expiresAt: new Date(Date.now() + hours * 3_600_000).toISOString(),
+      revokedAt: null,
+    };
+    demoAccessCodes = [...demoAccessCodes, code];
+    return { code };
+  },
+
+  revokeAccessCode: (codeId: string) => {
+    const existing = demoAccessCodes.find((c) => c.id === codeId);
+    if (!existing) throw new Error('Kode ikke funnet');
+    const revokedAt = existing.revokedAt ?? new Date().toISOString();
+    demoAccessCodes = demoAccessCodes.map((c) => (c.id === codeId ? { ...c, revokedAt } : c));
+    return { code: demoAccessCodes.find((c) => c.id === codeId)! };
+  },
 
 };

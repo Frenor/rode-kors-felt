@@ -14,6 +14,7 @@ import { patientRoutes } from './routes/patients.js';
 import { actionRoutes } from './routes/action-events.js';
 import { wsHandler } from './routes/ws.js';
 import { teamRoutes } from './routes/teams.js';
+import { messageRoutes } from './routes/messages.js';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -110,6 +111,7 @@ async function buildServer() {
   await app.register(patientRoutes, { prefix: '/api/patients' });
   await app.register(teamRoutes, { prefix: '/api/teams' });
   await app.register(actionRoutes, { prefix: '/api/actions' });
+  await app.register(messageRoutes, { prefix: '/api' });
   await app.register(wsHandler, { prefix: '/ws' });
 
   return app;

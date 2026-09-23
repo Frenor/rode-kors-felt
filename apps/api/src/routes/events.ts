@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { db } from '../db/index.js';
-import { events, patients, teams, actionEvents, vitalReadings } from '../db/schema.js';
+import { events, patients, teams, actionEvents, vitalReadings, accessCodes } from '../db/schema.js';
 import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 import { getLatestTeamStatuses } from './teams.js';
@@ -39,6 +40,11 @@ type EnvMapConfig = {
   default?: MapRuntimeConfig;
   events?: Record<string, MapRuntimeConfig & { indoorLayout?: IndoorLayout }>;
   indoorLayouts?: Record<string, IndoorLayout>;
+};
+
+/** Capacity settings (gap B6): `events.settings`. */
+type EventSettings = {
+  sickbay?: { chairs?: number; beds?: number };
 };
 
 function parseEnvMapConfig(): EnvMapConfig {
@@ -95,6 +101,9 @@ export async function eventRoutes(app: FastifyInstance) {
   app.get('/:id', { preHandler: requireAuth }, async (request, reply) => {
     const user = (request as any).user as AuthUser;
     const { id } = request.params as { id: string };
+    // Event set-up (gap B5): a stood-down team is hidden by default so the
+    // coordinator's dropdowns don't fill up with retired patrols.
+    const { includeInactive } = request.query as { includeInactive?: string };
 
     const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
     if (!event) {
@@ -109,9 +118,11 @@ export async function eventRoutes(app: FastifyInstance) {
       getLatestTeamStatuses(id),
     ]);
 
+    const visibleTeams = includeInactive === '1' ? teamList : teamList.filter((row) => row.active);
+
     return {
       event: mapEvent(event),
-      teams: teamList.map((row) => {
+      teams: visibleTeams.map((row) => {
         const snapshot = teamStatuses.get(row.id);
         return {
           ...mapTeam(row),
@@ -121,6 +132,189 @@ export async function eventRoutes(app: FastifyInstance) {
         };
       }),
     };
+  });
+
+  // ── Lane 8 batch 3 (B): event set-up, capacity settings, access codes ──
+
+  const EventPatchBody = z.object({
+    name: z.string().min(1).max(200).optional(),
+    startDate: z.string().datetime().optional(),
+    endDate: z.string().datetime().optional(),
+    status: z.enum(['draft', 'active', 'archived']).optional(),
+  });
+
+  // Event set-up (gap B5): rename, reschedule or change the event's status.
+  app.patch('/:id', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = EventPatchBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Ugyldig arrangementdata', details: parsed.error.flatten() });
+    }
+
+    const [existing] = await db.select({ id: events.id }).from(events).where(eq(events.id, id)).limit(1);
+    if (!existing) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+
+    const updates: Partial<typeof events.$inferInsert> = { updatedAt: new Date() };
+    if (parsed.data.name !== undefined) updates.name = parsed.data.name.trim();
+    if (parsed.data.startDate !== undefined) updates.startDate = new Date(parsed.data.startDate);
+    if (parsed.data.endDate !== undefined) updates.endDate = new Date(parsed.data.endDate);
+    if (parsed.data.status !== undefined) updates.status = parsed.data.status;
+
+    const [updated] = await db.update(events).set(updates).where(eq(events.id, id)).returning();
+    const mapped = mapEvent(updated!);
+
+    broadcast({
+      type: 'event.updated',
+      eventId: id,
+      payload: { event: mapped },
+      timestamp: mapped.updatedAt,
+    });
+
+    return { event: mapped };
+  });
+
+  const EventSettingsBody = z.object({
+    sickbay: z.object({
+      chairs: z.number().int().min(0).max(999).optional(),
+      beds: z.number().int().min(0).max(999).optional(),
+    }).optional(),
+  });
+
+  // Capacity settings (gap B6): merges into whatever is already stored, so a
+  // beds-only update never clobbers a previously-set chairs count.
+  app.patch('/:id/settings', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = EventSettingsBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Ugyldige innstillinger', details: parsed.error.flatten() });
+    }
+
+    const [existing] = await db.select({ settings: events.settings }).from(events).where(eq(events.id, id)).limit(1);
+    if (!existing) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+
+    const current = (existing.settings ?? {}) as EventSettings;
+    const merged: EventSettings = {
+      ...current,
+      sickbay: parsed.data.sickbay === undefined
+        ? current.sickbay
+        : { ...current.sickbay, ...parsed.data.sickbay },
+    };
+
+    const [updated] = await db
+      .update(events)
+      .set({ settings: merged, updatedAt: new Date() })
+      .where(eq(events.id, id))
+      .returning();
+
+    broadcast({
+      type: 'event.settings_updated',
+      eventId: id,
+      payload: { settings: updated!.settings },
+      timestamp: new Date().toISOString(),
+    });
+
+    return { settings: updated!.settings ?? {} };
+  });
+
+  // Event set-up (gap B5): list the event's access codes (code is shown in
+  // full — it is already how the role gets in, so nothing is hidden here).
+  app.get('/:id/access-codes', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, id)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+
+    const rows = await db
+      .select()
+      .from(accessCodes)
+      .where(eq(accessCodes.eventId, id))
+      .orderBy(desc(accessCodes.expiresAt));
+
+    return { codes: rows.map(mapAccessCode) };
+  });
+
+  const CreateAccessCodeBody = z.object({
+    role: z.enum(['first_aider', 'sickbay', 'coordinator']),
+    hours: z.number().int().min(1).max(168).optional(),
+  });
+
+  const ACCESS_CODE_GENERATION_ATTEMPTS = 10;
+
+  function generateSixDigitCode(): string {
+    return String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
+  }
+
+  // Event set-up (gap B5): a fresh unique 6-digit code, shown once here —
+  // afterwards only its metadata is listable via GET .../access-codes.
+  app.post('/:id/access-codes', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = CreateAccessCodeBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Ugyldig kode-forespørsel', details: parsed.error.flatten() });
+    }
+
+    const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, id)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+
+    const hours = parsed.data.hours ?? 24;
+    const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+
+    let created: typeof accessCodes.$inferSelect | undefined;
+    for (let attempt = 0; attempt < ACCESS_CODE_GENERATION_ATTEMPTS && !created; attempt += 1) {
+      const code = generateSixDigitCode();
+      const [collision] = await db.select({ id: accessCodes.id }).from(accessCodes).where(eq(accessCodes.code, code)).limit(1);
+      if (collision) continue;
+      const [row] = await db
+        .insert(accessCodes)
+        .values({ eventId: id, role: parsed.data.role, code, expiresAt })
+        .returning();
+      created = row;
+    }
+
+    if (!created) {
+      return reply.code(500).send({ error: 'Kunne ikke generere en unik kode — prøv igjen' });
+    }
+
+    return reply.code(201).send({ code: mapAccessCode(created) });
+  });
+
+  const CreateTeamBody = z.object({
+    name: z.string().min(1).max(100),
+    transport: z.enum(['foot', 'bike', 'vehicle', 'atv']).optional(),
+    contactPhone: z.string().max(50).nullable().optional(),
+    contactRadio: z.string().max(50).nullable().optional(),
+  });
+
+  // Event set-up (gap B5): add a new team/patrol to the event.
+  app.post('/:id/teams', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = CreateTeamBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Ugyldig lagdata', details: parsed.error.flatten() });
+    }
+
+    const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, id)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+
+    const [created] = await db
+      .insert(teams)
+      .values({
+        eventId: id,
+        name: parsed.data.name.trim(),
+        transport: parsed.data.transport ?? 'foot',
+        contactPhone: parsed.data.contactPhone ?? null,
+        contactRadio: parsed.data.contactRadio ?? null,
+      })
+      .returning();
+    const mapped = mapTeam(created!);
+
+    broadcast({
+      type: 'team.created',
+      eventId: id,
+      payload: { team: mapped },
+      timestamp: new Date().toISOString(),
+    });
+
+    return reply.code(201).send({ team: mapped });
   });
 
   app.get('/:id/indoor-layout', { preHandler: requireAuth }, async (request, reply) => {
@@ -559,6 +753,9 @@ function mapEvent(row: typeof events.$inferSelect) {
     ...rest,
     mapRuntimeConfig: resolvedMapConfig,
     indoorLayout: resolvedIndoorLayout,
+    // Capacity settings (gap B6) — never null on the wire, so the client can
+    // always read `event.settings.sickbay?.chairs` without a guard.
+    settings: (rest.settings ?? {}) as EventSettings,
     startDate: rest.startDate.toISOString(),
     endDate: rest.endDate.toISOString(),
     createdAt: rest.createdAt.toISOString(),
@@ -570,5 +767,16 @@ function mapTeam(row: typeof teams.$inferSelect) {
   return {
     ...row,
     lastPositionUpdate: row.lastPositionUpdate?.toISOString(),
+  };
+}
+
+// ── Lane 8 batch 3 (B): access codes (gap B5) ──────────────────────
+function mapAccessCode(row: typeof accessCodes.$inferSelect) {
+  return {
+    id: row.id,
+    role: row.role,
+    code: row.code,
+    expiresAt: row.expiresAt.toISOString(),
+    revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
   };
 }

@@ -393,12 +393,18 @@ export const WsEventType = z.enum([
   'patient.deterioration_alert',
 ]);
 
+/**
+ * Chat history (gap B9). `toTeamId` is a team uuid, the literal `coordinator`,
+ * or null/undefined for everyone — not always a uuid, so it is a bounded
+ * string rather than `.uuid()`.
+ */
 export const TeamMessage = z.object({
   id: z.string().uuid(),
-  eventId: z.string().uuid(),
-  fromTeamId: z.string().uuid().optional(),
-  toTeamId: z.string().uuid().optional(), // null = broadcast to all
-  text: z.string().min(1).max(500),
+  fromTeamId: z.string().uuid().nullable().optional(),
+  fromLabel: z.string().max(100).nullable().optional(),
+  toTeamId: z.string().max(64).nullable().optional(),
+  text: z.string().min(1).max(1000),
+  ackOf: z.string().uuid().nullable().optional(),
   sentAt: z.string().datetime(),
 });
 export type TeamMessage = z.infer<typeof TeamMessage>;

@@ -80,3 +80,63 @@ describe('demoStore — AMK notified action (gap B2 data half)', () => {
     expect(cleared.action?.actionType).toBe('amk.cleared');
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Lane 8 batch 3 (B) — event operations
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('demoStore — chat history (gap B9 / 8.29)', () => {
+  it('sendTeamMessage appends to the in-memory list getTeamMessages reads', () => {
+    const before = demoStore.getTeamMessages('demo-event').messages.length;
+    const { message } = demoStore.sendTeamMessage('demo-event', { fromLabel: 'Koordinator', text: 'Test melding' });
+    const after = demoStore.getTeamMessages('demo-event').messages;
+
+    expect(after.length).toBe(before + 1);
+    expect(after[after.length - 1]).toEqual(message);
+    expect(message.text).toBe('Test melding');
+    expect(typeof message.sentAt).toBe('string');
+  });
+});
+
+describe('demoStore — capacity settings (gap B6 / 8.30)', () => {
+  it('defaults to chairs 16 / beds 4', () => {
+    const { event } = demoStore.getEvent('demo-event');
+    expect(event.settings).toEqual({ sickbay: { chairs: 16, beds: 4 } });
+  });
+
+  it('updateEventSettings merges rather than replacing', () => {
+    demoStore.updateEventSettings('demo-event', { sickbay: { beds: 6 } });
+    const { settings } = demoStore.updateEventSettings('demo-event', { sickbay: { chairs: 20 } });
+    expect(settings).toEqual({ sickbay: { chairs: 20, beds: 6 } });
+  });
+});
+
+describe('demoStore — event set-up (gap B5 / 8.31)', () => {
+  it('createTeam adds an active team visible via getEvent', () => {
+    const { team } = demoStore.createTeam('demo-event', { name: 'Patrulje Golf', transport: 'bike' });
+    expect(team.active).toBe(true);
+
+    const { teams } = demoStore.getEvent('demo-event');
+    expect(teams.some((t) => t.id === team.id)).toBe(true);
+  });
+
+  it('updateTeam(active: false) hides the team from getEvent', () => {
+    const { team } = demoStore.createTeam('demo-event', { name: 'Patrulje Hidden' });
+    demoStore.updateTeam(team.id, { active: false });
+
+    const { teams } = demoStore.getEvent('demo-event');
+    expect(teams.some((t) => t.id === team.id)).toBe(false);
+  });
+
+  it('createAccessCode generates a 6-digit code; revokeAccessCode sets revokedAt', () => {
+    const { code } = demoStore.createAccessCode('demo-event', { role: 'first_aider' });
+    expect(code.code).toMatch(/^\d{6}$/);
+    expect(code.revokedAt).toBeNull();
+
+    const { code: revoked } = demoStore.revokeAccessCode(code.id);
+    expect(revoked.revokedAt).toBeTruthy();
+
+    const { codes } = demoStore.getAccessCodes('demo-event');
+    expect(codes.find((c) => c.id === code.id)?.revokedAt).toBe(revoked.revokedAt);
+  });
+});

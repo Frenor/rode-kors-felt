@@ -110,6 +110,15 @@ const TeamProfileBody = z.object({
   contactRadio: z.string().max(50).nullable().optional(),
 });
 
+// ── Lane 8 batch 3 (B): event set-up (gap B5) ──────────────────────
+const TeamPatchBody = z.object({
+  name: z.string().min(1).max(100).optional(),
+  transport: z.enum(['foot', 'bike', 'vehicle', 'atv']).optional(),
+  contactPhone: z.string().max(50).nullable().optional(),
+  contactRadio: z.string().max(50).nullable().optional(),
+  active: z.boolean().optional(),
+});
+
 export async function teamRoutes(app: FastifyInstance) {
   app.get('/:teamId', { preHandler: requireAuth }, async (request, reply) => {
     const user = (request as any).user as AuthUser;
@@ -175,6 +184,41 @@ export async function teamRoutes(app: FastifyInstance) {
     });
 
     return { team: { id: updated!.id, gear: updated!.gear, contactPhone: updated!.contactPhone, contactRadio: updated!.contactRadio } };
+  });
+
+  // Event set-up (gap B5): rename, re-equip, stand down (active=false) or
+  // reinstate a team. Coordinator/admin only — a patrol changes its own
+  // transport/profile through the routes above instead.
+  app.patch('/:teamId', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { teamId } = request.params as { teamId: string };
+    const parsed = TeamPatchBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Ugyldig lagdata', details: parsed.error.flatten() });
+    }
+
+    const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1);
+    if (!team) return reply.code(404).send({ error: 'Lag ikke funnet' });
+    if (!canAccessEvent(user, team.eventId)) return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+
+    const updates: Partial<typeof teams.$inferInsert> = {};
+    if (parsed.data.name !== undefined) updates.name = parsed.data.name.trim();
+    if (parsed.data.transport !== undefined) updates.transport = parsed.data.transport;
+    if (parsed.data.contactPhone !== undefined) updates.contactPhone = parsed.data.contactPhone;
+    if (parsed.data.contactRadio !== undefined) updates.contactRadio = parsed.data.contactRadio;
+    if (parsed.data.active !== undefined) updates.active = parsed.data.active;
+
+    const [updated] = await db.update(teams).set(updates).where(eq(teams.id, teamId)).returning();
+    const mapped = { ...updated!, lastPositionUpdate: updated!.lastPositionUpdate?.toISOString() ?? null };
+
+    broadcast({
+      type: 'team.updated',
+      eventId: team.eventId,
+      payload: { team: mapped },
+      timestamp: new Date().toISOString(),
+    });
+
+    return { team: mapped };
   });
 
   app.post('/:teamId/actions', { preHandler: [requireAuth, requireRole(['first_aider', 'coordinator', 'admin'])] }, async (request, reply) => {

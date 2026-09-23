@@ -78,6 +78,10 @@ export const events = pgTable('events', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   /** Atomic counter for `patients.seq` — the shared, human-facing patient number. */
   patientCounter: integer('patient_counter').notNull().default(0),
+  /** Capacity settings (gap B6): `{ sickbay?: { chairs?: number; beds?: number } }`. */
+  settings: jsonb('settings').$type<{
+    sickbay?: { chairs?: number; beds?: number };
+  }>(),
 });
 
 export const fieldTriageStatusEnum = pgEnum('field_triage_status', ['green', 'yellow', 'red', 'black']);
@@ -94,6 +98,8 @@ export const teams = pgTable('teams', {
   contactRadio: varchar('contact_radio', { length: 50 }),
   currentPosition: jsonb('current_position').$type<{ lat: number; lng: number }>(),
   lastPositionUpdate: timestamp('last_position_update', { withTimezone: true }),
+  /** Event set-up (gap B5): a stood-down team is hidden unless asked for explicitly. */
+  active: boolean('active').notNull().default(true),
 });
 
 export const users = pgTable('users', {
@@ -191,4 +197,22 @@ export const actionEvents = pgTable('action_events', {
   revertedBy: varchar('reverted_by', { length: 255 }),
   revertReason: text('revert_reason'),
   undoOfActionId: uuid('undo_of_action_id'),
+});
+
+// ── Lane 8 batch 3 (B): chat history (gap B9) ──────────────────────
+/**
+ * Persisted `team.message` relay history so a dashboard that joins late (or
+ * reloads) can fetch what it missed via `GET /events/:id/messages`.
+ * `toTeamId` is a team uuid, the literal `coordinator`, or null for everyone —
+ * not an FK, since it is not always a team.
+ */
+export const teamMessages = pgTable('team_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+  fromTeamId: uuid('from_team_id').references(() => teams.id, { onDelete: 'set null' }),
+  fromLabel: varchar('from_label', { length: 100 }),
+  toTeamId: varchar('to_team_id', { length: 64 }),
+  text: text('text').notNull(),
+  ackOf: uuid('ack_of'),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
 });

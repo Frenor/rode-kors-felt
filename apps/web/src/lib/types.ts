@@ -181,6 +181,8 @@ export interface Team {
   operationalStatus?: TeamOperationalStatus;
   statusNote?: string | null;
   statusUpdatedAt?: string | null;
+  /** Event set-up (gap B5) — a stood-down team is excluded from GET /events/:id by default. */
+  active?: boolean;
 }
 
 export interface TeamWorkspacePatient {
@@ -260,4 +262,39 @@ export interface EventStats {
   discharged: number;
   transferred: number;
   [key: string]: number;
+}
+
+// ── Lane 8 batch 3 (B): chat history (gap B9 / 8.29) ────────────────────────
+
+export interface TeamMessage {
+  id: string;
+  fromTeamId?: string | null;
+  fromLabel?: string | null;
+  /** A team uuid, the literal `'coordinator'`, or null/undefined for everyone. */
+  toTeamId?: string | null;
+  text: string;
+  /** Set on a receipt: the id of the message it acknowledges. */
+  ackOf?: string | null;
+  sentAt: string;
+}
+
+// ── Lane 8 batch 3 (B): capacity settings (gap B6 / 8.30) ───────────────────
+
+export interface EventSickbaySettings {
+  chairs?: number;
+  beds?: number;
+}
+
+export interface EventSettings {
+  sickbay?: EventSickbaySettings;
+}
+
+// ── Lane 8 batch 3 (B): event set-up (gap B5 / 8.31) ─────────────────────────
+
+export interface AccessCode {
+  id: string;
+  role: 'admin' | 'coordinator' | 'sickbay' | 'first_aider';
+  code: string;
+  expiresAt: string;
+  revokedAt?: string | null;
 }

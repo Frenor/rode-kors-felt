@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, getCoordinatorToken, getEventId, getFirstAiderToken } from './helpers.js';
+import { buildApp, getCoordinatorToken, getEventId, getFirstAiderToken, getSickbayToken } from './helpers.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { events as eventsTable } from '../db/schema.js';
@@ -352,5 +352,280 @@ describe('GET /api/events/:id — team operational status', () => {
       headers: { authorization: `Bearer ${firstAiderToken}` },
       payload: { type: 'team.status_set', status: 'available', clientActionId: crypto.randomUUID() },
     });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Lane 8 batch 3 (B) — event set-up (8.31)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('PATCH /api/events/:id', () => {
+  it('updates name, dates and status for coordinator/admin', async () => {
+    const token = getCoordinatorToken();
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/events',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        name: `Set-up test ${Date.now()}`,
+        startDate: '2026-05-01T08:00:00.000Z',
+        endDate: '2026-05-01T18:00:00.000Z',
+      },
+    });
+    const targetId = createRes.json().event.id as string;
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${targetId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Oppdatert navn', status: 'active' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.event.name).toBe('Oppdatert navn');
+    expect(body.event.status).toBe('active');
+  });
+
+  it('rejects a first_aider token', async () => {
+    const token = getFirstAiderToken(eventId);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${eventId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Skal ikke gå' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('rejects an unknown status value', async () => {
+    const token = getCoordinatorToken();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${eventId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { status: 'cancelled' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('PATCH /api/events/:id/settings — capacity (8.30)', () => {
+  it('sets sickbay chairs/beds and returns them in GET /api/events/:id', async () => {
+    const token = getCoordinatorToken();
+
+    const first = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${eventId}/settings`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { sickbay: { chairs: 16, beds: 4 } },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().settings).toEqual({ sickbay: { chairs: 16, beds: 4 } });
+
+    // A beds-only update merges in, it does not clobber chairs.
+    const second = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${eventId}/settings`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { sickbay: { beds: 6 } },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().settings).toEqual({ sickbay: { chairs: 16, beds: 6 } });
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(getRes.json().event.settings).toEqual({ sickbay: { chairs: 16, beds: 6 } });
+  });
+
+  it('rejects negative or oversized values', async () => {
+    const token = getCoordinatorToken();
+    const negative = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${eventId}/settings`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { sickbay: { chairs: -1 } },
+    });
+    expect(negative.statusCode).toBe(400);
+
+    const tooLarge = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${eventId}/settings`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { sickbay: { beds: 1000 } },
+    });
+    expect(tooLarge.statusCode).toBe(400);
+  });
+
+  it('rejects a sickbay-role token', async () => {
+    const token = getSickbayToken(eventId);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/events/${eventId}/settings`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { sickbay: { chairs: 5 } },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('POST /api/events/:id/teams — create + active filtering (8.31)', () => {
+  it('creates a team and returns it', async () => {
+    const token = getCoordinatorToken();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/events/${eventId}/teams`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Patrulje Golf', transport: 'bike', contactPhone: '99887766' },
+    });
+    expect(res.statusCode).toBe(201);
+    const team = res.json().team;
+    expect(team.name).toBe('Patrulje Golf');
+    expect(team.transport).toBe('bike');
+    expect(team.active).toBe(true);
+  });
+
+  it('requires a name', async () => {
+    const token = getCoordinatorToken();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/events/${eventId}/teams`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('a stood-down team is excluded from GET /api/events/:id unless includeInactive=1', async () => {
+    const token = getCoordinatorToken();
+    const createRes = await app.inject({
+      method: 'POST',
+      url: `/api/events/${eventId}/teams`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: `Patrulje Standby ${Date.now()}` },
+    });
+    const standbyTeamId = createRes.json().team.id as string;
+
+    const deactivate = await app.inject({
+      method: 'PATCH',
+      url: `/api/teams/${standbyTeamId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { active: false },
+    });
+    expect(deactivate.statusCode).toBe(200);
+    expect(deactivate.json().team.active).toBe(false);
+
+    const withoutInactive = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(withoutInactive.json().teams.some((t: { id: string }) => t.id === standbyTeamId)).toBe(false);
+
+    const withInactive = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}?includeInactive=1`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(withInactive.json().teams.some((t: { id: string }) => t.id === standbyTeamId)).toBe(true);
+  });
+});
+
+describe('Access codes (8.31)', () => {
+  it('generates a unique 6-digit code, lists it, then revoke blocks redemption', async () => {
+    const token = getCoordinatorToken();
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: `/api/events/${eventId}/access-codes`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { role: 'first_aider', hours: 1 },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const code = createRes.json().code;
+    expect(code.code).toMatch(/^\d{6}$/);
+    expect(code.revokedAt).toBeNull();
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}/access-codes`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(listRes.statusCode).toBe(200);
+    expect(listRes.json().codes.some((c: { id: string }) => c.id === code.id)).toBe(true);
+
+    // Redeemable before revoke
+    const redeemBefore = await app.inject({
+      method: 'POST',
+      url: '/api/auth/code',
+      payload: { code: code.code },
+    });
+    expect(redeemBefore.statusCode).toBe(200);
+
+    const revokeRes = await app.inject({
+      method: 'POST',
+      url: `/api/access-codes/${code.id}/revoke`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(revokeRes.statusCode).toBe(200);
+    expect(revokeRes.json().code.revokedAt).toBeTruthy();
+
+    const redeemAfter = await app.inject({
+      method: 'POST',
+      url: '/api/auth/code',
+      payload: { code: code.code },
+    });
+    expect(redeemAfter.statusCode).toBe(401);
+  });
+
+  it('generates distinct codes across repeated calls', async () => {
+    const token = getCoordinatorToken();
+    const codes = new Set<string>();
+    for (let i = 0; i < 15; i += 1) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/events/${eventId}/access-codes`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { role: 'sickbay' },
+      });
+      expect(res.statusCode).toBe(201);
+      codes.add(res.json().code.code);
+    }
+    expect(codes.size).toBe(15);
+  });
+
+  it('defaults hours to 24 and rejects an out-of-range value', async () => {
+    const token = getCoordinatorToken();
+    const withoutHours = await app.inject({
+      method: 'POST',
+      url: `/api/events/${eventId}/access-codes`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { role: 'coordinator' },
+    });
+    expect(withoutHours.statusCode).toBe(201);
+    const expiresAt = new Date(withoutHours.json().code.expiresAt).getTime();
+    expect(expiresAt - Date.now()).toBeGreaterThan(23 * 60 * 60 * 1000);
+    expect(expiresAt - Date.now()).toBeLessThan(25 * 60 * 60 * 1000);
+
+    const tooLong = await app.inject({
+      method: 'POST',
+      url: `/api/events/${eventId}/access-codes`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { role: 'coordinator', hours: 169 },
+    });
+    expect(tooLong.statusCode).toBe(400);
+  });
+
+  it('rejects a non-privileged token', async () => {
+    const token = getFirstAiderToken(eventId);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}/access-codes`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });
