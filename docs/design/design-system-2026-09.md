@@ -25,15 +25,22 @@ On a phone they are the same colour.
 
 | Role | Token | Means | Used for |
 |---|---|---|---|
-| **Brand** | `--color-brand` | "This is the main thing to do here." | Exactly one primary action per container: Meld pasient, Registrer pasient, Start behandling, Lagre vitale tegn inside an open vitals form, Tildel lag. |
-| **Critical** | `--color-status-critical` | "Danger, help, or something is overdue." | Trenger bistand, Ring 113, Bekreft avslutning, overdue re-assessment, teams in needs-assistance, NEWS2 rising. Never on a routine save. |
+| **Brand** | `--color-brand` | "This is the page's call to action." | At most one filled brand-red control per view: Meld pasient / Registrer pasient, Ny pasient. |
+| **Ink** | `--color-text` on `--color-surface` | "This is the card's next step." | Start behandling, Lagre vitale tegn, Vi drar til denne pasienten. High contrast, no extra red. |
+| **Critical** | `--color-status-critical` | "Danger, help, or something is overdue." | Trenger bistand, Ring 113 (soft), Bekreft avslutning (filled), overdue re-assessment, teams in needs-assistance, NEWS2 rising. Never on a routine save. As an edge or text, never as a ground: a red border or stripe marks the card, the surface stays white. |
 | **Warning / OK / Info** | `--color-status-*` | Operational state. | Team status pills (på vei = info, fremme = warning, ledig = ok), unassigned patient badge (warning), incoming (warning). |
 | **Triage** | `--color-triage-*` | Patient severity from the field. | Triage pills and the card stripe. Same values in the field, sick bay and coordinator. |
 | **Engagement** | `--color-engagement-*` | What a patrol is doing with a patient. | På vei / Transporterer / Overvåker pills and chips. |
 | **Neutral** | surface, border, text-* | Everything that is not one of the above. | Secondary buttons, disclosures, inputs, chrome. |
 
 Semantic colour is never the accent and the accent is never semantic. A neutral button with a
-strong border is the default; colour is spent, not sprinkled.
+1 px border is the default; colour is spent, not sprinkled. Filled red appears at most twice on
+any screen: the page CTA (brand) and, only when asked for, a confirmation of something
+irreversible (critical).
+
+**What triggers the coordinator's "Krever handling" banner** (product decision, 2026-09-23):
+only a red patient (red triage without a team, or NEWS2 rising fast) or a patrol asking for
+assistance. Yellow and green patients without a team are listed, not alarmed.
 
 ## 3. Type roles
 
@@ -58,10 +65,10 @@ their content, sections 16 px apart, page gutter 16 px.
 
 Shape encodes role:
 
-- **Severity stripe.** Patient cards carry a 5 px left border in the triage colour
+- **Severity stripe.** Patient cards carry a 4 px left border in the triage colour
   (`.card--stripe`). Red patients are found by shape and position before anything is read.
-- **Critical ring.** A card whose patient is overdue or on continuous monitoring gets the
-  critical border and ring (`.card--critical`).
+- **Critical edge.** A card whose patient is overdue, on continuous monitoring or in the
+  coordinator's banner gets a critical border (`.card--critical`) — an edge, never a red ground.
 - **Groups are not cards.** Sick bay status groups are columns under a heading and a rule,
   not boxes inside the page. Borders are spent on the patient cards only.
 
@@ -74,14 +81,16 @@ minimum with an inline `minHeight`.
 
 | Variant | Meaning |
 |---|---|
-| `primary` | The one main action in its container (brand). |
-| `danger` / `danger-soft` | Help, irreversible, or escalation (critical). |
+| `primary` | The page's call to action (brand). At most one per view. |
+| `ink` | A card's main next step: text colour on surface, inverted in dark mode. |
+| `danger` / `danger-soft` | Help, irreversible, or escalation (critical). `soft` is the default; `danger` (filled) only for a confirmation. |
 | `secondary` | Saves, opens, edits. Neutral, bordered, high contrast. |
 | `outline` | Brand-coloured secondary for a "go" action next to a primary (Naviger hit). |
 | `ghost` | Cancel, dismiss, tertiary. |
 | `tone` | A chip that carries its own colour (triage, engagement, close reason). |
 
-Sizes: `xl` 72 (the page CTA), `lg` 56, `md` 48 (default), `sm` 44 (dense tablet rows).
+Sizes: `xl` 64 (the page CTA), `lg` 56, `md` 48 (default), `sm` 44 (dense tablet rows).
+Weights: 600 for neutral controls, 700 only for primary, ink and danger.
 Every button has a pressed state (`:active` scale 0.98 + darker ground) and a hover state on
 pointer devices; a tap in the dark must visibly land.
 
@@ -114,8 +123,9 @@ settings, behind a disclosure.
 
 ## 7. Rules for the next screen
 
-1. One brand-red control per container. If you need a second, one of them is secondary.
-2. Critical red only for help, danger, or overdue. Never for a save.
+1. At most one filled brand-red control per view; a card's next step is `ink`.
+2. Critical red only for help, danger, or overdue, and as an edge or text, never a ground.
+   Only red patients and assistance requests raise the coordinator's banner.
 3. Words in Sans, numbers in Mono. Labels are never mono.
 4. No control below 44 px; field controls 48–56 px. Use `Button`, never a raw `<button>` with inline size.
 5. Severity by shape (stripe, ring, pill), not by colour alone.

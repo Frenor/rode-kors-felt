@@ -32,6 +32,9 @@
     - active escalation exists
     - triage `immediate`
     - NEWS2 high
+- Coordinator "Krever handling" banner (2026-09-23): only red patients (red triage without a
+  team, NEWS2 rising fast) and patrols asking for assistance. Yellow/green patients without a
+  team are counted, not alarmed.
 
 ## 3. API and Interface Additions
 - `POST /api/teams/:teamId/actions`
@@ -73,6 +76,13 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `calmer palette + red-only banner` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23)
+  - Product decision recorded in section 2: the coordinator banner triggers only on red patients
+    or assistance requests; `AttentionQueuePanel` filters accordingly and counts the rest quietly.
+  - Tone: `ink` button variant for card-level next steps (Start behandling, Lagre vitale tegn,
+    claim), filled brand red at most once per view, "Ring 113" soft, critical panels keep a red
+    edge on a white ground (no tinted backgrounds or rings), 1 px borders, 600 weight, 4 px stripes,
+    `xl` 64 px. Sick bay group rules neutral with a status-coloured dot.
 - `design-system pass` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23, after the UX review)
   - Plan: `docs/design/design-system-2026-09.md` — colour roles (brand = one primary per
     container, critical = help/danger/overdue only), type roles (Sans for words, Mono for data),
