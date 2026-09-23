@@ -142,6 +142,8 @@ export async function wsHandler(app: FastifyInstance) {
               // Who sent it when it was not a patrol (the coordinator desk).
               fromLabel: typeof message.payload?.fromLabel === 'string' ? message.payload.fromLabel : null,
               toTeamId: message.payload?.toTeamId ?? null,
+              // A receipt for an earlier directed message ("Mottatt").
+              ackOf: typeof message.payload?.ackOf === 'string' ? message.payload.ackOf : null,
               text: message.payload?.text,
               sentAt: new Date().toISOString(),
             },
