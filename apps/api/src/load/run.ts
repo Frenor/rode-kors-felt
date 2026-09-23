@@ -27,10 +27,14 @@ function latencyP95(latency: autocannon.Histogram): number {
 async function runScenario(scenario: Scenario): Promise<{ scenario: string; metrics: LoadMetrics }> {
   const result = await autocannon(scenario.options);
 
+  // autocannon only counts socket errors/timeouts in `errors`; a scenario that
+  // answers 404 for every request would otherwise pass the gate. Count non-2xx
+  // responses as failures so the gate measures the API, not just the socket.
+  const failed = result.errors + result.non2xx;
   const metrics: LoadMetrics = {
     p95Ms: latencyP95(result.latency),
     requestsPerSecond: result.requests.average,
-    errorRate: result.errors / Math.max(result.requests.total, 1),
+    errorRate: failed / Math.max(result.requests.total, 1),
   };
 
   return { scenario: scenario.name, metrics };
@@ -90,10 +94,12 @@ async function main() {
         duration,
       },
     });
+    // The incident model was removed; patients are the shared clinical list
+    // every role reads, so it is the representative event-day read path.
     scenarios.push({
-      name: 'incidents.list',
+      name: 'patients.list',
       options: {
-        url: `${baseUrl}/api/incidents?eventId=${encodeURIComponent(auth.eventId)}`,
+        url: `${baseUrl}/api/patients?eventId=${encodeURIComponent(auth.eventId)}`,
         method: 'GET',
         headers: {
           authorization: `Bearer ${auth.accessToken}`,

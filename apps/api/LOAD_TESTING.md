@@ -1,6 +1,7 @@
 # API Load Testing
 
-Kjør event-dag load test lokalt:
+Kjør event-dag load test lokalt (mot en kjørende API — `pnpm --filter @rkf/api build && pnpm --filter @rkf/api start`,
+eller `pnpm --filter @rkf/api dev`):
 
 ```bash
 pnpm --filter @rkf/api test:load
@@ -26,5 +27,6 @@ LOAD_TEST_P95_MAX_MS=300 LOAD_TEST_RPS_MIN=30 LOAD_TEST_ERROR_RATE_MAX=0.01 pnpm
 Testen er ikke-destruktiv som standard:
 - All trafikk er `GET`-kall.
 - Kjører alltid `GET /health`.
-- Hvis tilgangskode fungerer, kjører den også `GET /api/events` og `GET /api/incidents`.
+- Hvis tilgangskode fungerer, kjører den også `GET /api/events` og `GET /api/patients?eventId=…`.
+- Svar som ikke er 2xx telles som feil i `errorRate` (i tillegg til socket-feil/timeouts).
 - Hvis tilgangskode ikke fungerer og `LOAD_TEST_REQUIRE_AUTH_SCENARIOS=true`, feiler testen.
