@@ -25,9 +25,13 @@ and the same information is spread over several panels.
 | X1 | P0 | **10 px text everywhere.** `--text-xs` is `0.64rem` = 10.24 px and is used for the team status pill, patient position, GPS status, triage pills, every secondary label, chat timestamps (10 px hard-coded). `--text-sm` (12.8 px) is the *default* for body text and buttons. On a phone at night this is unreadable; 12 px is the floor most mobile guidelines set for secondary text, 16 px for body. | **Fixed** — `--text-xs` → 12 px, `--text-sm` → 14 px. Layouts use flex/grid and reflow. |
 | X2 | P0 | **Theme choice is not remembered.** `AppShell` keeps the light/dark/auto choice in component state, so a first aider who switches to dark at dusk gets light mode back every time the PWA restarts (which on a phone is often). The toggle itself is a 20 px-high button showing `☀`/`☾`/`Auto`. | **Fixed** — persisted in `localStorage` (`rkf-theme`), applied before first paint from `main.tsx`, toggle is a 44 px labelled button (`Lys`/`Mørk`/`Auto`). |
 | X3 | P1 | **Hard-coded light-mode colours.** Triage pills (`#fee2e2` / `#b91c1c`), engagement pills (`#fef3c7`, `#dbeafe`, `#dcfce7`), coordinator close button (`#dc2626`), map pin (`#0369a1`), "Lukket" badge (`#f1f5f9`/`#64748b`) are duplicated in five files and ignore dark mode. In dark mode they render as bright pastel blobs. | **Fixed** — `--color-triage-*` and `--color-engagement-*` tokens for light and dark in `tokens.css`, one `FIELD_TRIAGE_STYLE` / `TEAM_PATIENT_STATUS_STYLE` in `lib/constants.ts`, consumers updated. |
-| X4 | P1 | **`.touch-target` is decorative.** The class sets `min-height: 56px`, but almost every button also sets an inline `minHeight: 32/36/44`, and inline wins. The glove requirement in the design tokens is therefore not enforced anywhere. | **Partly fixed** — the field controls that matter (status pill, claim, engagement, close, chat toggle, theme) are now ≥ 48–56 px. Sick bay editor pills raised to 44 px. The class itself is left as-is; a lint rule or a `<TouchButton>` primitive is the durable fix (backlog). |
-| X5 | P2 | Emoji as icons (`⚙`, `📍`, `☀`, `☾`, `▲`). Rendering differs per OS, some are invisible in dark mode, none are glove-sized. | Backlog — replace with inline SVG in a `packages/ui` icon set. |
+| X4 | P1 | **`.touch-target` is decorative.** The class sets `min-height: 56px`, but almost every button also sets an inline `minHeight: 32/36/44`, and inline wins. The glove requirement in the design tokens is therefore not enforced anywhere. | **Fixed** — `components/ui/Button` with sizes in CSS (xl 72 / lg 56 / md 48 / sm 44) that inline styles cannot undercut; every button on the three screens now uses it. |
+| X5 | P2 | Emoji as icons (`⚙`, `📍`, `☀`, `☾`, `▲`). Rendering differs per OS, some are invisible in dark mode, none are glove-sized. | **Fixed** — `components/ui/Icon`, a 24 px stroke set in `currentColor`. |
 | X6 | P2 | Up to four stacked bands above content on a phone: app header, demo banner, offline banner, WebSocket banner, sync banner. ~150 px before the first patient. | Backlog — collapse network + sync into one status line in the header. |
+| X7 | P1 | **Two reds mean two things.** Brand red (`#E8112D`) fills every "Lagre" and "Ny pasient"; critical red (`#B91C1C`) marks "Trenger bistand" and "Ring 113". On a phone they are the same colour, so the one button that calls for help does not stand out from a routine save. | **Fixed** — colour roles (design system §2): brand red for the one primary action per container, critical red only for help/danger/overdue, everything else neutral. Routine saves are now `secondary`. |
+| X8 | P1 | **No pressed, hover or selected states.** Every control was an inline-styled `<button>` with no `:active` feedback. In the dark, with gloves, a tap that gives no response gets tapped again. | **Fixed** — `.btn` has pressed (scale + darker ground), hover on pointer devices, disabled and selected states; toggles use `aria-pressed`/`aria-checked` for both semantics and style. |
+| X9 | P2 | **Mono used for words.** Section headings, pills, status text and timestamps were all IBM Plex Mono, so labels read as codes and nothing read as data. | **Fixed** — Sans for words, Mono (`.data`, tabular numerals) only for values, times, counts and codes. |
+| X10 | P2 | Severity was colour-only (a small pill). Red patients could not be picked out of a list by shape or position. | **Fixed** — 5 px triage stripe on every patient card in all three views; critical ring on overdue/continuous cards. |
 
 ## 2. Field teams (first aider)
 
@@ -90,6 +94,12 @@ patients and the map. There is no single place that answers *what needs me right
 
 ## 5. What changed on this branch (summary for reviewers)
 
+Design pass (second commit set) — see `docs/design/design-system-2026-09.md` for the plan:
+- `components/ui/` (`Button`, `Pill`, `Icon`) and `styles/components.css`: the component vocabulary (X4, X5, X7, X8, X9, X10).
+- Every screen migrated to it; sick bay status groups are columns under a coloured rule instead of boxed cards; patient cards carry a triage stripe.
+
+First batch:
+
 - `styles/tokens.css`: type floor raised (X1); triage + engagement colour tokens in both themes (X3). `styles/global.css`: responsive coordinator layout (C6).
 - `lib/constants.ts`: `FIELD_TRIAGE_STYLE`, `TEAM_PATIENT_STATUS_STYLE`, `TEAM_OPERATIONAL_STATUS_STYLE`, `PATIENT_CLOSE_REASONS` (X3, F8).
 - `lib/theme.ts` + `main.tsx` + `AppShell.tsx`: persisted theme, applied before first paint (X2).
@@ -102,9 +112,9 @@ patients and the map. There is no single place that answers *what needs me right
 
 ## 6. Backlog (ordered)
 
-1. `<TouchButton>` primitive + lint rule so inline `minHeight` cannot undercut the 56 px glove target (X4).
-2. Field: last vitals + NEWS2 on the own-patient card (F13); offline queue for vitals/notes (F14).
-3. Coordinator: acknowledge/clear team status and per-team message compose (C8, C9).
-4. Sick bay: "on their way" list with team and ETA (S9); announce only new critical patients (S8).
-5. Icon set instead of emoji (X5); merge the status bands into the header (X6).
-6. Field: live-region cleanup (F12).
+1. Field: last vitals + NEWS2 on the own-patient card (F13); offline queue for vitals/notes (F14).
+2. Coordinator: acknowledge/clear team status and per-team message compose (C8, C9).
+3. Sick bay: "on their way" list with team and ETA (S9); announce only new critical patients (S8).
+4. Merge the status bands into the header (X6); move `components/ui` into `@rkf/ui`.
+5. Field: live-region cleanup (F12).
+6. A lint rule that rejects raw `<button>` with inline `minHeight` outside `components/ui`.

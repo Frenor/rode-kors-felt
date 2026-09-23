@@ -8,7 +8,7 @@
 - Lane 4 (Enum Migration Across Shared/API/Web): `In progress`
 - Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
 - Lane 6 (Field Trial Remediation — production readiness): `In progress`
-- Lane 7 (UX Review — field teams / sick bay / coordinator): `In progress` (review + first fix batch landed)
+- Lane 7 (UX Review — field teams / sick bay / coordinator): `In progress` (review, first fix batch and design-system pass landed)
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -73,6 +73,18 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `design-system pass` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23, after the UX review)
+  - Plan: `docs/design/design-system-2026-09.md` — colour roles (brand = one primary per
+    container, critical = help/danger/overdue only), type roles (Sans for words, Mono for data),
+    shape (triage stripe, critical ring, groups are not cards), component vocabulary.
+  - `apps/web/src/components/ui/` — `Button` (variants primary/secondary/danger/danger-soft/
+    outline/ghost/tone; sizes xl/lg/md/sm in CSS so inline styles cannot undercut the glove
+    minimum; pressed/hover/selected states), `Pill`, `Icon` (24 px stroke set replacing emoji).
+    `styles/components.css` holds the classes; `.card--stripe`, `.card--critical`, `.disclosure`,
+    `.field`, `.section-label`, `.data`.
+  - All three screens migrated. Tests: names kept (icons are `aria-hidden`); the "+ Ny pasient"
+    references became "Ny pasient" (the plus is an icon); `PatientCard.focus` clicks by
+    accessible name instead of the old "✎ Plassering" text.
 - `ux review + fixes` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23)
   - Review: `docs/design/ux-review-2026-09.md` — findings per persona (field team in the dark,
     busy sick bay, coordinator prioritising), severity, status and ordered backlog.
@@ -191,9 +203,9 @@
   - remaining known gaps (not blocking, tracked in section 12): chat history is not persisted,
     vitals/notes from the field are not offline-queued, no coordinator → team status override.
 - UX review follow-up (see `docs/design/ux-review-2026-09.md`, section 6 for the ordered backlog):
-  - next: `<TouchButton>` primitive so inline `minHeight` cannot undercut the 56 px glove target;
-    last vitals + NEWS2 on the first aider's own-patient card; coordinator acknowledge/clear of
-    "Trenger bistand" and per-team message compose.
+  - next: last vitals + NEWS2 on the first aider's own-patient card; coordinator acknowledge/clear
+    of "Trenger bistand" and per-team message compose; move `components/ui` into `@rkf/ui` once
+    that package gets React types.
 
 ## 9a. Previous Focus (April 5, 2026)
 - First Aider efficiency uplift:
