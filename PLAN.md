@@ -8,6 +8,7 @@
 - Lane 4 (Enum Migration Across Shared/API/Web): `In progress`
 - Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
 - Lane 6 (Field Trial Remediation — production readiness): `In progress`
+- Lane 7 (UX Review — field teams / sick bay / coordinator): `In progress` (review + first fix batch landed)
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -72,6 +73,30 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `ux review + fixes` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23)
+  - Review: `docs/design/ux-review-2026-09.md` — findings per persona (field team in the dark,
+    busy sick bay, coordinator prioritising), severity, status and ordered backlog.
+  - Cross-cutting: type floor raised (`--text-xs` 10 → 12 px, `--text-sm` 12.8 → 14 px); theme-aware
+    triage/engagement tokens (light + dark) replace hard-coded pastel hex in five files; theme
+    choice persisted (`rkf-theme`, applied before first paint) with a 44 px labelled toggle.
+  - First aider: sticky team header no longer slides under the app header; 48 px colour-coded
+    status pill; "Trenger bistand" is a separate red 64 px option in the status sheet and a
+    persistent banner with one-tap stand-down; "Meld pasient" moved to the top; expanded card
+    leads with the three 56 px engagement buttons, summary/position edits behind one disclosure;
+    56 px claim button with distance + bearing (`lib/geo.ts`, radians bug fixed); close reasons as
+    chips; chat unread badge + vibration; "Andre lags pasienter" replaces the duplicated list.
+  - Sick bay: per-card "Neste vurdering kl. … / Forfalt for …" from latest vitals + NEWS2 interval
+    (`lib/observation.ts`), overdue/continuous sort first and a header summary; visible
+    "Start behandling" for incoming; live NEWS2 preview in the shared vitals form; intake requires
+    name or complaint; name/complaint wrap; 44 px editor pills; locked action copy.
+  - Coordinator: new `AttentionQueuePanel` (teams needing assistance, unassigned patients by
+    triage/age with inline "Tildel lag", deterioration alerts with patient label) replaces the
+    deterioration panel; inline assign + "Ikke tildelt" badge + relative age in patient rows;
+    map engine/3D behind "Kartinnstillinger"; single-column layout under 960 px.
+  - Tests: new unit tests (observation, geo, theme, AttentionQueuePanel, VitalsEntryForm,
+    PatientCard observation, PatientIntakeModal); `pages-demo`, `local-full` and
+    `coordinator-flow` e2e updated for the map settings disclosure, engagement buttons, close
+    reason chips, theme toggle, primary sick bay action and NEWS2 preview.
 - `field-trial remediation` (branch `claude/field-trial-feedback-wqhy41`, 2026-09-23)
   - Root causes reconstructed from code after the field trial was judged not production-ready
     (no GitHub issues existed to work from; findings are listed in section 12).
@@ -165,6 +190,10 @@
   - the P0 defects in section 12 are fixed on this branch; next is a second supervised field run.
   - remaining known gaps (not blocking, tracked in section 12): chat history is not persisted,
     vitals/notes from the field are not offline-queued, no coordinator → team status override.
+- UX review follow-up (see `docs/design/ux-review-2026-09.md`, section 6 for the ordered backlog):
+  - next: `<TouchButton>` primitive so inline `minHeight` cannot undercut the 56 px glove target;
+    last vitals + NEWS2 on the first aider's own-patient card; coordinator acknowledge/clear of
+    "Trenger bistand" and per-team message compose.
 
 ## 9a. Previous Focus (April 5, 2026)
 - First Aider efficiency uplift:
