@@ -79,3 +79,76 @@ describe('ws store — secure auth handshake', () => {
     expect(socket!.protocols).toEqual(['rkf.v1', 'rkf-auth.jwt.token.value']);
   });
 });
+
+describe('ws store — reconnect safety', () => {
+  it('ignores the close event of a socket that was replaced by disconnect()+connect()', async () => {
+    vi.useFakeTimers();
+    try {
+      const { useWsStore } = await import('../stores/ws');
+      const store = useWsStore.getState();
+
+      store.connect('token-1', 'evt-1');
+      const first = MockWebSocket.instances[0]!;
+      first.onopen?.(new Event('open'));
+      expect(useWsStore.getState().status).toBe('connected');
+
+      // AppShell re-runs its effect after a token refresh: disconnect + connect.
+      store.disconnect();
+      store.connect('token-2', 'evt-1');
+      const second = MockWebSocket.instances[1]!;
+      second.onopen?.(new Event('open'));
+      expect(useWsStore.getState().status).toBe('connected');
+
+      // The browser delivers the old socket's close asynchronously. Handlers
+      // were detached, but even a stray call must not affect the new socket.
+      first.onclose?.({ code: 1005 } as CloseEvent);
+      vi.advanceTimersByTime(60_000);
+
+      expect(useWsStore.getState().status).toBe('connected');
+      expect(MockWebSocket.instances).toHaveLength(2);
+      expect(useWsStore.getState().send({ type: 'team.position' })).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reconnects with backoff when the live socket closes unexpectedly', async () => {
+    vi.useFakeTimers();
+    try {
+      const { useWsStore } = await import('../stores/ws');
+      useWsStore.getState().connect('token-1', 'evt-1');
+      const first = MockWebSocket.instances[0]!;
+      first.onopen?.(new Event('open'));
+
+      first.onclose?.({ code: 1006 } as CloseEvent);
+      await Promise.resolve();
+      expect(useWsStore.getState().status).toBe('reconnecting');
+      expect(useWsStore.getState().send({ type: 'x' })).toBe(false);
+
+      vi.advanceTimersByTime(1_000);
+      expect(MockWebSocket.instances).toHaveLength(2);
+      expect(MockWebSocket.instances[1]!.protocols).toEqual(['rkf.v1', 'rkf-auth.token-1']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not reconnect after an explicit disconnect()', async () => {
+    vi.useFakeTimers();
+    try {
+      const { useWsStore } = await import('../stores/ws');
+      useWsStore.getState().connect('token-1', 'evt-1');
+      const first = MockWebSocket.instances[0]!;
+      first.onopen?.(new Event('open'));
+
+      useWsStore.getState().disconnect();
+      first.onclose?.({ code: 1000 } as CloseEvent);
+      vi.advanceTimersByTime(60_000);
+
+      expect(useWsStore.getState().status).toBe('disconnected');
+      expect(MockWebSocket.instances).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

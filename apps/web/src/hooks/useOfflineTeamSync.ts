@@ -10,18 +10,38 @@ import { useNotificationStore } from '../stores/notifications';
 import { useFirstAidWorkspaceStore } from '../stores/firstaid-workspace';
 import { useAuthStore } from '../stores/auth';
 
+/**
+ * Replays queued team actions (status changes, patient engagement) that were
+ * written locally while offline or that failed earlier.
+ *
+ * Triggers:
+ *  - on mount, when the browser reports it is online (the app may have been
+ *    killed with items still queued — the old code only flushed on the next
+ *    online/reconnect event, so a queue could sit unsynced for the whole shift)
+ *  - `online` event
+ *  - `rkf:wsConnected` (successful websocket (re)connect)
+ *
+ * Only one flush runs at a time; a trigger that arrives mid-flush schedules
+ * exactly one follow-up flush instead of replaying the same items twice.
+ */
 export function useOfflineTeamSync() {
   const addToast = useNotificationStore((s) => s.add);
   const setTeamSyncedAt = useFirstAidWorkspaceStore((s) => s.setTeamSyncedAt);
   const eventId = useAuthStore((s) => s.eventId);
+  const accessToken = useAuthStore((s) => s.accessToken);
 
   useEffect(() => {
-    async function flush() {
+    let flushing = false;
+    let rerunRequested = false;
+    let cancelled = false;
+
+    async function flushOnce() {
       const items = await getRetryableTeamActions();
       if (items.length === 0) return;
 
       let synced = 0;
       for (const item of items) {
+        if (cancelled) return;
         try {
           await markTeamActionSyncing(item.clientActionId);
           await api.postTeamAction(item.teamId, item.payload, { skipOfflineQueue: true });
@@ -44,12 +64,38 @@ export function useOfflineTeamSync() {
       }
     }
 
-    window.addEventListener('online', flush);
-    window.addEventListener('rkf:wsConnected', flush);
+    async function flush() {
+      if (flushing) {
+        rerunRequested = true;
+        return;
+      }
+      flushing = true;
+      try {
+        do {
+          rerunRequested = false;
+          await flushOnce();
+        } while (rerunRequested && !cancelled);
+      } finally {
+        flushing = false;
+      }
+    }
+
+    const handleTrigger = () => {
+      void flush();
+    };
+
+    window.addEventListener('online', handleTrigger);
+    window.addEventListener('rkf:wsConnected', handleTrigger);
+
+    // Startup flush: pick up anything left over from a previous session.
+    if (accessToken && navigator.onLine) {
+      void flush();
+    }
 
     return () => {
-      window.removeEventListener('online', flush);
-      window.removeEventListener('rkf:wsConnected', flush);
+      cancelled = true;
+      window.removeEventListener('online', handleTrigger);
+      window.removeEventListener('rkf:wsConnected', handleTrigger);
     };
-  }, [addToast, eventId, setTeamSyncedAt]);
+  }, [accessToken, addToast, eventId, setTeamSyncedAt]);
 }
