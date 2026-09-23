@@ -42,8 +42,8 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   // Report a patient from the field: the form must accept a free-text
   // location and the new patient must show up under "Egne pasienter".
   await workspace.getByRole('button', { name: /Meld pasient/i }).click();
-  await workspace.getByRole('button', { name: 'Gul' }).click();
-  await workspace.getByRole('button', { name: 'Brudd / skade' }).click();
+  await workspace.getByRole('button', { name: 'Gul', exact: true }).click();
+  await workspace.getByRole('button', { name: 'Brudd / skade', exact: true }).click();
   await workspace.getByLabel('Hvor er pasienten?').fill('Ved drikkestasjon 3 (demo)');
   await expect(workspace.getByTestId('report-gps-status')).toBeVisible();
   await workspace.getByRole('button', { name: 'Registrer pasient' }).click();
@@ -64,8 +64,8 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Sykestue' })).toBeVisible();
 
   await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
-  await page.getByLabel('Problemstilling').fill('Brystsmerter demo');
-  await page.getByLabel('Behandler').fill('Demo-kliniker');
+  await page.getByRole('textbox', { name: 'Problemstilling', exact: true }).fill('Brystsmerter demo');
+  await page.getByRole('textbox', { name: 'Behandler', exact: true }).fill('Demo-kliniker');
   await page.getByRole('button', { name: 'Registrer' }).click();
 
   await page.getByTestId('patient-ring-113').first().click();

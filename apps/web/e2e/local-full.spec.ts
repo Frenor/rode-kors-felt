@@ -42,7 +42,7 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   // "Meld pasient" against the real API (first aiders were getting 403 here).
   const fieldLabel = `E2E feltpasient ${Date.now()}`;
   await workspace.getByRole('button', { name: /Meld pasient/i }).click();
-  await workspace.getByRole('button', { name: 'Rød' }).click();
+  await workspace.getByRole('button', { name: 'Rød', exact: true }).click();
   await workspace.getByLabel('Hvor er pasienten?').fill('Sektor B, ved scenen');
   await workspace.getByPlaceholder(/Beskriv skaden/).fill(fieldLabel);
   await workspace.getByRole('button', { name: 'Registrer pasient' }).click();
@@ -55,8 +55,8 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
-  await page.getByLabel('Problemstilling').fill('Brystsmerter under aktivitet');
-  await page.getByLabel('Behandler').fill('Testkliniker');
+  await page.getByRole('textbox', { name: 'Problemstilling', exact: true }).fill('Brystsmerter under aktivitet');
+  await page.getByRole('textbox', { name: 'Behandler', exact: true }).fill('Testkliniker');
   await page.getByRole('button', { name: 'Registrer' }).click();
 
   await page.getByTestId('patient-ring-113').first().click();
