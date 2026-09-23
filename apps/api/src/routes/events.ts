@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { events, patients, teams, actionEvents, vitalReadings } from '../db/schema.js';
 import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
+import { getLatestTeamStatuses } from './teams.js';
 import { calculateNEWS2 } from '@rkf/shared-types';
 
 type AuthUser = { role?: string; eventId?: string };
@@ -102,9 +103,23 @@ export async function eventRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
     }
 
-    const teamList = await db.select().from(teams).where(eq(teams.eventId, id));
+    const [teamList, teamStatuses] = await Promise.all([
+      db.select().from(teams).where(eq(teams.eventId, id)),
+      getLatestTeamStatuses(id),
+    ]);
 
-    return { event: mapEvent(event), teams: teamList.map(mapTeam) };
+    return {
+      event: mapEvent(event),
+      teams: teamList.map((row) => {
+        const snapshot = teamStatuses.get(row.id);
+        return {
+          ...mapTeam(row),
+          operationalStatus: snapshot?.status ?? 'available',
+          statusNote: snapshot?.note ?? null,
+          statusUpdatedAt: snapshot?.updatedAt ?? null,
+        };
+      }),
+    };
   });
 
   app.get('/:id/indoor-layout', { preHandler: requireAuth }, async (request, reply) => {
@@ -360,8 +375,11 @@ export async function eventRoutes(app: FastifyInstance) {
     };
   });
 
-  // Create a field patient scoped to an event (coordinator-friendly, location optional)
-  app.post('/:id/patients', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+  // Create a field patient scoped to an event (location optional).
+  // First aiders report patients from the field with this endpoint ("Meld pasient"),
+  // so it must be open to every role in the event; canAccessEvent still enforces
+  // that code-based roles only write into their own event.
+  app.post('/:id/patients', { preHandler: [requireAuth, requireRole(['first_aider', 'sickbay', 'coordinator', 'admin'])] }, async (request, reply) => {
     const user = (request as any).user as AuthUser;
     const { id: eventId } = request.params as { id: string };
 
