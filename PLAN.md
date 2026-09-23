@@ -76,6 +76,12 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `gap review` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23, docs only)
+  - `docs/design/gap-review-2026-09.md`: missing functionality and flows that do not match the
+    users' mental models, checked against the code. Headline: field hand-over to the sick bay
+    sets `discharged` (A1, P0); no re-triage outside the coordinator; "Trenger bistand" carries no
+    reason; assignments are silent on the phone; no shared patient number; tent is online-only;
+    no 113/transport from the field; no journal export or deletion; no event set-up UI.
 - `ux review pass 3` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23)
   - Remaining review backlog closed: X6 (one status strip, no permanent sync band), F12, F13
     (`latestVitals` in the team workspace; NEWS2 pill + "Sist kl." line on the field card), F14
@@ -224,8 +230,9 @@
   - remaining known gaps (not blocking, tracked in section 12): chat history is not persisted.
 - UX review follow-up (see `docs/design/ux-review-2026-09.md`, section 7 for the ordered backlog):
   - done: three fix passes, design system v1.3, presentation export (`docs/design/showcase/`).
-  - next: server-side de-duplication of replayed field vitals/notes; chat history on reload;
-    move `components/ui` into `@rkf/ui` once that package gets React types.
+  - next: the ordered list in `docs/design/gap-review-2026-09.md` (A1 first); then server-side
+    de-duplication of replayed field vitals/notes; move `components/ui` into `@rkf/ui` once that
+    package gets React types.
 
 ## 9a. Previous Focus (April 5, 2026)
 - First Aider efficiency uplift:
