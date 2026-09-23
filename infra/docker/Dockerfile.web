@@ -7,6 +7,9 @@
 FROM node:20-alpine AS deps
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
+# Skip husky's `prepare` lifecycle script — no .git/ exists in this build
+# context, so `husky` would fail before sources are even copied in.
+ENV HUSKY=0
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/web/package.json apps/web/
 COPY packages/shared-types/package.json packages/shared-types/
@@ -17,6 +20,8 @@ RUN pnpm install --frozen-lockfile --filter @rkf/web --filter @rkf/shared-types 
 FROM node:20-alpine AS build
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
+ENV HUSKY=0
+ENV CI=true
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /app/packages/ ./packages/

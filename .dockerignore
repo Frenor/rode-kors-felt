@@ -1,0 +1,38 @@
+# ═══════════════════════════════════════════════
+# RKF — Docker build context excludes
+# infra/docker/Dockerfile.{api,web} both `COPY . .` in their build stage —
+# keep this list to things the build genuinely doesn't need. Must NOT
+# exclude: pnpm-lock.yaml, pnpm-workspace.yaml, package.json files,
+# tsconfig*.json, apps/, packages/, apps/web/public, apps/web/index.html,
+# infra/docker/nginx.conf.
+# ═══════════════════════════════════════════════
+
+# Dependencies — reinstalled from the lockfile in the deps stage
+**/node_modules
+
+# Build outputs — regenerated in the build stage
+**/dist
+
+# VCS
+.git
+
+# Test artifacts
+**/test-results
+**/playwright-report
+**/coverage
+
+# Turbo cache
+.turbo
+**/.turbo
+
+# Logs
+*.log
+
+# Environment files — never bake secrets into an image
+.env*
+!.env.example
+
+# Docs / prompts / IaC — not needed to build or run the app images
+docs
+prompts
+infra/terraform
