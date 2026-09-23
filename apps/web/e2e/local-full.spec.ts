@@ -39,8 +39,20 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
   await page.getByRole('button', { name: 'Avbryt' }).click();
 
+  // "Meld pasient" against the real API (first aiders were getting 403 here).
+  const fieldLabel = `E2E feltpasient ${Date.now()}`;
+  await workspace.getByRole('button', { name: /Meld pasient/i }).click();
+  await workspace.getByRole('button', { name: 'Rød' }).click();
+  await workspace.getByLabel('Hvor er pasienten?').fill('Sektor B, ved scenen');
+  await workspace.getByPlaceholder(/Beskriv skaden/).fill(fieldLabel);
+  await workspace.getByRole('button', { name: 'Registrer pasient' }).click();
+  await expect(workspace.getByRole('button', { name: /Meld pasient/i })).toBeVisible({ timeout: 10_000 });
+  await expect(workspace.getByText(fieldLabel).first()).toBeVisible();
+
   await loginAsSickBay(page);
   await expect(page.getByRole('heading', { name: 'Sykestue' })).toBeVisible();
+  // The field report is visible to the sick bay under its label, with location text.
+  await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
   await page.getByLabel('Problemstilling').fill('Brystsmerter under aktivitet');
@@ -74,4 +86,9 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /MapLibre/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /3D-presentasjon/i })).toBeVisible();
+  // Coordinator sees the field report with its location and the team status overview.
+  await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Sektor B, ved scenen').first()).toBeVisible();
+  await expect(page.getByTestId('coordinator-team-status')).toBeVisible();
+  await expect(page.getByText('Patrulje Alpha').first()).toBeVisible();
 });

@@ -31,13 +31,24 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   const workspace = page.getByTestId('firstaid-patient-workspace');
   await expect(workspace).toBeVisible({ timeout: 20_000 });
   await expect(
-    workspace.getByRole('button', { name: /Meld( ny)? hendelse/i })
+    workspace.getByRole('button', { name: /Meld pasient/i })
   ).toBeVisible({ timeout: 20_000 });
   await expect(workspace.getByText(/^Egne pasienter/)).toBeVisible();
   await expect(workspace.getByText(/^Utildelte pasienter/)).toBeVisible();
   await workspace.getByTestId('firstaid-field-status-pill').click();
   await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
   await page.getByRole('button', { name: 'Avbryt' }).click();
+
+  // Report a patient from the field: the form must accept a free-text
+  // location and the new patient must show up under "Egne pasienter".
+  await workspace.getByRole('button', { name: /Meld pasient/i }).click();
+  await workspace.getByRole('button', { name: 'Gul' }).click();
+  await workspace.getByRole('button', { name: 'Brudd / skade' }).click();
+  await workspace.getByLabel('Hvor er pasienten?').fill('Ved drikkestasjon 3 (demo)');
+  await expect(workspace.getByTestId('report-gps-status')).toBeVisible();
+  await workspace.getByRole('button', { name: 'Registrer pasient' }).click();
+  await expect(workspace.getByRole('button', { name: /Meld pasient/i })).toBeVisible({ timeout: 10_000 });
+  await expect(workspace.getByText('Brudd / skade').first()).toBeVisible();
 
   // Sick Bay flow: verify Ring 113 and AMK brief are visible.
   const logoutBtn = page.getByRole('button', { name: /Logg ut/i });
@@ -80,4 +91,7 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await page.waitForURL('**/coordinator');
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
+  // Team status overview must be present so "Trenger bistand" is visible to the coordinator.
+  await expect(page.getByTestId('coordinator-team-status')).toBeVisible();
+  await expect(page.getByTestId('team-status-row-team-alpha')).toBeVisible();
 });

@@ -7,6 +7,7 @@
 - Lane 3 (Sick Bay Clarity UX): `In progress`
 - Lane 4 (Enum Migration Across Shared/API/Web): `In progress`
 - Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
+- Lane 6 (Field Trial Remediation — production readiness): `In progress`
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -71,6 +72,32 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `field-trial remediation` (branch `claude/field-trial-feedback-wqhy41`, 2026-09-23)
+  - Root causes reconstructed from code after the field trial was judged not production-ready
+    (no GitHub issues existed to work from; findings are listed in section 12).
+  - API: `POST /api/events/:id/patients` opened to `first_aider`/`sickbay` (the "Meld pasient"
+    button returned 403 outside demo mode); team workspace drops discharged/transferred patients;
+    `GET /api/events/:id` teams carry `operationalStatus`/`statusNote`/`statusUpdatedAt`.
+  - Web auth: transparent access-token refresh (single-flight, proactive near expiry, retry on 401,
+    loud logout with "Økten din utløp" when the refresh token is rejected); field-role sessions persist
+    in localStorage so the PWA survives background kills; coordinator/admin stay session-only.
+  - Web realtime: websocket store guards against stale-socket callbacks (reconnect used to null the
+    live socket and silently drop position/chat sends); `send()` reports delivery; offline team queue
+    flushes on startup and coalesces overlapping flushes.
+  - First aider: lists stay live on `patient.created/updated`, refetch on reconnect/online/visibility,
+    closed patients disappear, "Avslutt pasient" closes on the server and clears engagement,
+    own-team status/engagement events reconcile across devices, stale team id resets to the picker,
+    "Bytt patrulje", triage+label on unassigned cards, toasts confirm saves, chat refuses to fake
+    delivery while offline, GPS via `watchPosition` with freshness/accuracy shown, new
+    "Hvor er pasienten?" field (position text no longer a raw coordinate pair).
+  - Sick bay: refetch on patient/team events + reconnect/visibility; field label/description/triage
+    shown instead of "Ukjent pasient".
+  - Coordinator: new `TeamStatusPanel` (needs-assistance pinned, urgent toast + vibration), live
+    `team.status_changed`/`team.transport_changed`, refetch on reconnect/visibility, GPS fallback in
+    patient rows.
+  - E2E: `pages-demo` asserted the removed "Meld hendelse" button (Demo E2E was red on `main`);
+    now covers the report-patient flow and the team status panel. `local-full` reports a patient
+    against the real API and verifies it reaches sick bay and coordinator.
 - `(pending commit)` `docs(ai): compact ai instruction files for lower token usage`
   - Centralized shared AI operating rules in `docs/ai/COMPACT-PLAYBOOK.md`.
   - Rewrote `AGENTS.md` and `CLAUDE.md` to compact pointer-based versions.
@@ -123,7 +150,13 @@
 - `af573b4` `feat(web): allow first-aider teams to adjust incident position before submit`
   - Team can manually set incident coordinates before submit.
 
-## 9. Current Focus (April 5, 2026)
+## 9. Current Focus (September 23, 2026 — post field trial)
+- Production readiness after the field trial:
+  - the P0 defects in section 12 are fixed on this branch; next is a second supervised field run.
+  - remaining known gaps (not blocking, tracked in section 12): chat history is not persisted,
+    vitals/notes from the field are not offline-queued, no coordinator → team status override.
+
+## 9a. Previous Focus (April 5, 2026)
 - First Aider efficiency uplift:
   - live NEWS2 support is now implemented and expanded.
   - next: improve workspace continuity and active-patient recovery UX.
@@ -174,3 +207,27 @@
 3. Continue with exactly one queue item per commit.
 4. Run scoped tests for that queue item before commit.
 5. Update `Checkpoint Log` and `Status Board` in the same working session.
+
+## 12. Field Trial Findings (reconstructed from code, 2026-09-23)
+Legend: `P0` blocks field use, `P1` degrades the flow, `P2` polish. Status refers to this branch.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | P0 | "Meld pasient" hit `POST /events/:id/patients`, which was coordinator/admin only → 403 for every first aider outside demo mode. | Fixed |
+| 2 | P0 | Access tokens expire after 15 min; the REST client never refreshed → every save failed with "prøv igjen" until re-login. | Fixed |
+| 3 | P0 | Auth in sessionStorage → login lost when the PWA was killed in the background or the maps app was opened. | Fixed (field roles persist) |
+| 4 | P0 | Websocket reconnect nulled the live socket → GPS position and chat silently stopped after any reconnect/token refresh. | Fixed |
+| 5 | P0 | "Trenger bistand" was invisible to the coordinator (no team status view, `team.status_changed` unhandled). | Fixed (TeamStatusPanel) |
+| 6 | P1 | New unassigned patients never appeared for patrols; closed patients never disappeared; no refetch after reconnect/foreground. | Fixed |
+| 7 | P1 | Sick bay never saw new field patients without a reload; field patients rendered as "Ukjent pasient". | Fixed |
+| 8 | P1 | Patient reports used the GPS fix from app start (one-shot `getCurrentPosition`) and stored raw coordinates as position text. | Fixed |
+| 9 | P1 | "Avslutt pasient" was local-only; coordinator/sick bay still saw the patient, and it came back after reload. | Fixed |
+| 10 | P1 | Two phones in one patrol drifted apart (optimistic local status always won). | Fixed (reconciliation) |
+| 11 | P1 | Offline queue only flushed on online/reconnect events, never on startup; overlapping flushes replayed items twice. | Fixed |
+| 12 | P1 | Stale persisted team id showed "Ukjent lag" with no way to re-pick; no "Bytt patrulje". | Fixed |
+| 13 | P1 | Demo E2E on `main` asserted the removed "Meld hendelse" button. | Fixed |
+| 14 | P2 | No confirmation after saving vitals/notes/summary; chat pretended to send while offline. | Fixed (toasts, delivery check) |
+| 15 | P2 | Team chat history is lost on reload (realtime only). | Open |
+| 16 | P2 | Field vitals/notes are not offline-queued (only team actions are); the offline banner over-promises. | Open |
+| 17 | P2 | Coordinator cannot set/clear a team's status (e.g. acknowledge "Trenger bistand"). | Open |
+

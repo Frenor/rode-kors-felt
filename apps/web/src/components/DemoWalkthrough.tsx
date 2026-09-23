@@ -2,21 +2,22 @@ import { useState } from 'react';
 
 const STEPS = {
   coordinator: [
-    'Se hendelsesfeeden til venstre og kartet til høyre — 3 aktive hendelser',
-    'Klikk "⚠ Eskalér" på en hendelse for å eskalere til AMK',
-    'Klikk "+ Nytt oppdrag" for å opprette en koordinatorhendelse',
-    'Se "Kritiske pasienter"-panelet øverst for NEWS2-varsler',
+    'Se "Lag"-panelet øverst — lag som trenger bistand vises i rødt',
+    'Pasientlisten til venstre viser feltpasienter med triage og posisjon; kartet til høyre viser lag og pasienter',
+    'Klikk "+ Legg til pasient" for å registrere en pasient og tildele et lag',
+    'Åpne en pasient og klikk "Rediger" → "📍 Pin på kart" for å sette posisjon',
   ],
   sickbay: [
-    'Fire pasienter er innlagt — én er "Innkommende" og trenger registrering',
-    'Klikk "+ Vitale tegn" på en pasient for å registrere målinger',
+    'Pasientene er gruppert etter status — "Innkommende" kommer rett fra feltet',
+    'Klikk "Vitale" på en pasient for å registrere målinger og få NEWS2',
     'Klikk "Logg" for å se pasienthistorikk og medikamenter',
-    'Klikk "→ Overføres" for å starte SBAR-overleveringsprosessen',
+    'Klikk statusmerket for å starte behandling, skrive ut eller overføre (SBAR)',
   ],
   first_aider: [
-    'Velg patrulje Alpha fra listen oppe til høyre',
+    'Velg patrulje Alpha fra listen',
     'Klikk "Meld pasient" for å registrere en ny pasient',
-    'Velg triagefarge og type skade — GPS-posisjon fanges automatisk',
+    'Velg triagefarge og type skade, skriv hvor pasienten er — GPS-posisjon legges ved automatisk',
+    'Åpne pasienten under "Egne pasienter" for vitale tegn, notat, status og "Trenger bistand"',
   ],
 } satisfies Record<'coordinator' | 'sickbay' | 'first_aider', string[]>;
 
