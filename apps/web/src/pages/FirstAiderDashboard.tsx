@@ -23,6 +23,7 @@ import { PatientEngagementPicker } from './FirstAider/PatientEngagementPicker';
 import { TeamSettingsPanel, TRANSPORT_LABELS } from './FirstAider/TeamSettingsPanel';
 import { TeamStatusPickerSheet } from './FirstAider/TeamStatusPickerSheet';
 import { TeamChatSection } from './FirstAider/TeamChatSection';
+import { Button, Icon, Pill } from '../components/ui';
 import {
   FIELD_TRIAGE_ORDER,
   FIELD_TRIAGE_STYLE,
@@ -815,50 +816,6 @@ export function FirstAiderDashboard() {
   const teamStatusStyle = TEAM_OPERATIONAL_STATUS_STYLE[selectedTeamStatus as TeamOperationalStatus]
     ?? TEAM_OPERATIONAL_STATUS_STYLE.available;
   const isReportFormInvalid = !reportInjuryType && !reportDescription.trim();
-  const chipStyle = (active: boolean, color = 'var(--color-brand)', bg = 'var(--color-brand-dim)') => ({
-    minHeight: 48,
-    padding: '0 var(--space-4)',
-    borderRadius: 'var(--radius-md)',
-    border: `2px solid ${active ? color : 'var(--color-border)'}`,
-    background: active ? bg : 'transparent',
-    color: active ? color : 'var(--color-text)',
-    fontSize: 'var(--text-base)',
-    fontWeight: active ? 700 : 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  });
-  const inputStyle = {
-    width: '100%',
-    minHeight: 48,
-    padding: 'var(--space-2) var(--space-3)',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--color-input-border)',
-    background: 'var(--color-input-bg)',
-    color: 'var(--color-text)',
-    fontSize: 'var(--text-base)',
-    fontFamily: 'inherit',
-    boxSizing: 'border-box' as const,
-  };
-  const sectionLabelStyle = {
-    fontSize: 'var(--text-xs)',
-    color: 'var(--color-text-muted)',
-    fontWeight: 700,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.05em',
-    marginBottom: 'var(--space-2)',
-  };
-  const smallSaveButtonStyle = {
-    minHeight: 48,
-    padding: '0 var(--space-4)',
-    borderRadius: 'var(--radius-sm)',
-    border: 'none',
-    background: 'var(--color-brand)',
-    color: 'white',
-    fontSize: 'var(--text-sm)',
-    fontWeight: 700,
-    cursor: 'pointer',
-    flexShrink: 0,
-  };
   const errorTextStyle = { fontSize: 'var(--text-sm)', color: 'var(--color-status-critical)', fontWeight: 600 };
 
   return (
@@ -866,39 +823,27 @@ export function FirstAiderDashboard() {
       {/* Team selection */}
       {!selectedTeam && teams.length > 0 && (
         <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>
+          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-3)', textWrap: 'balance' }}>
             Velg patrulje
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             {teams.map((team) => (
-              <button
+              <Button
                 key={team.id}
-                type="button"
+                variant="secondary"
+                size="xl"
+                block
+                iconEnd="chevronRight"
                 onClick={() => setSelectedTeam(team.id)}
-                style={{
-                  width: '100%',
-                  minHeight: 'var(--touch-comfortable)',
-                  padding: 'var(--space-4)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                  color: 'var(--color-text)',
-                  fontSize: 'var(--text-lg)',
-                  fontWeight: 600,
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
+                style={{ justifyContent: 'space-between', textAlign: 'left', fontSize: 'var(--text-lg)' }}
               >
-                <span>{team.name}</span>
+                <span style={{ flex: 1 }}>{team.name}</span>
                 {team.transport && (
-                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 400, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--color-text-muted)' }}>
                     {TRANSPORT_LABELS[team.transport as TeamTransport] ?? team.transport}
                   </span>
                 )}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -906,15 +851,15 @@ export function FirstAiderDashboard() {
 
       {/* Sticky team header — offset by the 56 px app header so it does not slide underneath it */}
       {selectedTeam && (
-        <header style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-          padding: 'var(--space-2) var(--space-3)',
-          borderRadius: 'var(--radius-md)',
-          border: `1px solid ${selectedTeamStatus === 'needs_assistance' ? 'var(--color-status-critical)' : 'var(--color-border)'}`,
-          background: 'var(--color-surface)',
-          position: 'sticky', top: 56, zIndex: 10,
-          boxShadow: 'var(--shadow-sm)',
-        }}>
+        <header
+          className={`card${selectedTeamStatus === 'needs_assistance' ? ' card--critical' : ''}`}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            position: 'sticky', top: 56, zIndex: 10,
+            boxShadow: 'var(--shadow-sm)',
+          }}
+        >
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
             <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {selectedTeamData?.name ?? 'Ukjent lag'}
@@ -922,53 +867,39 @@ export function FirstAiderDashboard() {
             <span
               aria-live="polite"
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-                color: pendingTeamActionCount > 0 ? 'var(--color-status-warning)' : failedTeamActionCount > 0 ? 'var(--color-status-critical)' : 'var(--color-text-subtle)',
+                fontSize: 'var(--text-xs)', fontWeight: 600,
+                color: pendingTeamActionCount > 0 ? 'var(--color-status-warning)' : failedTeamActionCount > 0 ? 'var(--color-status-critical)' : 'var(--color-text-muted)',
               }}
             >
               {pendingTeamActionCount > 0
-                ? `${pendingTeamActionCount} venter på sending`
+                ? <><span className="data">{pendingTeamActionCount}</span> venter på sending</>
                 : failedTeamActionCount > 0
-                  ? `${failedTeamActionCount} ikke sendt`
+                  ? <><span className="data">{failedTeamActionCount}</span> ikke sendt</>
                   : 'Alt sendt'}
             </span>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="tone"
+            tone={{ color: teamStatusStyle.color, bg: teamStatusStyle.bg }}
+            pill
             onClick={() => setShowStatusPicker(true)}
             data-testid="firstaid-field-status-pill"
             aria-label={`Lagstatus: ${teamStatusLabel}. Trykk for å endre`}
-            style={{
-              minHeight: 48, padding: '0 var(--space-4)',
-              borderRadius: 'var(--radius-full)',
-              border: `2px solid ${teamStatusStyle.color}`,
-              background: teamStatusStyle.bg,
-              color: teamStatusStyle.color,
-              fontSize: 'var(--text-sm)', fontWeight: 700,
-              cursor: 'pointer',
-              display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)',
-              flexShrink: 0,
-            }}
+            style={{ background: teamStatusStyle.bg, flexShrink: 0 }}
           >
             <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: '50%', background: teamStatusStyle.color }} />
             {teamStatusLabel}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="secondary"
+            iconOnly
+            icon="sliders"
+            selected={showSettings}
             onClick={() => setShowSettings((v) => !v)}
             aria-label="Innstillinger for patruljen"
             aria-expanded={showSettings}
-            style={{
-              minHeight: 48, minWidth: 48, padding: '0 var(--space-2)',
-              borderRadius: 'var(--radius-sm)',
-              border: `1px solid ${showSettings ? 'var(--color-brand)' : 'var(--color-border)'}`,
-              background: showSettings ? 'var(--color-brand-dim)' : 'transparent',
-              color: showSettings ? 'var(--color-brand)' : 'var(--color-text-muted)',
-              fontSize: 'var(--text-lg)', cursor: 'pointer', flexShrink: 0,
-            }}
-          >
-            ⚙
-          </button>
+            style={{ flexShrink: 0 }}
+          />
         </header>
       )}
 
@@ -977,32 +908,21 @@ export function FirstAiderDashboard() {
         <section
           role="alert"
           data-testid="firstaid-needs-assistance-banner"
+          className="card card--critical"
           style={{
             padding: 'var(--space-3) var(--space-4)',
-            borderRadius: 'var(--radius-md)',
-            border: '2px solid var(--color-status-critical)',
             background: 'var(--color-status-critical-bg)',
             color: 'var(--color-status-critical)',
             display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
           }}
         >
-          <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
-            Dere har meldt behov for bistand — koordinator og sykestue er varslet.
+          <div style={{ fontWeight: 700, fontSize: 'var(--text-base)', display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
+            <Icon name="alert" size="lg" style={{ marginTop: 2 }} />
+            <span>Dere har meldt behov for bistand — koordinator og sykestue er varslet.</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setTeamOperationalStatus('available')}
-            style={{
-              minHeight: 'var(--touch-min)',
-              borderRadius: 'var(--radius-md)',
-              border: '2px solid var(--color-status-critical)',
-              background: 'var(--color-surface)',
-              color: 'var(--color-status-critical)',
-              fontSize: 'var(--text-base)', fontWeight: 700, cursor: 'pointer',
-            }}
-          >
+          <Button variant="secondary" size="lg" block icon="check" onClick={() => setTeamOperationalStatus('available')} style={{ color: 'var(--color-status-critical)', borderColor: 'var(--color-status-critical)' }}>
             Avklart — vi er ledige igjen
-          </button>
+          </Button>
         </section>
       )}
 
@@ -1040,18 +960,22 @@ export function FirstAiderDashboard() {
       {selectedTeam && sectorAssignments[selectedTeam] && (
         <section
           aria-live="polite"
+          className="card"
           style={{
             padding: 'var(--space-3) var(--space-4)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-brand)',
+            borderColor: 'var(--color-brand)',
             background: 'var(--color-brand-dim)',
+            display: 'flex', gap: 'var(--space-3)', alignItems: 'center',
           }}
         >
-          <div style={{ fontWeight: 700, fontSize: 'var(--text-base)', color: 'var(--color-brand)' }}>
-            Tildelt sektor: {sectorAssignments[selectedTeam]!.sector}
-          </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-            Oppdatert {new Date(sectorAssignments[selectedTeam]!.assignedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+          <Icon name="map" size="lg" style={{ color: 'var(--color-brand)' }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 'var(--text-base)', color: 'var(--color-brand)' }}>
+              Tildelt sektor: {sectorAssignments[selectedTeam]!.sector}
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Oppdatert <span className="data">{new Date(sectorAssignments[selectedTeam]!.assignedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
           </div>
         </section>
       )}
@@ -1060,78 +984,40 @@ export function FirstAiderDashboard() {
       {selectedTeam && (
         <div>
           {!showReportPatient ? (
-            <button
-              type="button"
-              onClick={() => setShowReportPatient(true)}
-              style={{
-                width: '100%',
-                minHeight: 72,
-                padding: 'var(--space-4)',
-                borderRadius: 'var(--radius-lg)',
-                border: 'none',
-                background: 'var(--color-brand)',
-                color: 'white',
-                fontSize: 'var(--text-xl)',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 'var(--space-3)',
-              }}
-            >
-              <span style={{ fontSize: '1.4em', lineHeight: 1 }} aria-hidden="true">+</span>
+            <Button variant="primary" size="xl" block icon="plus" onClick={() => setShowReportPatient(true)}>
               Meld pasient
-            </button>
+            </Button>
           ) : (
-            <div style={{
-              borderRadius: 'var(--radius-lg)',
-              border: '2px solid var(--color-brand)',
-              background: 'var(--color-surface)',
-              overflow: 'hidden',
-            }}>
+            <div className="card" style={{ borderColor: 'var(--color-brand)', borderWidth: 2, overflow: 'hidden' }}>
               <div style={{
-                padding: 'var(--space-3) var(--space-4)',
+                padding: 'var(--space-2) var(--space-2) var(--space-2) var(--space-4)',
                 background: 'var(--color-brand)',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <span style={{ color: 'white', fontWeight: 700, fontSize: 'var(--text-lg)' }}>Meld pasient</span>
-                <button
-                  type="button"
-                  onClick={handleCloseReportForm}
-                  style={{
-                    minHeight: 44, minWidth: 44,
-                    background: 'transparent', border: 'none', color: 'white',
-                    fontSize: 'var(--text-xl)', cursor: 'pointer', lineHeight: 1,
-                  }}
-                  aria-label="Lukk"
-                >
-                  ✕
-                </button>
+                <Button variant="ghost" iconOnly icon="x" onClick={handleCloseReportForm} aria-label="Lukk" style={{ color: 'white' }} />
               </div>
               <div style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                 {/* Triage picker */}
                 <div>
-                  <div style={sectionLabelStyle}>Triagefarge</div>
+                  <div className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Triagefarge</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
                     {FIELD_TRIAGE_ORDER.map((value) => {
                       const style = FIELD_TRIAGE_STYLE[value];
                       const active = reportTriage === value;
                       return (
-                        <button
+                        <Button
                           key={value}
-                          type="button"
-                          onClick={() => setReportTriage((prev) => prev === value ? '' : value)}
+                          variant="tone"
+                          tone={{ color: style.text, bg: style.bg }}
+                          size="lg"
                           aria-pressed={active}
-                          style={{
-                            ...chipStyle(active, style.text, style.bg),
-                            border: `2px solid ${style.text}`,
-                            color: style.text,
-                            padding: 0,
-                          }}
+                          icon={active ? 'check' : undefined}
+                          onClick={() => setReportTriage((prev) => prev === value ? '' : value)}
+                          style={{ padding: 0 }}
                         >
-                          {style.label}{active ? ' ✓' : ''}
-                        </button>
+                          {style.label}
+                        </Button>
                       );
                     })}
                   </div>
@@ -1139,72 +1025,76 @@ export function FirstAiderDashboard() {
 
                 {/* Injury type quick picker */}
                 <div>
-                  <div style={sectionLabelStyle}>Type skade</div>
+                  <div className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Type skade</div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                     {INJURY_TYPES.map((type) => (
-                      <button
+                      <Button
                         key={type}
-                        type="button"
-                        onClick={() => setReportInjuryType((prev) => prev === type ? '' : type)}
+                        variant="secondary"
                         aria-pressed={reportInjuryType === type}
-                        style={chipStyle(reportInjuryType === type)}
+                        onClick={() => setReportInjuryType((prev) => prev === type ? '' : type)}
+                        style={{ fontWeight: reportInjuryType === type ? 700 : 500 }}
                       >
                         {type}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
 
                 {/* Free-text description */}
                 <div>
-                  <label htmlFor="report-description" style={{ display: 'block', ...sectionLabelStyle }}>
+                  <label htmlFor="report-description" className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
                     Tilleggsinformasjon
                   </label>
                   <textarea
                     id="report-description"
+                    className="field"
                     value={reportDescription}
                     onChange={(e) => setReportDescription(e.target.value)}
                     placeholder="Beskriv skaden, pasientens tilstand, ekstra opplysninger…"
                     rows={3}
-                    style={{ ...inputStyle, resize: 'vertical' }}
                   />
                 </div>
 
                 {/* Where is the patient? Free text the coordinator can act on. */}
                 <div>
-                  <label htmlFor="report-position-text" style={{ display: 'block', ...sectionLabelStyle }}>
+                  <label htmlFor="report-position-text" className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
                     Hvor er pasienten?
                   </label>
                   <input
                     id="report-position-text"
+                    className="field"
                     value={reportPositionText}
                     onChange={(e) => setReportPositionText(e.target.value)}
                     placeholder="f.eks. Sektor B, ved drikkestasjon 3"
-                    style={inputStyle}
                   />
                 </div>
 
                 <div
                   data-testid="report-gps-status"
                   style={{
+                    display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start',
                     fontSize: 'var(--text-sm)',
                     color: gpsPosition && !gpsIsStale ? 'var(--color-text-muted)' : 'var(--color-status-warning)',
                   }}
                 >
-                  {gpsPosition ? (
-                    <>
-                      GPS-posisjon legges ved automatisk
-                      {gpsAccuracy != null ? ` (±${gpsAccuracy} m` : ' ('}
-                      {gpsAgeMs != null ? `${gpsAccuracy != null ? ', ' : ''}oppdatert for ${Math.max(0, Math.round(gpsAgeMs / 1000))} s siden)` : ')'}
-                      {gpsIsStale && ' — posisjonen kan være utdatert, beskriv stedet over.'}
-                    </>
-                  ) : gpsStatus === 'denied' ? (
-                    'Posisjonstilgang er avslått — beskriv hvor pasienten er.'
-                  ) : gpsStatus === 'acquiring' ? (
-                    'Henter GPS-posisjon… beskriv gjerne stedet i tillegg.'
-                  ) : (
-                    'Ingen GPS-posisjon — beskriv hvor pasienten er.'
-                  )}
+                  <Icon name={gpsPosition && !gpsIsStale ? 'pin' : 'alert'} style={{ marginTop: 2 }} />
+                  <span>
+                    {gpsPosition ? (
+                      <>
+                        GPS-posisjon legges ved automatisk
+                        {gpsAccuracy != null ? <> (±<span className="data">{gpsAccuracy}</span> m</> : ' ('}
+                        {gpsAgeMs != null ? <>{gpsAccuracy != null ? ', ' : ''}oppdatert for <span className="data">{Math.max(0, Math.round(gpsAgeMs / 1000))}</span> s siden)</> : ')'}
+                        {gpsIsStale && ' — posisjonen kan være utdatert, beskriv stedet over.'}
+                      </>
+                    ) : gpsStatus === 'denied' ? (
+                      'Posisjonstilgang er avslått — beskriv hvor pasienten er.'
+                    ) : gpsStatus === 'acquiring' ? (
+                      'Henter GPS-posisjon… beskriv gjerne stedet i tillegg.'
+                    ) : (
+                      'Ingen GPS-posisjon — beskriv hvor pasienten er.'
+                    )}
+                  </span>
                 </div>
 
                 {reportError && (
@@ -1213,21 +1103,9 @@ export function FirstAiderDashboard() {
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={handleReportPatient}
-                  disabled={reportSubmitting || isReportFormInvalid}
-                  style={{
-                    minHeight: 'var(--touch-comfortable)', width: '100%',
-                    borderRadius: 'var(--radius-md)', border: 'none',
-                    background: isReportFormInvalid || reportSubmitting ? 'var(--color-border)' : 'var(--color-brand)',
-                    color: isReportFormInvalid || reportSubmitting ? 'var(--color-text-subtle)' : 'white',
-                    fontSize: 'var(--text-lg)', fontWeight: 700,
-                    cursor: reportSubmitting || isReportFormInvalid ? 'not-allowed' : 'pointer',
-                  }}
-                >
+                <Button variant="primary" size="xl" block onClick={handleReportPatient} disabled={reportSubmitting || isReportFormInvalid}>
                   {reportSubmitting ? 'Registrerer…' : 'Registrer pasient'}
-                </button>
+                </Button>
                 {isReportFormInvalid && (
                   <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', textAlign: 'center' }}>
                     Velg type skade eller skriv en kort beskrivelse.
@@ -1242,15 +1120,8 @@ export function FirstAiderDashboard() {
       {/* Patient list */}
       {selectedTeam && (
         <section aria-labelledby="patient-list-heading">
-          <h2
-            id="patient-list-heading"
-            style={{
-              fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-              color: 'var(--color-text-muted)', textTransform: 'uppercase',
-              letterSpacing: 'var(--tracking-mono)', marginBottom: 'var(--space-3)',
-            }}
-          >
-            Egne pasienter ({combinedAssignedPatients.length})
+          <h2 id="patient-list-heading" className="section-label" style={{ marginBottom: 'var(--space-3)' }}>
+            Egne pasienter (<span className="data">{combinedAssignedPatients.length}</span>)
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {combinedAssignedPatients.length === 0 && !workspaceLoading && (
@@ -1284,13 +1155,14 @@ export function FirstAiderDashboard() {
                 <div
                   key={p.id}
                   data-testid={`firstaid-patient-${p.id}`}
+                  className="card card--stripe"
                   style={{
-                    borderRadius: 'var(--radius-md)',
-                    border: `2px solid ${isFlashing ? 'var(--color-status-warning)' : isExpanded ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                    background: isFlashing ? 'var(--color-status-warning-bg)' : 'var(--color-surface)',
+                    '--stripe': triage?.text ?? 'var(--color-border-strong)',
+                    borderColor: isFlashing ? 'var(--color-status-warning)' : isExpanded ? 'var(--color-brand)' : undefined,
+                    background: isFlashing ? 'var(--color-status-warning-bg)' : undefined,
                     overflow: 'hidden',
                     transition: 'border-color 0.3s ease',
-                  }}
+                  } as React.CSSProperties}
                 >
                   <button
                     type="button"
@@ -1301,30 +1173,12 @@ export function FirstAiderDashboard() {
                       padding: 'var(--space-3)',
                       display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 'var(--space-1)',
                       background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-                      color: 'var(--color-text)',
+                      color: 'var(--color-text)', font: 'inherit',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      {triage && (
-                        <span style={{
-                          flexShrink: 0, display: 'inline-block', padding: '3px 10px',
-                          borderRadius: 'var(--radius-full)',
-                          background: triage.bg, color: triage.text,
-                          fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                        }}>
-                          {triage.label}
-                        </span>
-                      )}
-                      {statusStyle && (
-                        <span style={{
-                          flexShrink: 0, display: 'inline-block', padding: '3px 10px',
-                          borderRadius: 'var(--radius-full)',
-                          background: statusStyle.bg, color: statusStyle.color,
-                          fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                        }}>
-                          {statusStyle.label}
-                        </span>
-                      )}
+                      {triage && <Pill tone={{ color: triage.text, bg: triage.bg }}>{triage.label}</Pill>}
+                      {statusStyle && <Pill dot tone={{ color: statusStyle.color, bg: statusStyle.bg }}>{statusStyle.label}</Pill>}
                       <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', flex: 1, textAlign: 'left' }}>
                         {label}
                       </span>
@@ -1333,9 +1187,7 @@ export function FirstAiderDashboard() {
                           Oppdatert
                         </span>
                       )}
-                      <span aria-hidden="true" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)', flexShrink: 0 }}>
-                        {isExpanded ? '▲' : '▼'}
-                      </span>
+                      <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} style={{ color: 'var(--color-text-muted)' }} />
                     </div>
                     {hasPosition && (
                       <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', textAlign: 'left' }}>
@@ -1372,7 +1224,7 @@ export function FirstAiderDashboard() {
 
                       {/* 3. Vitals */}
                       <div>
-                        <div style={sectionLabelStyle}>Vitale tegn</div>
+                        <div className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Vitale tegn</div>
                         <VitalsEntryForm
                           patientId={p.id}
                           form={getPatientVitalsForm(p.id)}
@@ -1390,29 +1242,21 @@ export function FirstAiderDashboard() {
                       </div>
 
                       {/* 4. Injury note */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                        <label htmlFor={`note-${p.id}`} style={sectionLabelStyle}>Skadenotat</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                        <label htmlFor={`note-${p.id}`} className="section-label">Skadenotat</label>
                         <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
                           <textarea
                             id={`note-${p.id}`}
+                            className="field"
                             value={perPatientNoteText[p.id] ?? ''}
                             onChange={(e) => setPerPatientNoteText((prev) => ({ ...prev, [p.id]: e.target.value }))}
                             placeholder="Hva ser dere? Hva er gjort?"
                             rows={2}
-                            style={{ ...inputStyle, flex: 1, resize: 'none' }}
+                            style={{ flex: 1, resize: 'none' }}
                           />
-                          <button
-                            type="button"
-                            onClick={() => handleSubmitNote(p.id)}
-                            disabled={!perPatientNoteText[p.id]?.trim()}
-                            style={{
-                              ...smallSaveButtonStyle,
-                              background: perPatientNoteText[p.id]?.trim() ? 'var(--color-brand)' : 'var(--color-border)',
-                              color: perPatientNoteText[p.id]?.trim() ? 'white' : 'var(--color-text-subtle)',
-                            }}
-                          >
+                          <Button variant="secondary" onClick={() => handleSubmitNote(p.id)} disabled={!perPatientNoteText[p.id]?.trim()} style={{ flexShrink: 0 }}>
                             Lagre
-                          </button>
+                          </Button>
                         </div>
                         {perPatientNoteError[p.id] && (
                           <div role="alert" style={errorTextStyle}>
@@ -1425,39 +1269,31 @@ export function FirstAiderDashboard() {
                       <div>
                         <button
                           type="button"
+                          className="disclosure"
                           onClick={() => setPerPatientDetailsOpen((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
                           aria-expanded={detailsOpen}
                           data-testid={`firstaid-details-toggle-${p.id}`}
-                          style={{
-                            width: '100%', minHeight: 44,
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '0 var(--space-3)',
-                            borderRadius: 'var(--radius-sm)',
-                            border: '1px solid var(--color-border)',
-                            background: detailsOpen ? 'var(--color-surface-sunken)' : 'transparent',
-                            color: 'var(--color-text-muted)',
-                            fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
-                          }}
                         >
                           <span>Rediger sammendrag / posisjon</span>
-                          <span aria-hidden="true">{detailsOpen ? '▲' : '▼'}</span>
+                          <Icon name={detailsOpen ? 'chevronUp' : 'chevronDown'} />
                         </button>
                         {detailsOpen && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
                             {/* Editable summary */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                              <label htmlFor={`summary-${p.id}`} style={sectionLabelStyle}>Sammendrag</label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                              <label htmlFor={`summary-${p.id}`} className="section-label">Sammendrag</label>
                               <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
                                 <input
                                   id={`summary-${p.id}`}
+                                  className="field"
                                   value={perPatientSummaryEdit[p.id] ?? label}
                                   onChange={(e) => setPerPatientSummaryEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
                                   placeholder="Sammendrag…"
-                                  style={{ ...inputStyle, flex: 1 }}
+                                  style={{ flex: 1 }}
                                 />
-                                <button type="button" onClick={() => handleSaveSummary(p.id, label)} style={smallSaveButtonStyle}>
+                                <Button variant="secondary" onClick={() => handleSaveSummary(p.id, label)} style={{ flexShrink: 0 }}>
                                   Lagre
-                                </button>
+                                </Button>
                               </div>
                               {perPatientSummaryError[p.id] && (
                                 <div role="alert" style={errorTextStyle}>{perPatientSummaryError[p.id]}</div>
@@ -1465,33 +1301,25 @@ export function FirstAiderDashboard() {
                             </div>
 
                             {/* Editable position text + reverse lookup */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                              <label htmlFor={`position-${p.id}`} style={sectionLabelStyle}>Hvor er pasienten?</label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                              <label htmlFor={`position-${p.id}`} className="section-label">Hvor er pasienten?</label>
                               <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <input
                                   id={`position-${p.id}`}
+                                  className="field"
                                   value={perPatientPosEdit[p.id] ?? (posText ?? '')}
                                   onChange={(e) => setPerPatientPosEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
                                   placeholder="f.eks. Sektor B, rad 5"
-                                  style={{ ...inputStyle, flex: 1, minWidth: 160 }}
+                                  style={{ flex: 1, minWidth: 160 }}
                                 />
                                 {lat != null && lon != null && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleGeoLookup(p.id, lat!, lon!)}
-                                    disabled={geoLookupLoading[p.id]}
-                                    style={{
-                                      ...smallSaveButtonStyle,
-                                      border: '1px solid var(--color-brand)',
-                                      background: 'transparent', color: 'var(--color-brand)',
-                                    }}
-                                  >
-                                    {geoLookupLoading[p.id] ? '…' : 'Slå opp adresse'}
-                                  </button>
+                                  <Button variant="outline" icon="pin" onClick={() => handleGeoLookup(p.id, lat!, lon!)} disabled={geoLookupLoading[p.id]}>
+                                    {geoLookupLoading[p.id] ? 'Slår opp…' : 'Slå opp adresse'}
+                                  </Button>
                                 )}
-                                <button type="button" onClick={() => handleSavePosition(p.id)} style={smallSaveButtonStyle}>
+                                <Button variant="secondary" onClick={() => handleSavePosition(p.id)}>
                                   Lagre
-                                </button>
+                                </Button>
                               </div>
                               {perPatientPosError[p.id] && (
                                 <div role="alert" style={errorTextStyle}>{perPatientPosError[p.id]}</div>
@@ -1502,38 +1330,23 @@ export function FirstAiderDashboard() {
                       </div>
 
                       {/* 6. Help */}
-                      <button
-                        type="button"
+                      <Button
+                        variant="danger-soft"
+                        size="lg"
+                        block
+                        icon="alert"
                         onClick={async () => { await setTeamOperationalStatus('needs_assistance', label); setExpandedPatientId(null); }}
                         data-testid={`firstaid-needs-assistance-${p.id}`}
-                        style={{
-                          minHeight: 'var(--touch-comfortable)', width: '100%',
-                          borderRadius: 'var(--radius-md)',
-                          border: '2px solid var(--color-status-critical)',
-                          background: 'var(--color-status-critical-bg)',
-                          color: 'var(--color-status-critical)',
-                          fontSize: 'var(--text-lg)', fontWeight: 700, cursor: 'pointer',
-                        }}
+                        style={{ fontSize: 'var(--text-lg)' }}
                       >
-                        ! Trenger bistand her
-                      </button>
+                        Trenger bistand her
+                      </Button>
 
                       {/* 7. Close */}
                       {closingPatientId !== p.id ? (
-                        <button
-                          type="button"
-                          onClick={() => setClosingPatientId(p.id)}
-                          style={{
-                            minHeight: 'var(--touch-min)', width: '100%',
-                            borderRadius: 'var(--radius-md)',
-                            border: '1px solid var(--color-border)',
-                            background: 'transparent',
-                            color: 'var(--color-text-muted)',
-                            fontSize: 'var(--text-base)', fontWeight: 600, cursor: 'pointer',
-                          }}
-                        >
+                        <Button variant="secondary" size="lg" block onClick={() => setClosingPatientId(p.id)} style={{ color: 'var(--color-text-muted)' }}>
                           Avslutt pasient
-                        </button>
+                        </Button>
                       ) : (
                         <div
                           data-testid={`firstaid-close-form-${p.id}`}
@@ -1543,34 +1356,38 @@ export function FirstAiderDashboard() {
                             background: 'var(--color-surface-sunken)',
                           }}
                         >
-                          <div style={sectionLabelStyle}>Hvorfor avsluttes pasienten?</div>
+                          <div className="section-label">Hvorfor avsluttes pasienten?</div>
                           <div role="radiogroup" aria-label="Årsak for avslutning" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                             {PATIENT_CLOSE_REASONS.map((reason) => {
                               const active = closeReason === reason.id;
                               return (
-                                <button
+                                <Button
                                   key={reason.id}
-                                  type="button"
+                                  variant="secondary"
+                                  size="lg"
+                                  block
                                   role="radio"
                                   aria-checked={active}
+                                  icon={active ? 'check' : undefined}
                                   onClick={() => {
                                     setPerPatientCloseReason((prev) => ({ ...prev, [p.id]: reason.id }));
                                     setPerPatientCloseError((prev) => { const n = { ...prev }; delete n[p.id]; return n; });
                                   }}
-                                  style={{ ...chipStyle(active), textAlign: 'left', minHeight: 'var(--touch-min)' }}
+                                  style={{ justifyContent: 'flex-start', textAlign: 'left' }}
                                 >
-                                  {active ? '✓ ' : ''}{reason.label}
-                                </button>
+                                  {reason.label}
+                                </Button>
                               );
                             })}
                           </div>
                           <textarea
+                            className="field"
                             value={perPatientCloseNote[p.id] ?? ''}
                             onChange={(e) => setPerPatientCloseNote((prev) => ({ ...prev, [p.id]: e.target.value }))}
                             placeholder="Tillegg (valgfritt)…"
                             aria-label="Tilleggsinformasjon ved avslutning"
                             rows={2}
-                            style={{ ...inputStyle, resize: 'none' }}
+                            style={{ resize: 'none' }}
                           />
                           {perPatientCloseError[p.id] && (
                             <div role="alert" style={errorTextStyle}>
@@ -1578,33 +1395,16 @@ export function FirstAiderDashboard() {
                             </div>
                           )}
                           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleClosePatient(p.id, label)}
-                              disabled={!closeReason}
-                              style={{
-                                flex: 1, minHeight: 'var(--touch-min)', padding: '0 var(--space-3)',
-                                borderRadius: 'var(--radius-md)', border: 'none',
-                                background: closeReason ? 'var(--color-status-critical)' : 'var(--color-border)',
-                                color: closeReason ? 'white' : 'var(--color-text-subtle)',
-                                fontSize: 'var(--text-base)', fontWeight: 700, cursor: closeReason ? 'pointer' : 'not-allowed',
-                              }}
-                            >
+                            <Button variant="danger" size="lg" onClick={() => handleClosePatient(p.id, label)} disabled={!closeReason} style={{ flex: 1 }}>
                               Bekreft avslutning
-                            </button>
-                            <button
-                              type="button"
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="lg"
                               onClick={() => { setClosingPatientId(null); setPerPatientCloseError((prev) => { const n = { ...prev }; delete n[p.id]; return n; }); }}
-                              style={{
-                                minHeight: 'var(--touch-min)', padding: '0 var(--space-4)',
-                                borderRadius: 'var(--radius-md)',
-                                border: '1px solid var(--color-border)',
-                                background: 'transparent', color: 'var(--color-text-muted)',
-                                fontSize: 'var(--text-base)', cursor: 'pointer',
-                              }}
                             >
                               Avbryt
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       )}
@@ -1615,16 +1415,8 @@ export function FirstAiderDashboard() {
             })}
 
             {/* Unassigned patients — always rendered so the section is always discoverable */}
-            <h3
-              id="unassigned-patients-heading"
-              style={{
-                margin: 'var(--space-2) 0 0',
-                fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-                color: 'var(--color-text-muted)', textTransform: 'uppercase',
-                letterSpacing: 'var(--tracking-mono)',
-              }}
-            >
-              Utildelte pasienter ({filteredUnassigned.length})
+            <h3 id="unassigned-patients-heading" className="section-label" style={{ margin: 'var(--space-2) 0 0' }}>
+              Utildelte pasienter (<span className="data">{filteredUnassigned.length}</span>)
             </h3>
             {filteredUnassigned.length === 0 && !workspaceLoading && (
               <div style={{
@@ -1641,25 +1433,15 @@ export function FirstAiderDashboard() {
                 <div
                   key={patient.id}
                   data-testid={`firstaid-unassigned-${patient.id}`}
+                  className={`card card--stripe${patient.triageStatus === 'red' ? ' card--critical' : ''}`}
                   style={{
+                    '--stripe': triage?.text ?? 'var(--color-border-strong)',
                     padding: 'var(--space-3)',
-                    borderRadius: 'var(--radius-md)',
-                    border: `2px solid ${patient.triageStatus === 'red' ? 'var(--color-triage-red)' : 'var(--color-border)'}`,
-                    background: 'var(--color-surface)',
                     display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
-                  }}
+                  } as React.CSSProperties}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    {triage && (
-                      <span style={{
-                        flexShrink: 0, display: 'inline-block', padding: '3px 10px',
-                        borderRadius: 'var(--radius-full)',
-                        background: triage.bg, color: triage.text,
-                        fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                      }}>
-                        {triage.label}
-                      </span>
-                    )}
+                    {triage && <Pill tone={{ color: triage.text, bg: triage.bg }}>{triage.label}</Pill>}
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
                       {patient.label || patient.presentingComplaint || 'Ukjent pasient'}
                     </div>
@@ -1671,21 +1453,16 @@ export function FirstAiderDashboard() {
                     gpsPosition={gpsPosition}
                     onNavigate={openMapsNav}
                   />
-                  <button
-                    type="button"
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    block
+                    iconEnd="arrowRight"
                     onClick={() => handleSetPatientStatus(patient.id, 'en_route_to_patient')}
                     data-testid={`firstaid-claim-${patient.id}`}
-                    style={{
-                      minHeight: 'var(--touch-min)', width: '100%',
-                      borderRadius: 'var(--radius-md)',
-                      border: 'none',
-                      background: 'var(--color-brand)',
-                      color: 'white',
-                      fontSize: 'var(--text-base)', fontWeight: 700, cursor: 'pointer',
-                    }}
                   >
-                    Vi drar til denne pasienten →
-                  </button>
+                    Vi drar til denne pasienten
+                  </Button>
                 </div>
               );
             })}
@@ -1695,34 +1472,20 @@ export function FirstAiderDashboard() {
               <div style={{ marginTop: 'var(--space-2)' }}>
                 <button
                   type="button"
+                  className="disclosure"
                   onClick={() => setShowOtherAssigned((v) => !v)}
                   aria-expanded={showOtherAssigned}
-                  style={{
-                    width: '100%', minHeight: 44,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: 'var(--space-2) var(--space-3)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--color-border)',
-                    background: 'var(--color-surface-sunken)',
-                    color: 'var(--color-text-muted)',
-                    fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-                    textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)',
-                    cursor: 'pointer',
-                  }}
                 >
-                  <span>Andre lags pasienter ({otherTeamAssignedPatients.length})</span>
-                  <span aria-hidden="true">{showOtherAssigned ? '▲' : '▼'}</span>
+                  <span>Andre lags pasienter (<span className="data">{otherTeamAssignedPatients.length}</span>)</span>
+                  <Icon name={showOtherAssigned ? 'chevronUp' : 'chevronDown'} />
                 </button>
                 {showOtherAssigned && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
                     {otherTeamAssignedPatients.map((p) => {
                       const teamName = teams.find((t) => t.id === (p as any).assignedTeamId)?.name;
                       return (
-                        <div key={p.id} style={{
+                        <div key={p.id} className="card" style={{
                           padding: 'var(--space-2) var(--space-3)',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--color-border)',
-                          background: 'var(--color-surface)',
                           fontSize: 'var(--text-sm)',
                           display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)',
                         }}>
@@ -1745,31 +1508,18 @@ export function FirstAiderDashboard() {
               <div style={{ marginTop: 'var(--space-2)' }}>
                 <button
                   type="button"
+                  className="disclosure"
                   onClick={() => setShowClosedPatients((v) => !v)}
                   aria-expanded={showClosedPatients}
-                  style={{
-                    width: '100%', minHeight: 44,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: 'var(--space-2) var(--space-3)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--color-border)',
-                    background: 'var(--color-surface-sunken)',
-                    color: 'var(--color-text-muted)',
-                    fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-                    textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)',
-                    cursor: 'pointer',
-                  }}
                 >
-                  <span>Avsluttede pasienter ({closedPatients.length})</span>
-                  <span aria-hidden="true">{showClosedPatients ? '▲' : '▼'}</span>
+                  <span>Avsluttede pasienter (<span className="data">{closedPatients.length}</span>)</span>
+                  <Icon name={showClosedPatients ? 'chevronUp' : 'chevronDown'} />
                 </button>
                 {showClosedPatients && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
                     {closedPatients.map((cp) => (
-                      <div key={cp.id} style={{
+                      <div key={cp.id} className="card" style={{
                         padding: 'var(--space-2) var(--space-3)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-border)',
                         background: 'var(--color-surface-sunken)',
                         fontSize: 'var(--text-sm)',
                         display: 'flex', flexDirection: 'column', gap: 'var(--space-1)',
@@ -1780,7 +1530,7 @@ export function FirstAiderDashboard() {
                         <div style={{ color: 'var(--color-text-subtle)' }}>
                           {cp.note}
                         </div>
-                        <div style={{ color: 'var(--color-text-subtle)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+                        <div className="data" style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)' }}>
                           {new Date(cp.closedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>

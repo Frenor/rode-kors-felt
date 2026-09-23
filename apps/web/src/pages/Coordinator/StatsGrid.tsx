@@ -53,24 +53,21 @@ function StatCard({ label, value, prevValue }: { label: string; value: number; p
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-1)' }}>
         <div
-          className={pop ? 'animate-count-pop' : undefined}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xl)', fontWeight: 700 }}
+          className={`data${pop ? ' animate-count-pop' : ''}`}
+          style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}
         >
           {value ?? 0}
         </div>
         {trend && (
           <span
             aria-label={trend === '↑' ? 'økt siden forrige oppdatering' : 'redusert siden forrige oppdatering'}
-            style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', fontWeight: 700 }}
+            style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', fontWeight: 700 }}
           >
             {trend}
           </span>
         )}
       </div>
-      <div style={{
-        fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-        color: 'var(--color-text-muted)', textTransform: 'uppercase',
-      }}>
+      <div className="section-label">
         {label}
       </div>
     </div>
@@ -106,11 +103,8 @@ export function StatsGrid({ stats, lastUpdatedAt, prevStats }: StatsGridProps) {
         ))}
       </div>
       {secondsAgo !== null && (
-        <p style={{
-          fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-subtle)', marginTop: 'var(--space-1)', marginBottom: 0,
-        }}>
-          Oppdatert {secondsAgo}s siden
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginTop: 'var(--space-1)', marginBottom: 0 }}>
+          Oppdatert <span className="data">{secondsAgo}</span> s siden
         </p>
       )}
     </div>

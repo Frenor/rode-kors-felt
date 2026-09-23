@@ -1,4 +1,5 @@
 import { routeLabels } from '../../lib/constants';
+import { Button } from '../../components/ui';
 import type { MedicationRecord } from '../../lib/types';
 
 export interface MedFormShape {
@@ -30,8 +31,8 @@ export function MedicationPanel({ patientId, medications, form, onChange, onSubm
         <div style={{ marginBottom: 'var(--space-3)' }}>
           {medications.map((med, i) => (
             <div key={i} style={{
-              display: 'flex', gap: 'var(--space-2)', fontSize: 'var(--text-xs)',
-              fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)',
+              display: 'flex', gap: 'var(--space-2)', fontSize: 'var(--text-sm)',
+              color: 'var(--color-text-muted)',
               padding: 'var(--space-1) 0', borderBottom: '1px solid var(--color-border)',
             }}>
               <span style={{ color: 'var(--color-text)', fontWeight: 600 }}>{med.drug}</span>
@@ -46,46 +47,42 @@ export function MedicationPanel({ patientId, medications, form, onChange, onSubm
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
         <div>
-          <label htmlFor={`med-drug-${patientId}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Medikament</label>
+          <label htmlFor={`med-drug-${patientId}`} className="section-label" style={{ display: 'block', marginBottom: 4 }}>Medikament</label>
           <select id={`med-drug-${patientId}`} value={form.drug}
             onChange={(e) => onChange({ ...form, drug: e.target.value })}
-            style={{ width: '100%', height: 36, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}>
+            className="field" style={{ minHeight: 44, fontSize: 'var(--text-sm)' }}>
             {DRUG_OPTIONS.map((d) => (
               <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
             ))}
           </select>
         </div>
         <div>
-          <label htmlFor={`med-route-${patientId}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Administrasjonsvei</label>
+          <label htmlFor={`med-route-${patientId}`} className="section-label" style={{ display: 'block', marginBottom: 4 }}>Administrasjonsvei</label>
           <select id={`med-route-${patientId}`} value={form.route}
             onChange={(e) => onChange({ ...form, route: e.target.value })}
-            style={{ width: '100%', height: 36, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }}>
+            className="field" style={{ minHeight: 44, fontSize: 'var(--text-sm)' }}>
             {(Object.keys(routeLabels) as Array<keyof typeof routeLabels>).map((r) => (
               <option key={r} value={r}>{routeLabels[r]}</option>
             ))}
           </select>
         </div>
         <div>
-          <label htmlFor={`med-dose-${patientId}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Dose</label>
+          <label htmlFor={`med-dose-${patientId}`} className="section-label" style={{ display: 'block', marginBottom: 4 }}>Dose</label>
           <input id={`med-dose-${patientId}`} type="text" value={form.dose} placeholder="f.eks. 5 mg"
             onChange={(e) => onChange({ ...form, dose: e.target.value })}
-            style={{ width: '100%', height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }} />
+            className="field" style={{ minHeight: 44, fontSize: 'var(--text-sm)' }} />
         </div>
         <div>
-          <label htmlFor={`med-by-${patientId}`} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>Gitt av</label>
+          <label htmlFor={`med-by-${patientId}`} className="section-label" style={{ display: 'block', marginBottom: 4 }}>Gitt av</label>
           <input id={`med-by-${patientId}`} type="text" value={form.givenBy} placeholder="Navn"
             onChange={(e) => onChange({ ...form, givenBy: e.target.value })}
-            style={{ width: '100%', height: 36, padding: '0 var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-xs)' }} />
+            className="field" style={{ minHeight: 44, fontSize: 'var(--text-sm)' }} />
         </div>
       </div>
 
-      <button onClick={onSubmit} style={{
-        width: '100%', minHeight: 36, borderRadius: 'var(--radius-sm)',
-        border: 'none', background: 'var(--color-brand)', color: 'white',
-        fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
-      }}>
+      <Button variant="secondary" block onClick={onSubmit}>
         Registrer medikament
-      </button>
+      </Button>
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { Button } from '../../components/ui';
+
 interface PatientActionButtonsProps {
   showVitals: boolean;
   showMeds: boolean;
@@ -10,6 +12,10 @@ interface PatientActionButtonsProps {
   onOpenAmk: () => void;
 }
 
+/**
+ * The five card actions. "Ring 113" is the only critical one and reads as
+ * such; the four openers are neutral toggles that show their open state.
+ */
 export function PatientActionButtons({
   showVitals,
   showMeds,
@@ -21,55 +27,27 @@ export function PatientActionButtons({
   onToggleHistory,
   onOpenAmk,
 }: PatientActionButtonsProps) {
-  const quickActionStyle = (active = false) => ({
-    minHeight: 44,
-    padding: '0 var(--space-3)',
-    borderRadius: 'var(--radius-full)',
-    border: `1px solid ${active ? 'var(--color-brand)' : 'var(--color-border)'}`,
-    background: active ? 'var(--color-brand-dim)' : 'transparent',
-    fontSize: 'var(--text-sm)',
-    fontWeight: 600,
-    color: active ? 'var(--color-brand)' : 'var(--color-text)',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap' as const,
-  });
   return (
     <div className="patient-action-grid">
-        <button
-          type="button"
-          onClick={onOpenAmk}
-          data-testid="patient-ring-113"
-          style={{
-            minHeight: 44,
-            padding: '0 var(--space-2)',
-            borderRadius: 'var(--radius-full)',
-            border: '1px solid var(--color-status-critical)',
-            background: 'var(--color-status-critical)',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 700,
-            color: 'white',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Ring 113
-        </button>
+      <Button variant="danger" size="sm" pill icon="phone" onClick={onOpenAmk} data-testid="patient-ring-113">
+        Ring 113
+      </Button>
 
-        <button type="button" onClick={onToggleVitals} aria-expanded={showVitals} style={quickActionStyle(showVitals)}>
-          {showVitals ? 'Lukk vitale' : 'Vitale'}
-        </button>
+      <Button variant="secondary" size="sm" pill selected={showVitals} aria-expanded={showVitals} onClick={onToggleVitals}>
+        {showVitals ? 'Lukk vitale' : 'Vitale'}
+      </Button>
 
-        <button type="button" onClick={onToggleMedication} aria-expanded={showMeds} style={quickActionStyle(showMeds)}>
-          {showMeds ? 'Lukk medisin' : 'Medisin'}
-        </button>
+      <Button variant="secondary" size="sm" pill selected={showMeds} aria-expanded={showMeds} onClick={onToggleMedication}>
+        {showMeds ? 'Lukk medisin' : 'Medisin'}
+      </Button>
 
-        <button type="button" onClick={onToggleNote} aria-expanded={showNote} style={quickActionStyle(showNote)}>
-          {showNote ? 'Lukk notat' : 'Notat'}
-        </button>
+      <Button variant="secondary" size="sm" pill selected={showNote} aria-expanded={showNote} onClick={onToggleNote}>
+        {showNote ? 'Lukk notat' : 'Notat'}
+      </Button>
 
-        <button type="button" onClick={onToggleHistory} aria-expanded={showHistory} style={quickActionStyle(showHistory)}>
-          Logg
-        </button>
+      <Button variant="secondary" size="sm" pill selected={showHistory} aria-expanded={showHistory} onClick={onToggleHistory}>
+        Logg
+      </Button>
     </div>
   );
 }

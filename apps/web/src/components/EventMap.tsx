@@ -644,14 +644,14 @@ export function EventMap({
           padding: 'var(--space-2) var(--space-3)',
           borderBottom: '1px solid var(--color-border)',
           background: 'var(--color-surface)',
-          fontFamily: 'var(--font-mono)',
           fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-subtle)',
+          fontWeight: 600,
+          color: 'var(--color-text-muted)',
         }}
       >
         <div>
           Kartmotor: <strong>{requestedProvider === 'maplibre' ? 'MapLibre' : 'Leaflet'}</strong>
-          {layerCount > 0 && <> · Lag: <strong>{layerCount}</strong></>}
+          {layerCount > 0 && <> · Lag: <strong className="data">{layerCount}</strong></>}
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           {presentation3d && <span style={{ color: 'var(--color-brand)' }}>3D-presentasjon aktiv</span>}

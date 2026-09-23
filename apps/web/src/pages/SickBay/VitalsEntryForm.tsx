@@ -1,6 +1,7 @@
 import { calculateNEWS2, news2MonitoringLabel, type News2Input } from '@rkf/shared-types';
 import { ACVPU_OPTIONS, news2Colors } from '../../lib/constants';
 import type { AcvpuLevel } from '../../lib/types';
+import { Button } from '../../components/ui';
 
 export interface VitalsFormShape {
   pulse: string;
@@ -80,7 +81,8 @@ export function VitalsEntryForm({ patientId, form, onChange, onSubmit }: VitalsE
           <div key={f.key}>
             <label
               htmlFor={`v-${patientId}-${f.key}`}
-              style={{ display: 'block', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 2 }}
+              className="section-label"
+              style={{ display: 'block', marginBottom: 4 }}
             >
               {f.label}
             </label>
@@ -88,49 +90,34 @@ export function VitalsEntryForm({ patientId, form, onChange, onSubmit }: VitalsE
               id={`v-${patientId}-${f.key}`}
               type="number"
               inputMode={f.inputMode}
+              className="field field--data"
               value={form[f.key as NumericFieldKey]}
               onChange={(e) => onChange((v) => ({ ...v, [f.key]: e.target.value }))}
               placeholder={f.placeholder}
-              style={{
-                width: '100%', height: 48, textAlign: 'center',
-                borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-lg)', fontWeight: 600,
-              }}
             />
           </div>
         ))}
       </div>
 
       <fieldset style={{ border: 'none', padding: 0, marginBottom: 'var(--space-3)' }}>
-        <legend style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>
+        <legend className="section-label" style={{ marginBottom: 'var(--space-2)' }}>
           Bevissthet (ACVPU)
         </legend>
-        <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 'var(--space-1)' }}>
           {ACVPU_OPTIONS.map((opt) => (
-            <button
+            <Button
               key={opt.value}
-              type="button"
+              variant="secondary"
+              size="sm"
               role="radio"
               aria-checked={form.acvpu === opt.value}
               aria-label={`${opt.short} — ${opt.label}`}
               onClick={() => onChange((v) => ({ ...v, acvpu: v.acvpu === opt.value ? '' : opt.value }))}
-              style={{
-                flex: '1 0 auto',
-                minHeight: 44,
-                padding: '0 var(--space-2)',
-                borderRadius: 'var(--radius-sm)',
-                border: `2px solid ${form.acvpu === opt.value ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                background: form.acvpu === opt.value ? 'var(--color-brand-dim)' : 'transparent',
-                color: 'var(--color-text)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 'var(--text-base)',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
+              className="data"
+              style={{ padding: 0, fontSize: 'var(--text-base)' }}
             >
               {opt.short}
-            </button>
+            </Button>
           ))}
         </div>
       </fieldset>
@@ -146,10 +133,10 @@ export function VitalsEntryForm({ patientId, form, onChange, onSubmit }: VitalsE
             display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-2)',
             marginBottom: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)',
             borderRadius: 'var(--radius-sm)', background: previewColors.bg, color: previewColors.color,
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: 700,
+            fontSize: 'var(--text-sm)', fontWeight: 700,
           }}
         >
-          <span>NEWS2 foreløpig: {preview.total} · {NEWS2_LEVEL_LABELS[preview.alertLevel]}</span>
+          <span>NEWS2 foreløpig: <span className="data">{preview.total}</span> · {NEWS2_LEVEL_LABELS[preview.alertLevel]}</span>
           <span style={{ fontWeight: 500 }}>· {news2MonitoringLabel(preview)}</span>
           {missing.length > 0 && (
             <span style={{ fontWeight: 500, opacity: 0.85 }}>· mangler {missing.join(', ')}</span>
@@ -157,13 +144,9 @@ export function VitalsEntryForm({ patientId, form, onChange, onSubmit }: VitalsE
         </div>
       )}
 
-      <button type="button" onClick={onSubmit} style={{
-        width: '100%', minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-        border: 'none', background: 'var(--color-brand)', color: 'white',
-        fontSize: 'var(--text-base)', fontWeight: 700, cursor: 'pointer',
-      }}>
+      <Button variant="primary" size="lg" block icon="activity" onClick={onSubmit}>
         Lagre vitale tegn
-      </button>
+      </Button>
     </div>
   );
 }

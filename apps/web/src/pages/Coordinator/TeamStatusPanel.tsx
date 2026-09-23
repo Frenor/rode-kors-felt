@@ -9,6 +9,7 @@
 
 import { TEAM_OPERATIONAL_STATUS_LABELS, TEAM_OPERATIONAL_STATUS_STYLE } from '../../lib/constants';
 import type { Team, TeamOperationalStatus } from '../../lib/types';
+import { Pill } from '../../components/ui';
 
 interface TeamStatusPanelProps {
   teams: Team[];
@@ -62,25 +63,18 @@ export function TeamStatusPanel({ teams, memberCounts = {} }: TeamStatusPanelPro
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
-        <h2
-          id="team-status-panel-title"
-          style={{ margin: 0, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', letterSpacing: 'var(--tracking-mono)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}
-        >
-          Lag ({teams.length})
+        <h2 id="team-status-panel-title" className="section-label" style={{ margin: 0 }}>
+          Lag (<span className="data">{teams.length}</span>)
         </h2>
         {needsAssistanceCount > 0 && (
-          <span
+          <Pill
             role="status"
             aria-live="assertive"
             data-testid="team-status-needs-assistance-count"
-            style={{
-              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
-              padding: '2px 10px', borderRadius: 'var(--radius-full)',
-              background: 'var(--color-status-critical)', color: 'white',
-            }}
+            tone={{ color: 'white', bg: 'var(--color-status-critical)' }}
           >
             {needsAssistanceCount} trenger bistand
-          </span>
+          </Pill>
         )}
       </div>
 
@@ -112,25 +106,19 @@ export function TeamStatusPanel({ teams, memberCounts = {} }: TeamStatusPanelPro
                 <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', minWidth: 96 }}>
                   {team.name}
                 </span>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
-                    padding: '2px 10px', borderRadius: 'var(--radius-full)',
-                    background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-                  }}
-                >
+                <Pill dot tone={{ color: style.color, bg: style.bg, border: style.border }}>
                   {TEAM_OPERATIONAL_STATUS_LABELS[status] ?? status}
-                </span>
+                </Pill>
                 {isCritical && team.statusNote && (
                   <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-status-critical)', fontWeight: 600 }}>
                     {team.statusNote}
                   </span>
                 )}
                 <span style={{ flex: 1 }} />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', display: 'flex', gap: 'var(--space-2)' }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', display: 'flex', gap: 'var(--space-2)' }}>
                   {team.transport && <span>{TRANSPORT_LABELS[team.transport] ?? team.transport}</span>}
-                  {members ? <span>{members} enhet{members === 1 ? '' : 'er'}</span> : null}
-                  {updated && <span>kl. {updated}</span>}
+                  {members ? <span><span className="data">{members}</span> enhet{members === 1 ? '' : 'er'}</span> : null}
+                  {updated && <span>kl. <span className="data">{updated}</span></span>}
                 </span>
               </li>
             );

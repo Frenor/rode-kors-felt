@@ -1,5 +1,6 @@
 import { FocusTrap } from '../../components/FocusTrap';
 import { calculateAgeYears, GENDER_OPTIONS } from '../../lib/constants';
+import { Button } from '../../components/ui';
 
 export interface IntakeFormShape {
   fullName: string;
@@ -160,21 +161,12 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
             </p>
           )}
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button type="button" onClick={onClose} style={{
-              flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text)',
-              fontSize: 'var(--text-base)', cursor: 'pointer',
-            }}>
+            <Button variant="ghost" size="lg" onClick={onClose} style={{ flex: 1 }}>
               Avbryt
-            </button>
-            <button type="button" onClick={onSubmit} disabled={!valid} style={{
-              flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-              border: 'none', background: valid ? 'var(--color-brand)' : 'var(--color-border)',
-              color: valid ? 'white' : 'var(--color-text-subtle)', fontWeight: 700,
-              fontSize: 'var(--text-base)', cursor: valid ? 'pointer' : 'not-allowed',
-            }}>
+            </Button>
+            <Button variant="primary" size="lg" onClick={onSubmit} disabled={!valid} style={{ flex: 1 }}>
               Registrer
-            </button>
+            </Button>
           </div>
         </div>
       </FocusTrap>

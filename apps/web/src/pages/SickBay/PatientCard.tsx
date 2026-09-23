@@ -27,6 +27,7 @@ import { VitalsEntryForm, type VitalsFormShape } from './VitalsEntryForm';
 import { MedicationPanel, type MedFormShape } from './MedicationPanel';
 import { NotePanel, type NoteFormShape } from './NotePanel';
 import { PatientHistoryTimeline } from './PatientHistoryTimeline';
+import { Button, Icon, Pill, type IconName } from '../../components/ui';
 
 const EMPTY_VITALS_FORM: VitalsFormShape = {
   pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '',
@@ -110,21 +111,21 @@ export function PatientCard({
   const currentStatus = patient.status as keyof typeof STATUS_TRANSITIONS;
   const nextStatuses = STATUS_TRANSITIONS[currentStatus] ?? [];
   // Copy follows the locked v3.1 sick bay flow spec.
-  const actionCopy: Record<string, { label: string; icon: string }> = {
-    'incoming:in_treatment': { label: 'Start behandling', icon: '▶' },
-    'incoming:observation': { label: 'Legg til observasjon', icon: '⊕' },
-    'in_treatment:observation': { label: 'Flytt til observasjon', icon: '→' },
-    'observation:in_treatment': { label: 'Start behandling', icon: '▶' },
-    'in_treatment:discharged': { label: 'Skriv ut', icon: '✓' },
-    'observation:discharged': { label: 'Skriv ut', icon: '✓' },
-    'in_treatment:transferred': { label: 'Overfør (ambulanse/sykehus)', icon: '⇢' },
-    'observation:transferred': { label: 'Overfør (ambulanse/sykehus)', icon: '⇢' },
-    'discharged:observation': { label: 'Gjenåpne til observasjon', icon: '↺' },
-    'transferred:observation': { label: 'Gjenåpne til observasjon', icon: '↺' },
-    'discharged:in_treatment': { label: 'Gjenåpne behandling', icon: '↺' },
-    'transferred:in_treatment': { label: 'Gjenåpne behandling', icon: '↺' },
-    'in_treatment:incoming': { label: 'Tilbake til innkommende', icon: '↩' },
-    'observation:incoming': { label: 'Tilbake til innkommende', icon: '↩' },
+  const actionCopy: Record<string, { label: string; icon: IconName }> = {
+    'incoming:in_treatment': { label: 'Start behandling', icon: 'play' },
+    'incoming:observation': { label: 'Legg til observasjon', icon: 'clock' },
+    'in_treatment:observation': { label: 'Flytt til observasjon', icon: 'clock' },
+    'observation:in_treatment': { label: 'Start behandling', icon: 'play' },
+    'in_treatment:discharged': { label: 'Skriv ut', icon: 'check' },
+    'observation:discharged': { label: 'Skriv ut', icon: 'check' },
+    'in_treatment:transferred': { label: 'Overfør (ambulanse/sykehus)', icon: 'navigate' },
+    'observation:transferred': { label: 'Overfør (ambulanse/sykehus)', icon: 'navigate' },
+    'discharged:observation': { label: 'Gjenåpne til observasjon', icon: 'refresh' },
+    'transferred:observation': { label: 'Gjenåpne til observasjon', icon: 'refresh' },
+    'discharged:in_treatment': { label: 'Gjenåpne behandling', icon: 'refresh' },
+    'transferred:in_treatment': { label: 'Gjenåpne behandling', icon: 'refresh' },
+    'in_treatment:incoming': { label: 'Tilbake til innkommende', icon: 'chevronRight' },
+    'observation:incoming': { label: 'Tilbake til innkommende', icon: 'chevronRight' },
   };
   // The one transition that is obviously "next" for this status gets a real
   // button; the rest stay in the dropdown behind the status badge.
@@ -291,12 +292,12 @@ export function PatientCard({
     <article
       aria-label={`Pasient ${patientName}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
       data-observation={observationDue.kind}
+      className={`card card--stripe${observationUrgent ? ' card--critical' : ''}`}
       style={{
-        padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
-        border: `${observationUrgent ? 2 : 1}px solid ${observationUrgent ? 'var(--color-status-critical)' : 'var(--color-border)'}`,
-        background: 'var(--color-surface)',
-        display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', height: '100%',
-      }}
+        '--stripe': fieldTriage?.text ?? 'var(--color-border-strong)',
+        padding: 'var(--space-3)',
+        display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', height: '100%',
+      } as React.CSSProperties}
     >
       {/* Name column gets first claim on width; the badge group wraps under it
           in a narrow grid column instead of clipping the name mid-word. */}
@@ -304,16 +305,9 @@ export function PatientCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: '1 1 160px' }}>
           <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, minWidth: 0 }}>
             {fieldTriage && (
-              <span
-                aria-label={`Felt-triage ${fieldTriage.label}`}
-                style={{
-                  flexShrink: 0, padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                  background: fieldTriage.bg, color: fieldTriage.text,
-                  fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                }}
-              >
+              <Pill aria-label={`Felt-triage ${fieldTriage.label}`} tone={{ color: fieldTriage.text, bg: fieldTriage.bg }}>
                 {fieldTriage.label}
-              </span>
+              </Pill>
             )}
             <span
               style={{
@@ -332,7 +326,7 @@ export function PatientCard({
           >
             {complaintText}
           </span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-muted)' }}>
             {`${placementLabel || 'Plassering ikke satt'}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
           </span>
         </div>
@@ -362,18 +356,15 @@ export function PatientCard({
               aria-expanded={showStatusMenu}
               aria-haspopup="listbox"
               onClick={() => setShowStatusMenu((prev) => !prev)}
+              className="pill"
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-                padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                background: sc.bg, color: sc.color,
-                border: 'none', cursor: nextStatuses.length > 0 ? 'pointer' : 'default',
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-              }}
+                '--pill-bg': sc.bg, '--pill-fg': sc.color,
+                minHeight: 32, padding: '3px 8px 3px 10px',
+                cursor: nextStatuses.length > 0 ? 'pointer' : 'default',
+              } as React.CSSProperties}
             >
               {statusLabels[patient.status] || patient.status}
-              {nextStatuses.length > 0 && (
-                <span aria-hidden="true" style={{ fontSize: '0.6em', opacity: 0.7 }}>▾</span>
-              )}
+              {nextStatuses.length > 0 && <Icon name="chevronDown" size="sm" />}
             </button>
 
             {nextStatuses.length > 0 && (
@@ -402,12 +393,12 @@ export function PatientCard({
                       aria-label={copy?.label ?? statusLabels[nextStatus]}
                       onClick={() => { onStatusChange(nextStatus); setShowStatusMenu(false); }}
                       style={{
-                        display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                        display: 'flex', width: '100%', alignItems: 'center', gap: 10,
                         padding: 'var(--space-2) var(--space-3)',
                         minHeight: 'var(--touch-min)',
                         border: 'none', borderBottom: '1px solid var(--color-border)',
                         background: 'transparent', cursor: 'pointer', textAlign: 'left',
-                        fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
+                        fontSize: 'var(--text-sm)', fontWeight: 600, font: 'inherit',
                         color: nsc.color,
                       }}
                     >
@@ -421,8 +412,8 @@ export function PatientCard({
                           outlineOffset: 2,
                         }}
                       />
-                      <span style={{ fontWeight: 600, fontSize: '0.9em' }}>{copy?.icon}</span>
-                      <span>{copy?.label ?? statusLabels[nextStatus]}</span>
+                      {copy?.icon && <Icon name={copy.icon} />}
+                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{copy?.label ?? statusLabels[nextStatus]}</span>
                     </button>
                   );
                 })}
@@ -444,11 +435,11 @@ export function PatientCard({
             borderRadius: 'var(--radius-sm)',
             background: observationUrgent ? 'var(--color-status-critical-bg)' : 'var(--color-surface-sunken)',
             color: observationUrgent ? 'var(--color-status-critical)' : 'var(--color-text-muted)',
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: observationUrgent ? 700 : 500,
+            fontSize: 'var(--text-sm)', fontWeight: observationUrgent ? 700 : 600,
           }}
         >
-          <span aria-hidden="true">{observationDue.kind === 'overdue' ? '⏰' : observationDue.kind === 'continuous' ? '‼' : '⏱'}</span>
-          {observationText}
+          <Icon name={observationDue.kind === 'overdue' ? 'alert' : observationDue.kind === 'continuous' ? 'activity' : 'clock'} />
+          <span>{observationText}</span>
         </div>
       )}
 
@@ -457,19 +448,16 @@ export function PatientCard({
       )}
 
       {primaryNextStatus && (
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="lg"
+          block
+          icon="play"
           data-testid={`primary-action-${patient.id}`}
           onClick={() => onStatusChange(primaryNextStatus)}
-          style={{
-            minHeight: 'var(--touch-min)', width: '100%',
-            borderRadius: 'var(--radius-md)', border: 'none',
-            background: 'var(--color-brand)', color: 'white',
-            fontSize: 'var(--text-base)', fontWeight: 700, cursor: 'pointer',
-          }}
         >
-          ▶ {actionCopy[`${currentStatus}:${primaryNextStatus}`]?.label ?? statusLabels[primaryNextStatus]}
-        </button>
+          {actionCopy[`${currentStatus}:${primaryNextStatus}`]?.label ?? statusLabels[primaryNextStatus]}
+        </Button>
       )}
 
       <PatientActionButtons
@@ -484,72 +472,48 @@ export function PatientCard({
         onOpenAmk={onOpenAmk}
       />
 
-      {/* Compact editor bar — 3 pills in one row */}
+      {/* Secondary edits — three neutral toggles in one row */}
       <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          pill
+          icon={showPlacementEditor ? 'x' : 'edit'}
+          selected={showPlacementEditor}
           aria-label={showPlacementEditor ? 'Lukk plassering' : 'Rediger plassering'}
           aria-expanded={showPlacementEditor}
           onClick={handleTogglePlacementEditor}
-          style={{
-            minHeight: 44,
-            padding: '0 var(--space-3)',
-            borderRadius: 'var(--radius-full)',
-            border: `1px solid ${showPlacementEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
-            background: showPlacementEditor ? 'var(--color-brand-dim)' : 'transparent',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 600,
-            color: showPlacementEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
         >
-          {showPlacementEditor ? '✕ Plassering' : '✎ Plassering'}
-        </button>
+          Plassering
+        </Button>
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          pill
+          icon={showDemographicsEditor ? 'x' : 'edit'}
+          selected={showDemographicsEditor}
           aria-label={showDemographicsEditor ? 'Lukk pasientinfo' : 'Rediger pasientinfo'}
           aria-expanded={showDemographicsEditor}
           data-testid={`demographics-editor-toggle-${patient.id}`}
           onClick={handleToggleDemographicsEditor}
-          style={{
-            minHeight: 44,
-            padding: '0 var(--space-3)',
-            borderRadius: 'var(--radius-full)',
-            border: `1px solid ${showDemographicsEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
-            background: showDemographicsEditor ? 'var(--color-brand-dim)' : 'transparent',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 600,
-            color: showDemographicsEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
         >
-          {showDemographicsEditor ? '✕ Pasientinfo' : '✎ Pasientinfo'}
-        </button>
+          Pasientinfo
+        </Button>
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          pill
+          icon={showComplaintEditor ? 'x' : 'edit'}
+          selected={showComplaintEditor}
           aria-label={showComplaintEditor ? 'Lukk problemstilling' : 'Rediger problemstilling'}
           aria-expanded={showComplaintEditor}
           data-testid={`complaint-editor-toggle-${patient.id}`}
           onClick={handleToggleComplaintEditor}
-          style={{
-            minHeight: 44,
-            padding: '0 var(--space-3)',
-            borderRadius: 'var(--radius-full)',
-            border: `1px solid ${showComplaintEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
-            background: showComplaintEditor ? 'var(--color-brand-dim)' : 'transparent',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 600,
-            color: showComplaintEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
         >
-          {showComplaintEditor ? '✕ Beskrivelse' : '✎ Beskrivelse'}
-        </button>
+          Beskrivelse
+        </Button>
       </div>
 
       {showPlacementEditor && (
@@ -566,19 +530,12 @@ export function PatientCard({
               padding: 'var(--space-3)',
             }}
           >
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               Type
               <select
                 value={placementType}
                 onChange={(e) => setPlacementType(e.target.value as 'chair' | 'bed' | '')}
-                style={{
-                  height: 'var(--touch-min)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-input-border)',
-                  background: 'var(--color-input-bg)',
-                  color: 'var(--color-text)',
-                  padding: '0 var(--space-2)',
-                }}
+className="field"
               >
                 <option value="">Ikke satt</option>
                 <option value="chair">Stol</option>
@@ -586,7 +543,7 @@ export function PatientCard({
               </select>
             </label>
 
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               Nummer
               <input
                 type="text"
@@ -595,34 +552,13 @@ export function PatientCard({
                 value={placementNumber}
                 onChange={(e) => setPlacementNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
                 placeholder="F.eks. 12"
-                style={{
-                  height: 'var(--touch-min)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-input-border)',
-                  background: 'var(--color-input-bg)',
-                  color: 'var(--color-text)',
-                  padding: '0 var(--space-2)',
-                }}
+className="field"
               />
             </label>
 
-            <button
-              type="button"
-              className="touch-target"
-              onClick={handleSubmitPlacement}
-              style={{
-                minHeight: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: 'none',
-                background: 'var(--color-brand)',
-                color: '#fff',
-                fontWeight: 700,
-                padding: '0 var(--space-3)',
-                cursor: 'pointer',
-              }}
-            >
+            <Button variant="secondary" size="lg" onClick={handleSubmitPlacement}>
               Lagre
-            </button>
+            </Button>
           </div>
         )}
 
@@ -639,26 +575,18 @@ export function PatientCard({
             padding: 'var(--space-3)',
           }}
         >
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Fullt navn
             <input
               type="text"
               value={demoForm.fullName}
               onChange={(e) => setDemoForm((f) => ({ ...f, fullName: e.target.value }))}
               placeholder="Fornavn Etternavn"
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-                fontSize: 'var(--text-sm)',
-              }}
+className="field"
             />
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Kjønn
             <select
               value={demoForm.gender}
@@ -667,14 +595,7 @@ export function PatientCard({
                 const gender = val === 'male' || val === 'female' || val === 'other' ? val : '';
                 setDemoForm((f) => ({ ...f, gender }));
               }}
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-              }}
+className="field"
             >
               <option value="">Ikke oppgitt</option>
               {GENDER_OPTIONS.map((opt) => (
@@ -683,21 +604,14 @@ export function PatientCard({
             </select>
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Fødselsdato
             <input
               type="date"
               value={demoForm.birthDate}
               max={new Date().toISOString().slice(0, 10)}
               onChange={(e) => setDemoForm((f) => ({ ...f, birthDate: e.target.value }))}
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-              }}
+className="field"
             />
             {demoForm.birthDate && (() => {
               const age = calculateAgeYears(demoForm.birthDate);
@@ -709,19 +623,12 @@ export function PatientCard({
             })()}
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Aldersgruppe
             <select
               value={demoForm.ageGroup}
               onChange={(e) => setDemoForm((f) => ({ ...f, ageGroup: e.target.value }))}
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-              }}
+className="field"
             >
               <option value="child">Barn</option>
               <option value="adolescent">Ungdom</option>
@@ -730,24 +637,9 @@ export function PatientCard({
             </select>
           </label>
 
-          <button
-            type="button"
-            className="touch-target"
-            onClick={handleSubmitDemographics}
-            style={{
-              minHeight: 'var(--touch-min)',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
-              background: 'var(--color-brand)',
-              color: '#fff',
-              fontWeight: 700,
-              padding: '0 var(--space-3)',
-              cursor: 'pointer',
-              alignSelf: 'flex-start',
-            }}
-          >
+          <Button variant="secondary" size="lg" onClick={handleSubmitDemographics} style={{ alignSelf: 'flex-start' }}>
             Lagre pasientinfo
-          </button>
+          </Button>
         </div>
       )}
 
@@ -764,43 +656,20 @@ export function PatientCard({
             padding: 'var(--space-3)',
           }}
         >
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Problemstilling / kort beskrivelse
             <input
               type="text"
               value={complaintDraft}
               onChange={(e) => setComplaintDraft(e.target.value)}
               placeholder="F.eks. Smerter i brystet"
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-                fontSize: 'var(--text-sm)',
-              }}
+className="field"
             />
           </label>
 
-          <button
-            type="button"
-            className="touch-target"
-            onClick={handleSubmitComplaint}
-            style={{
-              minHeight: 'var(--touch-min)',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
-              background: 'var(--color-brand)',
-              color: '#fff',
-              fontWeight: 700,
-              padding: '0 var(--space-3)',
-              cursor: 'pointer',
-              alignSelf: 'flex-start',
-            }}
-          >
+          <Button variant="secondary" size="lg" onClick={handleSubmitComplaint} style={{ alignSelf: 'flex-start' }}>
             Lagre problemstilling
-          </button>
+          </Button>
         </div>
       )}
 

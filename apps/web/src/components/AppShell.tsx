@@ -9,6 +9,7 @@ import { DemoWalkthrough } from './DemoWalkthrough';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { offlineFirstAiderQueueDb } from '../lib/offline-firstaid-queue';
 import { applyTheme, nextTheme, persistTheme, readStoredTheme, THEME_LABELS, type ThemeChoice } from '../lib/theme';
+import { Button } from './ui';
 
 const IS_DEMO =
   import.meta.env.VITE_DEMO_MODE === 'true' ||
@@ -141,8 +142,8 @@ export function AppShell({ children }: AppShellProps) {
               RKF
             </div>
             <div style={{
-              fontFamily: 'var(--font-mono)',
               fontSize: 'var(--text-xs)',
+              fontWeight: 600,
               color: 'var(--color-text-muted)',
             }}>
               {roleLabels[role || ''] || role}
@@ -153,7 +154,6 @@ export function AppShell({ children }: AppShellProps) {
         {/* Event name */}
         {eventName && (
           <span className="app-header-event" style={{
-            fontFamily: 'var(--font-mono)',
             fontSize: 'var(--text-xs)',
             color: 'var(--color-text-subtle)',
             marginLeft: 'var(--space-2)',
@@ -195,8 +195,8 @@ export function AppShell({ children }: AppShellProps) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--space-2)',
-                fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--text-xs)',
+                fontWeight: 600,
                 color,
                 flexShrink: 0,
               }}
@@ -213,48 +213,23 @@ export function AppShell({ children }: AppShellProps) {
         })()}
 
         {/* Theme toggle — cycles Auto → Mørk → Lys, remembered across restarts */}
-        <button
-          type="button"
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={theme === 'dark' ? 'moon' : theme === 'light' ? 'sun' : 'autoTheme'}
           onClick={() => setTheme((current) => nextTheme(current))}
           aria-label={`Tema: ${THEME_LABELS[theme]} — trykk for å bytte`}
           title={`Tema: ${THEME_LABELS[theme]}`}
           data-testid="theme-toggle"
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 600,
-            minHeight: 44,
-            padding: '0 var(--space-3)',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-border)',
-            background: theme === 'dark' ? 'var(--color-surface-sunken)' : 'var(--color-surface-raised)',
-            color: 'var(--color-text)',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
+          style={{ flexShrink: 0 }}
         >
           {THEME_LABELS[theme]}
-        </button>
+        </Button>
 
         {/* Logout */}
-        <button
-          type="button"
-          onClick={handleLogout}
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-sm)',
-            minHeight: 44,
-            padding: '0 var(--space-3)',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-border)',
-            background: 'transparent',
-            color: 'var(--color-text-muted)',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
+        <Button size="sm" variant="ghost" icon="logout" onClick={handleLogout} style={{ flexShrink: 0 }}>
           Logg ut
-        </button>
+        </Button>
       </header>
 
       {/* Network offline banner */}
@@ -267,8 +242,8 @@ export function AppShell({ children }: AppShellProps) {
             borderBottom: '1px solid var(--color-status-warning-border)',
             padding: 'var(--space-2) var(--space-4)',
             textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
             fontSize: 'var(--text-sm)',
+            fontWeight: 600,
             color: 'var(--color-status-warning)',
           }}
         >
@@ -286,8 +261,8 @@ export function AppShell({ children }: AppShellProps) {
             borderBottom: '1px solid var(--color-status-warning-border)',
             padding: 'var(--space-2) var(--space-4)',
             textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
             fontSize: 'var(--text-sm)',
+            fontWeight: 600,
             color: 'var(--color-status-warning)',
             display: 'flex',
             alignItems: 'center',
@@ -319,8 +294,8 @@ export function AppShell({ children }: AppShellProps) {
             borderBottom: '1px solid var(--color-border)',
             padding: 'var(--space-2) var(--space-4)',
             textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
             fontSize: 'var(--text-sm)',
+            fontWeight: 600,
             color: firstAidSyncLabel === 'Ikke synkronisert'
               ? 'var(--color-status-critical)'
               : firstAidSyncLabel === 'Synkroniserer' || firstAidSyncLabel === 'Laget lokalt'

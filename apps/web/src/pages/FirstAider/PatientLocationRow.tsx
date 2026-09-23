@@ -7,6 +7,7 @@
  * unassigned-patient card inside FirstAiderDashboard.
  */
 import { describeOffset, type LatLng } from '../../lib/geo';
+import { Button, Icon } from '../../components/ui';
 
 export type GeoPosition = LatLng;
 
@@ -37,10 +38,11 @@ export function PatientLocationRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--space-2)',
+        gap: 'var(--space-3)',
         flexWrap: 'wrap',
       }}
     >
+      <Icon name="pin" style={{ color: 'var(--color-text-muted)' }} />
       <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>
           {where}
@@ -48,31 +50,17 @@ export function PatientLocationRow({
         {offset && (
           <span
             data-testid="patient-location-offset"
-            style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--color-text-muted)' }}
+            className="data"
+            style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--color-text-muted)' }}
           >
             {offset} fra deg
           </span>
         )}
       </span>
       {hasCoords && (
-        <button
-          type="button"
-          onClick={() => onNavigate(lat!, lon!)}
-          style={{
-            minHeight: 48,
-            padding: '0 var(--space-4)',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-brand)',
-            background: 'transparent',
-            color: 'var(--color-brand)',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 700,
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
+        <Button variant="outline" size="md" icon="navigate" onClick={() => onNavigate(lat!, lon!)} style={{ flexShrink: 0 }}>
           Naviger hit
-        </button>
+        </Button>
       )}
     </div>
   );

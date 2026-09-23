@@ -7,6 +7,7 @@ import {
 } from '../../lib/constants';
 import { formatRelativeAge } from '../../lib/observation';
 import type { TeamPatientEngagement, TeamPatientStatus } from '../../lib/types';
+import { Button, Icon, Pill } from '../../components/ui';
 
 export type { FieldTriageStatus } from '../../lib/constants';
 
@@ -49,75 +50,21 @@ export function fieldPatientName(p: Pick<FieldPatient, 'label' | 'presentingComp
   return p.label?.trim() || p.presentingComplaint?.trim() || p.description?.trim() || 'Ukjent pasient';
 }
 
-const inputStyle = {
-  width: '100%',
-  minHeight: 44,
-  padding: '0 var(--space-2)',
-  borderRadius: 'var(--radius-sm)',
-  border: '1px solid var(--color-input-border)',
-  background: 'var(--color-input-bg)',
-  color: 'var(--color-text)',
-  fontSize: 'var(--text-sm)',
-  boxSizing: 'border-box' as const,
-};
+/** Dense coordinator inputs: 44 px, 14 px text. */
+const inputStyle = { minHeight: 44, fontSize: 'var(--text-sm)' };
 
-const fieldLabelStyle = {
-  display: 'block',
-  fontSize: 'var(--text-xs)',
-  color: 'var(--color-text-muted)',
-  marginBottom: 4,
-  fontWeight: 600,
-};
-
-const secondaryButtonStyle = {
-  minHeight: 44,
-  padding: '0 var(--space-3)',
-  borderRadius: 'var(--radius-sm)',
-  border: '1px solid var(--color-border)',
-  background: 'transparent',
-  color: 'var(--color-text)',
-  fontSize: 'var(--text-sm)',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
+const fieldLabelStyle = { display: 'block', marginBottom: 4 };
 
 function TeamEngagementBadge({ status }: { status: string }) {
   const cfg = TEAM_PATIENT_STATUS_STYLE[status as TeamPatientStatus];
   if (!cfg) return null;
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '2px 8px',
-      borderRadius: 'var(--radius-full)',
-      background: cfg.bg,
-      color: cfg.color,
-      border: `1px solid ${cfg.color}`,
-      fontSize: 'var(--text-xs)',
-      fontWeight: 700,
-    }}>
-      {cfg.label}
-    </span>
-  );
+  return <Pill dot tone={{ color: cfg.color, bg: cfg.bg, border: cfg.color }}>{cfg.label}</Pill>;
 }
 
 function TriageBadge({ status }: { status: FieldTriageStatus | null }) {
   if (!status) return null;
   const c = FIELD_TRIAGE_STYLE[status];
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '2px 10px',
-      borderRadius: 'var(--radius-full)',
-      background: c.bg,
-      color: c.text,
-      fontSize: 'var(--text-xs)',
-      fontWeight: 700,
-      fontFamily: 'var(--font-mono)',
-      flexShrink: 0,
-    }}>
-      {c.label}
-    </span>
-  );
+  return <Pill tone={{ color: c.text, bg: c.bg }}>{c.label}</Pill>;
 }
 
 function PatientRow({
@@ -196,13 +143,14 @@ function PatientRow({
     <div
       data-testid={`coordinator-patient-${patient.id}`}
       data-unassigned={isUnassigned ? 'true' : undefined}
+      className="card card--stripe"
       style={{
-        border: `1px solid ${isUnassigned ? 'var(--color-status-warning-border)' : 'var(--color-border)'}`,
-        borderRadius: 'var(--radius-md)',
-        background: isClosed ? 'var(--color-surface-sunken)' : 'var(--color-surface)',
+        '--stripe': patient.triageStatus ? FIELD_TRIAGE_STYLE[patient.triageStatus].text : 'var(--color-border-strong)',
+        borderColor: isUnassigned ? 'var(--color-status-warning-border)' : undefined,
+        background: isClosed ? 'var(--color-surface-sunken)' : undefined,
         overflow: 'hidden',
         opacity: isClosed ? 0.7 : 1,
-      }}
+      } as React.CSSProperties}
     >
       {/* Row header */}
       <button
@@ -212,7 +160,7 @@ function PatientRow({
         style={{
           width: '100%', minHeight: 48, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap',
           padding: 'var(--space-2) var(--space-3)', background: 'none', border: 'none',
-          cursor: 'pointer', textAlign: 'left', color: 'var(--color-text)',
+          cursor: 'pointer', textAlign: 'left', color: 'var(--color-text)', font: 'inherit',
         }}
       >
         <TriageBadge status={patient.triageStatus} />
@@ -220,17 +168,17 @@ function PatientRow({
           {fieldPatientName(patient)}
         </span>
         {isClosed && (
-          <span style={{ fontSize: 'var(--text-xs)', padding: '2px 8px', borderRadius: 'var(--radius-full)', background: 'var(--color-surface-sunken)', color: 'var(--color-text-subtle)', border: '1px solid var(--color-border)' }}>
+          <Pill tone={{ color: 'var(--color-text-subtle)', bg: 'var(--color-surface-sunken)', border: 'var(--color-border)' }}>
             Lukket
-          </span>
+          </Pill>
         )}
         {isUnassigned && (
-          <span
+          <Pill
             data-testid={`unassigned-badge-${patient.id}`}
-            style={{ fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: 'var(--color-status-warning-bg)', color: 'var(--color-status-warning)', border: '1px solid var(--color-status-warning-border)' }}
+            tone={{ color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)', border: 'var(--color-status-warning-border)' }}
           >
             Ikke tildelt
-          </span>
+          </Pill>
         )}
         {assignedTeam && (
           <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-muted)' }}>
@@ -243,11 +191,11 @@ function PatientRow({
           </span>
         )}
         {age && !isClosed && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}>
+          <span className="data" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}>
             {age}
           </span>
         )}
-        <span aria-hidden="true" style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)' }}>{expanded ? '▲' : '▼'}</span>
+        <Icon name={expanded ? 'chevronUp' : 'chevronDown'} style={{ color: 'var(--color-text-muted)' }} />
       </button>
 
       {expanded && !editing && (
@@ -262,7 +210,7 @@ function PatientRow({
             </div>
           )}
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-            Oppdatert {new Date(patient.updatedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+            Oppdatert <span className="data">{new Date(patient.updatedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
 
           {!isClosed && (
@@ -273,6 +221,7 @@ function PatientRow({
               <select
                 id={`assign-${patient.id}`}
                 data-testid={`assign-select-${patient.id}`}
+                className="field"
                 value={patient.assignedTeamId ?? ''}
                 disabled={assigning}
                 onChange={(e) => void handleAssign(e.target.value)}
@@ -291,7 +240,7 @@ function PatientRow({
 
           {engagements.length > 0 && (
             <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-2)' }}>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div className="section-label" style={{ marginBottom: 'var(--space-1)' }}>
                 Lag responderer
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
@@ -307,30 +256,22 @@ function PatientRow({
 
           <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
             {!isClosed && (
-              <button
-                type="button"
-                onClick={() => { setDraft({ ...patient }); setEditing(true); }}
-                style={{ ...secondaryButtonStyle, border: '1px solid var(--color-brand)', color: 'var(--color-brand)' }}
-              >
+              <Button variant="secondary" size="sm" icon="edit" onClick={() => { setDraft({ ...patient }); setEditing(true); }}>
                 Rediger detaljer
-              </button>
+              </Button>
             )}
             {!isClosed && onClose && (
               <div style={{ position: 'relative' }}>
-                <button
-                  type="button"
+                <Button
+                  variant="danger-soft"
+                  size="sm"
+                  iconEnd="chevronDown"
                   onClick={() => setShowCloseMenu((v) => !v)}
                   disabled={closing}
                   aria-expanded={showCloseMenu}
-                  style={{
-                    ...secondaryButtonStyle,
-                    border: '1px solid var(--color-status-critical)',
-                    color: 'var(--color-status-critical)',
-                    cursor: closing ? 'wait' : 'pointer',
-                  }}
                 >
-                  {closing ? 'Lukker...' : 'Lukk pasient ▾'}
-                </button>
+                  {closing ? 'Lukker...' : 'Lukk pasient'}
+                </Button>
                 {showCloseMenu && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, zIndex: 20, marginTop: 2,
@@ -338,20 +279,12 @@ function PatientRow({
                     borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-md)',
                     minWidth: 180,
                   }}>
-                    <button
-                      type="button"
-                      onClick={() => handleClose('false_alarm')}
-                      style={{ display: 'block', width: '100%', minHeight: 44, textAlign: 'left', padding: '0 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text)' }}
-                    >
+                    <Button variant="ghost" size="sm" block onClick={() => handleClose('false_alarm')} style={{ justifyContent: 'flex-start', borderRadius: 0 }}>
                       Falsk alarm
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleClose('disappeared')}
-                      style={{ display: 'block', width: '100%', minHeight: 44, textAlign: 'left', padding: '0 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text)' }}
-                    >
+                    </Button>
+                    <Button variant="ghost" size="sm" block onClick={() => handleClose('disappeared')} style={{ justifyContent: 'flex-start', borderRadius: 0 }}>
                       Forsvunnet
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -367,22 +300,22 @@ function PatientRow({
         <div style={{ padding: 'var(--space-3)', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
             <div>
-              <label htmlFor={`edit-label-${patient.id}`} style={fieldLabelStyle}>Navn / ID</label>
+              <label htmlFor={`edit-label-${patient.id}`} className="section-label" style={fieldLabelStyle}>Navn / ID</label>
               <input
                 id={`edit-label-${patient.id}`}
                 type="text"
                 value={draft.label ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
-                style={inputStyle}
+                className="field" style={inputStyle}
               />
             </div>
             <div>
-              <label htmlFor={`edit-triage-${patient.id}`} style={fieldLabelStyle}>Triage</label>
+              <label htmlFor={`edit-triage-${patient.id}`} className="section-label" style={fieldLabelStyle}>Triage</label>
               <select
                 id={`edit-triage-${patient.id}`}
                 value={draft.triageStatus ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, triageStatus: (e.target.value || null) as FieldTriageStatus | null }))}
-                style={inputStyle}
+                className="field" style={inputStyle}
               >
                 <option value="">— ingen —</option>
                 {FIELD_TRIAGE_ORDER.map((t) => <option key={t} value={t}>{FIELD_TRIAGE_STYLE[t].label}</option>)}
@@ -391,70 +324,66 @@ function PatientRow({
           </div>
 
           <div>
-            <label htmlFor={`edit-description-${patient.id}`} style={fieldLabelStyle}>Notater / beskrivelse</label>
+            <label htmlFor={`edit-description-${patient.id}`} className="section-label" style={fieldLabelStyle}>Notater / beskrivelse</label>
             <textarea
               id={`edit-description-${patient.id}`}
               value={draft.description ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value || null }))}
               rows={2}
-              style={{ ...inputStyle, padding: 'var(--space-2)', resize: 'vertical' }}
+              className="field" style={{ ...inputStyle, resize: 'vertical' }}
             />
           </div>
 
           <div>
-            <label htmlFor={`edit-position-${patient.id}`} style={fieldLabelStyle}>Posisjonstekst</label>
+            <label htmlFor={`edit-position-${patient.id}`} className="section-label" style={fieldLabelStyle}>Posisjonstekst</label>
             <input
               id={`edit-position-${patient.id}`}
               type="text"
               value={draft.positionText ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, positionText: e.target.value || null }))}
               placeholder="f.eks. Ved hovedscenen, sektor B"
-              style={inputStyle}
+              className="field" style={inputStyle}
             />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
             <div>
-              <label htmlFor={`edit-lat-${patient.id}`} style={fieldLabelStyle}>Breddegrad (lat)</label>
+              <label htmlFor={`edit-lat-${patient.id}`} className="section-label" style={fieldLabelStyle}>Breddegrad (lat)</label>
               <input
                 id={`edit-lat-${patient.id}`}
                 type="number"
                 step="any"
                 value={draft.lat ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, lat: e.target.value ? parseFloat(e.target.value) : null }))}
-                style={inputStyle}
+                className="field" style={inputStyle}
               />
             </div>
             <div>
-              <label htmlFor={`edit-lon-${patient.id}`} style={fieldLabelStyle}>Lengdegrad (lon)</label>
+              <label htmlFor={`edit-lon-${patient.id}`} className="section-label" style={fieldLabelStyle}>Lengdegrad (lon)</label>
               <input
                 id={`edit-lon-${patient.id}`}
                 type="number"
                 step="any"
                 value={draft.lon ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, lon: e.target.value ? parseFloat(e.target.value) : null }))}
-                style={inputStyle}
+                className="field" style={inputStyle}
               />
             </div>
           </div>
 
           {onPickLocation && (
-            <button
-              type="button"
-              onClick={() => onPickLocation()}
-              style={{ ...secondaryButtonStyle, alignSelf: 'flex-start', border: '1px solid var(--color-status-info)', color: 'var(--color-status-info)' }}
-            >
+            <Button variant="secondary" size="sm" icon="pin" onClick={() => onPickLocation()} style={{ alignSelf: 'flex-start', color: 'var(--color-status-info)' }}>
               Pin på kart
-            </button>
+            </Button>
           )}
 
           <div>
-            <label htmlFor={`edit-team-${patient.id}`} style={fieldLabelStyle}>Tilordnet lag</label>
+            <label htmlFor={`edit-team-${patient.id}`} className="section-label" style={fieldLabelStyle}>Tilordnet lag</label>
             <select
               id={`edit-team-${patient.id}`}
               value={draft.assignedTeamId ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, assignedTeamId: e.target.value || null }))}
-              style={inputStyle}
+              className="field" style={inputStyle}
             >
               <option value="">— ikke tildelt —</option>
               {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -462,21 +391,12 @@ function PatientRow({
           </div>
 
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || !draft.label?.trim()}
-              style={{
-                flex: 1, minHeight: 44, borderRadius: 'var(--radius-sm)', border: 'none',
-                background: 'var(--color-brand)', color: 'white', fontSize: 'var(--text-sm)',
-                fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1,
-              }}
-            >
+            <Button variant="primary" size="sm" onClick={handleSave} disabled={saving || !draft.label?.trim()} style={{ flex: 1 }}>
               {saving ? 'Lagrer...' : 'Lagre'}
-            </button>
-            <button type="button" onClick={() => setEditing(false)} style={secondaryButtonStyle}>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
               Avbryt
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -550,36 +470,25 @@ export function PatientManagementPanel({
       style={{ marginBottom: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', overflow: 'hidden' }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
-        <h2
-          id="patients-panel-title"
-          style={{ margin: 0, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', letterSpacing: 'var(--tracking-mono)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}
-        >
-          Pasienter ({activePatients.length})
+        <h2 id="patients-panel-title" className="section-label" style={{ margin: 0 }}>
+          Pasienter (<span className="data">{activePatients.length}</span>)
           {unassignedCount > 0 && (
-            <span style={{ marginLeft: 8, color: 'var(--color-status-warning)' }}>· {unassignedCount} uten lag</span>
+            <span style={{ marginLeft: 8, color: 'var(--color-status-warning)' }}>· <span className="data">{unassignedCount}</span> uten lag</span>
           )}
           {closedPatients.length > 0 && (
-            <span style={{ marginLeft: 8, color: 'var(--color-text-subtle)', fontWeight: 400 }}>· {closedPatients.length} lukket</span>
+            <span style={{ marginLeft: 8, color: 'var(--color-text-subtle)', fontWeight: 400 }}>· <span className="data">{closedPatients.length}</span> lukket</span>
           )}
         </h2>
-        <button
-          type="button"
-          onClick={() => setShowForm((v) => !v)}
-          style={{
-            minHeight: 44, padding: '0 var(--space-3)', borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-brand)', background: showForm ? 'var(--color-brand)' : 'transparent',
-            color: showForm ? 'white' : 'var(--color-brand)', fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
-          }}
-        >
-          {showForm ? 'Avbryt' : '+ Legg til pasient'}
-        </button>
+        <Button variant={showForm ? 'ghost' : 'outline'} size="sm" icon={showForm ? 'x' : 'plus'} onClick={() => setShowForm((v) => !v)}>
+          {showForm ? 'Avbryt' : 'Legg til pasient'}
+        </Button>
       </div>
 
       {showForm && (
         <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', background: 'var(--color-surface-sunken)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
             <div>
-              <label htmlFor="new-patient-label" style={fieldLabelStyle}>Navn / ID *</label>
+              <label htmlFor="new-patient-label" className="section-label" style={fieldLabelStyle}>Navn / ID *</label>
               <input
                 id="new-patient-label"
                 type="text"
@@ -587,16 +496,16 @@ export function PatientManagementPanel({
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="f.eks. Pasient 1"
                 autoFocus
-                style={inputStyle}
+                className="field" style={inputStyle}
               />
             </div>
             <div>
-              <label htmlFor="new-patient-triage" style={fieldLabelStyle}>Triage</label>
+              <label htmlFor="new-patient-triage" className="section-label" style={fieldLabelStyle}>Triage</label>
               <select
                 id="new-patient-triage"
                 value={newTriage}
                 onChange={(e) => setNewTriage(e.target.value as FieldTriageStatus | '')}
-                style={inputStyle}
+                className="field" style={inputStyle}
               >
                 <option value="">— ingen —</option>
                 {FIELD_TRIAGE_ORDER.map((t) => <option key={t} value={t}>{FIELD_TRIAGE_STYLE[t].label}</option>)}
@@ -604,56 +513,44 @@ export function PatientManagementPanel({
             </div>
           </div>
           <div>
-            <label htmlFor="new-patient-description" style={fieldLabelStyle}>Notater / beskrivelse</label>
+            <label htmlFor="new-patient-description" className="section-label" style={fieldLabelStyle}>Notater / beskrivelse</label>
             <input
               id="new-patient-description"
               type="text"
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
               placeholder="Valgfritt"
-              style={inputStyle}
+              className="field" style={inputStyle}
             />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
             <div>
-              <label htmlFor="new-patient-position" style={fieldLabelStyle}>Posisjonstekst</label>
+              <label htmlFor="new-patient-position" className="section-label" style={fieldLabelStyle}>Posisjonstekst</label>
               <input
                 id="new-patient-position"
                 type="text"
                 value={newPositionText}
                 onChange={(e) => setNewPositionText(e.target.value)}
                 placeholder="f.eks. Nær inngangen"
-                style={inputStyle}
+                className="field" style={inputStyle}
               />
             </div>
             <div>
-              <label htmlFor="new-patient-team" style={fieldLabelStyle}>Tilordnet lag</label>
+              <label htmlFor="new-patient-team" className="section-label" style={fieldLabelStyle}>Tilordnet lag</label>
               <select
                 id="new-patient-team"
                 value={newTeamId}
                 onChange={(e) => setNewTeamId(e.target.value)}
-                style={inputStyle}
+                className="field" style={inputStyle}
               >
                 <option value="">— ikke tildelt —</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={creating || !newLabel.trim()}
-            style={{
-              alignSelf: 'flex-start', padding: '0 20px', minHeight: 44,
-              borderRadius: 'var(--radius-sm)', border: 'none',
-              background: newLabel.trim() ? 'var(--color-brand)' : 'var(--color-border)',
-              color: newLabel.trim() ? 'white' : 'var(--color-text-subtle)',
-              fontSize: 'var(--text-sm)', fontWeight: 700,
-              cursor: creating || !newLabel.trim() ? 'not-allowed' : 'pointer',
-            }}
-          >
+          <Button variant="primary" onClick={handleCreate} disabled={creating || !newLabel.trim()} style={{ alignSelf: 'flex-start' }}>
             {creating ? 'Oppretter...' : 'Opprett pasient'}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -682,17 +579,9 @@ export function PatientManagementPanel({
 
         {closedPatients.length > 0 && (
           <div style={{ marginTop: 'var(--space-2)' }}>
-            <button
-              type="button"
-              onClick={() => setShowClosed((v) => !v)}
-              aria-expanded={showClosed}
-              style={{
-                width: '100%', minHeight: 44, padding: '0 var(--space-3)', background: 'none', border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--text-sm)',
-                color: 'var(--color-text-muted)', fontWeight: 600, textAlign: 'left',
-              }}
-            >
-              {showClosed ? '▲' : '▼'} Lukkede pasienter ({closedPatients.length})
+            <button type="button" className="disclosure" onClick={() => setShowClosed((v) => !v)} aria-expanded={showClosed}>
+              <span>Lukkede pasienter (<span className="data">{closedPatients.length}</span>)</span>
+              <Icon name={showClosed ? 'chevronUp' : 'chevronDown'} />
             </button>
             {showClosed && (
               <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>

@@ -18,9 +18,10 @@ import { PatientCard, type DemographicsFormShape } from './SickBay/PatientCard';
 import { IncomingCriticalPanel } from './SickBay/IncomingCriticalPanel';
 import type { VitalsFormShape } from './SickBay/VitalsEntryForm';
 import type { MedFormShape } from './SickBay/MedicationPanel';
-import { formatPatientAge, formatSickbayPlacement, GENDER_LABELS, statusLabels } from '../lib/constants';
+import { formatPatientAge, formatSickbayPlacement, GENDER_LABELS, statusColors, statusLabels } from '../lib/constants';
 import { nextObservationDue } from '../lib/observation';
 import { useNow } from '../hooks/useNow';
+import { Icon } from '../components/ui';
 
 // In dev mode the monitoring timer fires after 1 min instead of the clinical interval.
 const DEV_INTERVALS = import.meta.env.DEV && import.meta.env.VITE_NEWS2_DEV_INTERVALS === 'true';
@@ -497,25 +498,23 @@ export function SickBayDashboard() {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 'var(--space-3)',
-                  padding: 'var(--space-3)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
+                <div
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-2)',
+                    paddingBottom: 'var(--space-2)',
+                    borderBottom: `2px solid ${(statusColors[group.status] ?? { color: 'var(--color-border-strong)' }).color}`,
+                  }}
+                >
+                  <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0, textWrap: 'balance' }}>
                     {statusLabels[group.status] || group.status}
                   </h2>
                   <span
                     data-testid={`patient-section-count-${group.status}`}
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 'var(--text-xs)',
-                      color: 'var(--color-text-subtle)',
-                    }}
+                    style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}
                   >
-                    {group.patients.length} pasient{group.patients.length === 1 ? '' : 'er'}
+                    <span className="data">{group.patients.length}</span> pasient{group.patients.length === 1 ? '' : 'er'}
                   </span>
                 </div>
 
@@ -552,9 +551,8 @@ export function SickBayDashboard() {
                       <div
                         key={patient.id}
                         data-testid={`closed-patient-${patient.id}`}
+                        className="card"
                         style={{
-                          border: '1px solid var(--color-border)',
-                          borderRadius: 'var(--radius-md)',
                           background: 'var(--color-surface-sunken)',
                           overflow: 'hidden',
                           height: 'fit-content',
@@ -579,13 +577,13 @@ export function SickBayDashboard() {
                             gap: 'var(--space-3)',
                             cursor: 'pointer',
                           textAlign: 'left',
+                          font: 'inherit',
                         }}
                       >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                           <span style={{ fontWeight: 600 }}>{patient.fullName ?? patient.label ?? patient.presentingComplaint ?? 'Ukjent pasient'}</span>
                           <span
                             style={{
-                              fontFamily: 'var(--font-mono)',
                               fontSize: 'var(--text-xs)',
                               fontWeight: 700,
                               color: patient.placementType && patient.placementNumber ? 'var(--color-status-info)' : 'var(--color-text-subtle)',
@@ -595,10 +593,10 @@ export function SickBayDashboard() {
                               ? `Plassering: ${formatSickbayPlacement(patient.placementType, patient.placementNumber)}`
                               : 'Plassering: Ikke satt'}
                           </span>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
                             {patient.presentingComplaint ? `Problemstilling: ${patient.presentingComplaint}` : 'Problemstilling ikke registrert'}
                           </span>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
                             {formatPatientAge({
                               birthDate: patient.birthDate ?? null,
                               ageGroup: patient.ageGroup ?? null,
@@ -608,8 +606,9 @@ export function SickBayDashboard() {
                             {' · '}{statusLabels[patient.status] || patient.status}
                           </span>
                         </div>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                          {expanded ? 'Skjul detaljer ▲' : 'Vis detaljer ▼'}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                          {expanded ? 'Skjul detaljer' : 'Vis detaljer'}
+                          <Icon name={expanded ? 'chevronUp' : 'chevronDown'} />
                         </span>
                       </button>
 

@@ -15,6 +15,7 @@ import { TeamMessageStreamPanel } from './Coordinator/TeamMessageStreamPanel';
 import { TeamStatusPanel } from './Coordinator/TeamStatusPanel';
 import { PatientManagementPanel, type FieldPatient } from './Coordinator/PatientManagementPanel';
 import { TEAM_OPERATIONAL_STATUS_LABELS } from '../lib/constants';
+import { Button } from '../components/ui';
 import type { EventIndoorLayout, MapRuntimeConfig, Team, TeamOperationalStatus, TeamPatientEngagement } from '../lib/types';
 
 export function CoordinatorDashboard() {
@@ -293,14 +294,6 @@ export function CoordinatorDashboard() {
       }
     : null;
 
-  const mapToggleStyle = (active: boolean) => ({
-    minHeight: 44, padding: '0 var(--space-3)', borderRadius: 'var(--radius-md)',
-    border: `1px solid ${active ? 'var(--color-brand)' : 'var(--color-border)'}`,
-    background: active ? 'var(--color-brand-dim)' : 'var(--color-surface)',
-    color: 'var(--color-text)',
-    cursor: 'pointer', fontWeight: 600, fontSize: 'var(--text-sm)',
-  });
-
   return (
     <div>
       <CoordinatorHeader
@@ -377,9 +370,9 @@ export function CoordinatorDashboard() {
             borderBottom: '1px solid var(--color-border)',
           }}>
             <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Kart</span>
+              <span style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>Kart</span>
               {eventIndoorLayout && (
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                   Innendørs: {eventIndoorLayout.venueName ?? eventIndoorLayout.venueId}
                 </span>
               )}
@@ -392,48 +385,32 @@ export function CoordinatorDashboard() {
 
             {/* Engine and 3D are developer/venue settings, not something a
                 coordinator touches during an event — kept behind a disclosure. */}
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
+              iconEnd={showMapSettings ? 'chevronUp' : 'chevronDown'}
               data-testid="map-settings-toggle"
               aria-expanded={showMapSettings}
               onClick={() => setShowMapSettings((v) => !v)}
-              style={{ ...mapToggleStyle(showMapSettings), fontWeight: 500 }}
             >
-              Kartinnstillinger {showMapSettings ? '▲' : '▼'}
-            </button>
+              Kartinnstillinger
+            </Button>
 
             {showMapSettings && (
               <div
                 data-testid="map-settings"
                 style={{ flexBasis: '100%', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center' }}
               >
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                  Kartmotor
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setMapProvider('leaflet')}
-                  aria-pressed={mapProvider === 'leaflet'}
-                  style={mapToggleStyle(mapProvider === 'leaflet')}
-                >
+                <span className="section-label">Kartmotor</span>
+                <Button variant="secondary" size="sm" onClick={() => setMapProvider('leaflet')} aria-pressed={mapProvider === 'leaflet'}>
                   Leaflet
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMapProvider('maplibre')}
-                  aria-pressed={mapProvider === 'maplibre'}
-                  style={mapToggleStyle(mapProvider === 'maplibre')}
-                >
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setMapProvider('maplibre')} aria-pressed={mapProvider === 'maplibre'}>
                   MapLibre
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPresentation3d((value) => !value)}
-                  aria-pressed={presentation3d}
-                  style={mapToggleStyle(presentation3d)}
-                >
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setPresentation3d((value) => !value)} aria-pressed={presentation3d}>
                   3D-presentasjon {presentation3d ? 'på' : 'av'}
-                </button>
+                </Button>
               </div>
             )}
           </div>

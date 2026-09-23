@@ -88,7 +88,7 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await page.waitForURL('**/sickbay');
   await expect(page.getByRole('heading', { name: 'Sykestue' })).toBeVisible();
 
-  await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
+  await page.getByRole('button', { name: /^Ny pasient/i }).click();
   await page.getByRole('textbox', { name: 'Problemstilling', exact: true }).fill('Brystsmerter demo');
   await page.getByRole('textbox', { name: 'Behandler', exact: true }).fill('Demo-kliniker');
   await page.getByRole('button', { name: 'Registrer' }).click();

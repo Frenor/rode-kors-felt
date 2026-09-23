@@ -60,7 +60,7 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   // The field report is visible to the sick bay under its label, with location text.
   await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
 
-  await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
+  await page.getByRole('button', { name: /^Ny pasient/i }).click();
   await page.getByRole('textbox', { name: 'Problemstilling', exact: true }).fill('Brystsmerter under aktivitet');
   await page.getByRole('textbox', { name: 'Behandler', exact: true }).fill('Testkliniker');
   await page.getByRole('button', { name: 'Registrer' }).click();

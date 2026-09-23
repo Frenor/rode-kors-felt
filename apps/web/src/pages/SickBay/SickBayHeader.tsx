@@ -1,3 +1,5 @@
+import { Button } from '../../components/ui';
+
 interface SickBayHeaderProps {
   onNewPatient: () => void;
   /** Open patients whose re-assessment time has passed. */
@@ -13,7 +15,7 @@ export function SickBayHeader({ onNewPatient, overdueCount = 0, continuousCount 
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
       <div style={{ minWidth: 0 }}>
-        <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700 }}>Sykestue</h1>
+        <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700, textWrap: 'balance' }}>Sykestue</h1>
         {parts.length > 0 ? (
           <p
             role="status"
@@ -28,17 +30,9 @@ export function SickBayHeader({ onNewPatient, overdueCount = 0, continuousCount 
           </p>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onNewPatient}
-        style={{
-          minHeight: 'var(--touch-min)', padding: '0 var(--space-5)', borderRadius: 'var(--radius-md)',
-          border: 'none', background: 'var(--color-brand)', color: 'white',
-          fontSize: 'var(--text-base)', fontWeight: 700, cursor: 'pointer', flexShrink: 0,
-        }}
-      >
-        + Ny pasient
-      </button>
+      <Button variant="primary" size="lg" icon="plus" onClick={onNewPatient} style={{ flexShrink: 0 }}>
+        Ny pasient
+      </Button>
     </div>
   );
 }

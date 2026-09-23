@@ -620,7 +620,7 @@ describe('Demographics — intake and display', () => {
     render(<SickBayDashboard />);
     await screen.findByText('Sykestue');
 
-    fireEvent.click(screen.getByRole('button', { name: '+ Ny pasient' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ny pasient' }));
     const dialog = await screen.findByRole('dialog', { name: 'Registrer ny pasient' });
 
     fireEvent.change(within(dialog).getByLabelText('Fullt navn'), { target: { value: 'Kari Nordmann' } });

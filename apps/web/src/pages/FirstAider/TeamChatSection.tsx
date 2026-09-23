@@ -7,6 +7,7 @@
  * the phone so it is noticed in the dark with the phone in a pocket.
  */
 import type { RefObject } from 'react';
+import { Button, Icon } from '../../components/ui';
 
 export interface ChatMessage {
   id: string;
@@ -48,6 +49,7 @@ export function TeamChatSection({
         onClick={onToggleChat}
         aria-expanded={showChat}
         data-testid="firstaid-chat-toggle"
+        className="card"
         style={{
           width: '100%',
           minHeight: 'var(--touch-min)',
@@ -56,19 +58,21 @@ export function TeamChatSection({
           alignItems: 'center',
           gap: 'var(--space-2)',
           padding: 'var(--space-3) var(--space-4)',
-          borderRadius: 'var(--radius-md)',
-          border: `1px solid ${hasUnread ? 'var(--color-brand)' : 'var(--color-border)'}`,
-          background: hasUnread ? 'var(--color-brand-dim)' : 'var(--color-surface)',
+          borderColor: hasUnread ? 'var(--color-brand)' : undefined,
+          background: hasUnread ? 'var(--color-brand-dim)' : undefined,
           color: 'var(--color-text)',
           cursor: 'pointer',
+          font: 'inherit',
         }}
       >
         <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Icon name="chat" />
           Lagmelding
           {hasUnread && (
             <span
               data-testid="firstaid-chat-unread"
               aria-label={`${unreadCount} uleste meldinger`}
+              className="data"
               style={{
                 minWidth: 28,
                 height: 28,
@@ -76,7 +80,6 @@ export function TeamChatSection({
                 borderRadius: 'var(--radius-full)',
                 background: 'var(--color-brand)',
                 color: 'white',
-                fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--text-sm)',
                 fontWeight: 700,
                 display: 'inline-flex',
@@ -88,25 +91,17 @@ export function TeamChatSection({
             </span>
           )}
         </span>
-        <span
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-subtle)',
-          }}
-        >
-          {messages.length > 0 ? `${messages.length} meldinger` : 'Ingen meldinger'}{' '}
-          {showChat ? '▲' : '▼'}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+          {messages.length > 0 ? `${messages.length} meldinger` : 'Ingen meldinger'}
+          <Icon name={showChat ? 'chevronUp' : 'chevronDown'} />
         </span>
       </button>
 
       {showChat && (
         <div
+          className="card"
           style={{
             marginTop: 'var(--space-2)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border)',
-            background: 'var(--color-surface)',
             overflow: 'hidden',
           }}
         >
@@ -170,6 +165,7 @@ export function TeamChatSection({
                   {msg.text}
                 </div>
                 <div
+                  className="data"
                   style={{
                     fontSize: 'var(--text-xs)',
                     color: 'var(--color-text-subtle)',
@@ -197,6 +193,7 @@ export function TeamChatSection({
           >
             <input
               type="text"
+              className="field"
               value={messageText}
               onChange={(e) => onMessageTextChange(e.target.value)}
               onKeyDown={(e) => {
@@ -207,37 +204,11 @@ export function TeamChatSection({
               }}
               placeholder="Skriv melding..."
               aria-label="Melding til laget"
-              style={{
-                flex: 1,
-                minWidth: 0,
-                height: 48,
-                padding: '0 var(--space-3)',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                fontSize: 'var(--text-base)',
-              }}
+              style={{ flex: 1, minWidth: 0 }}
             />
-            <button
-              type="button"
-              onClick={onSend}
-              disabled={!messageText.trim()}
-              style={{
-                height: 48,
-                padding: '0 var(--space-4)',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                background: 'var(--color-brand)',
-                color: 'white',
-                fontSize: 'var(--text-base)',
-                fontWeight: 700,
-                cursor: 'pointer',
-                opacity: !messageText.trim() ? 0.5 : 1,
-              }}
-            >
+            <Button variant="primary" icon="send" onClick={onSend} disabled={!messageText.trim()}>
               Send
-            </button>
+            </Button>
           </div>
         </div>
       )}
