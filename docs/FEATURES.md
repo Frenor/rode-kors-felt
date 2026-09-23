@@ -19,16 +19,8 @@ Built or being built; verification still owed. Move a row down when it has evide
 
 | Feature | Area | Build status | Verification owed | Ref |
 |---|---|---|---|---|
-| Transport request (stretcher / ATV / ambulance) end to end | Field, Coordinator, Sick bay | Planned (8.26) | API unit, unit, e2e-local | gap B3 |
-| Sick bay offline queue for vitals, notes, status, edits | Sick bay | Planned (8.27) | unit (queue, replay), manual offline | gap B1 |
-| Quick log "Behandlet på stedet" | Field | Planned (8.28) | unit, e2e-demo | gap A8 |
-| Persisted chat history, loaded on connect | API, Field, Coordinator | Planned (8.29) | API unit, e2e-local | gap B9 |
-| Sick bay capacity and occupancy | Sick bay, Coordinator | Planned (8.30) | unit | gap B6 |
-| Event set-up page: event, teams, codes with QR, sectors | Coordinator | Planned (8.31) | API unit, e2e-local | gap B5 |
-| Per-patient journal export and event export | Sick bay, API | Planned (8.32) | API unit, manual print | gap B7 |
-| Retention: end-of-event anonymisation, scheduled purge, device clear on logout | API, all | Planned (8.33) | API unit, manual | gap B8 |
-| Web Push for assignment, directed message, needs-assistance | Field | Planned (8.35) | manual on device | gap C2 |
-| People per team; voice notes; archive the stale ideation doc | Field | Planned (8.36) | unit, manual | gap C3–C5 |
+| Web Push for assignment, directed message, needs-assistance | Field | Deferred (8.35): needs VAPID keys and a push service | manual on device | gap C2 |
+| People per team | Field | Deferred (8.36): after a field run shows the need | — | gap C3 |
 | Second supervised field run after the lane 7 fixes | All | Waiting for a date | field | PLAN §9 |
 | Production smoke against a deployed environment (`gce-prod-smoke`) | Ops | Needs `PLAYWRIGHT_GCE_BASE_URL` | e2e | CLAUDE.md |
 
@@ -75,6 +67,15 @@ Built or being built; verification still owed. Move a row down when it has evide
 | WebSocket heartbeat, reconnect with backoff, token refresh | API, web | `unit` (ws.store, session) | 2026-09-23 |
 | Load test gate (p95 targets) | API | CI workflow | 2026-09-23 |
 | Presentation export (`showcase:export`) | Tooling | `manual` (opened from file, no console errors) | 2026-09-23 |
+| Transport request: patrol asks (båre / ATV / ambulanse), coordinator assigns a vehicle team from the queue, patrol and tent see who is coming | Field, Coordinator, Sick bay | `unit` (API transport.test; TransportRequestSheet, AttentionQueuePanel.transport, PatientCard.transport), `e2e-demo` | 2026-09-23 |
+| Sick bay offline queue: vitals, notes, status changes and edits queue without network, replay on reconnect, header shows pending and failed counts | Sick bay | `unit` (offline-sickbay-queue, useOfflineSickbaySync, SickBayHeader) | 2026-09-23 |
+| Quick log "Behandlet på stedet": one sheet creates and closes a minor case | Field | `unit` (QuickLogSheet, API quick-log.test), `e2e-demo` | 2026-09-23 |
+| Chat history persisted on the server and loaded on connect in the field and at the desk | API, Field, Coordinator | `unit` (API messages.test; team-message-history, teamMessages) | 2026-09-23 |
+| Sick bay capacity: settings per event, occupancy strip in the tent, "Sykestue" tile at the desk, free-number picks when placing | Sick bay, Coordinator | `unit` (sickbay-occupancy, SickBayHeader, StatsGrid.sickbay, API events.test), `e2e-demo` | 2026-09-23 |
+| Event set-up page: event details, teams (add, edit, deactivate), access codes with QR and revoke, capacity | Coordinator, API | `unit` (EventSetupPage, TeamsSetupPanel, AccessCodesPanel, API events/teams tests), `e2e-demo` | 2026-09-23 |
+| Per-patient printable journal (`/sickbay/journal/:id`) and one-file export of all journals | Sick bay, Coordinator, API | `unit` (PatientJournalPage, journalExport, API journal.test), `e2e-demo` | 2026-09-23 |
+| Retention: archive card (export → confirm → anonymise), 30-day anonymisation job, logout clears device queues | API, Coordinator, all | `unit` (API retention.test, ArchiveEventCard, AppShell.logout) | 2026-09-23 |
+| Voice note button (Web Speech API, nb-NO) where the browser supports it | Field | `unit` (VoiceNoteButton) | 2026-09-23 |
 | Close reasons map to outcomes; "Overlevert sykestue" keeps the patient open and clears the patrol | Field | `unit` (close-outcome, FirstAider tests), `e2e-demo` | 2026-09-23 |
 | "Trenger bistand" asks what is needed (flere hender / transport / AMK / annet) and sends it as the status note | Field | `unit` (AssistanceReasonStep), `e2e-demo` | 2026-09-23 |
 | Unassigned patients sorted by distance from the phone, with offset text | Field | `unit` (geo sortByDistance), `manual` | 2026-09-23 |
@@ -98,7 +99,7 @@ Built or being built; verification still owed. Move a row down when it has evide
 |---|---|---|---|
 | Incidents ("Hendelse"): `/api/incidents`, incident form, Hendelser tab, escalations | 2026 (before the field trial) | Patients are the unit of work; a separate incident object duplicated them and confused patrols | `docs/removed-features/HENDELSE_MCI.md` |
 | Mass casualty mode (MCI): event flags, sectors, activation, summary export | 2026; decided out of scope for good 2026-09-23 | Not needed for the events the tool serves; a per-patient tool with triage colours covers what patrols do; code remnants (demo store toggles, event columns) removed 2026-09-23 | `docs/removed-features/HENDELSE_MCI.md` |
-| Bottom tab bar on the field dashboard (Pasienter / Hendelser / Lag / Chat) | PR #51 | Single scroll with "Meld pasient" at the top beat four tabs for gloved use; the ideation doc that describes the tabs is historical | `docs/design/ideation-ui-2026.md` (stale) |
+| Bottom tab bar on the field dashboard (Pasienter / Hendelser / Lag / Chat) | PR #51 | Single scroll with "Meld pasient" at the top beat four tabs for gloved use | `docs/design/ideation-ui-2026.md` (marked historical) |
 | "Meld hendelse" button and the demo e2e assertion for it | with incidents | see Incidents | PLAN §12 row 13 |
 | `DeteriorationAlertsPanel` | lane 7 | Folded into "Krever handling" (`AttentionQueuePanel`) | `docs/design/ux-review-2026-09.md` C1, C4 |
 | Emoji and dingbat icons (⚙ 📍 ☀ ☾ ▲ ✓ ✕) | lane 7 | Replaced by the `Icon` component | ux review X5 |

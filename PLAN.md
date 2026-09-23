@@ -9,7 +9,7 @@
 - Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
 - Lane 6 (Field Trial Remediation — production readiness): `In progress`
 - Lane 7 (UX Review — field teams / sick bay / coordinator): `Done` (review, three fix passes, design system and presentation export landed; backlog in the review doc §7)
-- Lane 8 (Gap review implementation — see section 13): `In progress` (batches 1 and 2 landed; batch 3 API in build)
+- Lane 8 (Gap review implementation — see section 13): `Done` (batches 1–3 landed; Web Push and people-per-team deferred with reasons in 13.3)
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -78,6 +78,21 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `lane 8 batch 3` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23, two API agents then three
+  UI agents in worktrees, integrated by cherry-pick)
+  - API: transport request actions and columns; quick log at registration; journal endpoints;
+    `anonymisedAt` + `POST /events/:id/anonymise` + 30-day retention job; `team_messages` table with
+    history endpoint and WS persistence; `events.settings`; `PATCH /events/:id`, team create/patch
+    with `active`, access-code list/create/revoke.
+  - Field: "Be om transport" sheet and status pill; "Behandlet på stedet" quick log; chat history
+    seeded on load; voice note button where speech recognition exists.
+  - Sick bay: offline queue with replay and header counts; transport line; occupancy strip and
+    free-number picks; printable journal page (`/sickbay/journal/:id`).
+  - Coordinator: "Transport" queue group with vehicle-first assign; history seeding; "Sykestue" tile;
+    event set-up page (`/coordinator/event`: event, teams, access codes with QR, capacity);
+    journals export; archive card (export → confirm → anonymise); logout clears device queues.
+  - Verification on the merged branch: lint, typecheck, 150 API + 434 web unit tests, `pages-demo`
+    1/1, `local-full` 8/8, captures of all three screens.
 - `lane 8 batch 2` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23, three Sonnet agents in
   worktrees, integrated by cherry-pick)
   - Field 8.6–8.13: close reasons map to outcomes (hand-over keeps the patient open), assistance
@@ -600,5 +615,6 @@ the need. The stale ideation doc is marked historical (done in this batch).
 | Batch 2 field | 8.6–8.13 | `Done` |
 | Batch 2 sick bay | 8.14–8.18 | `Done` |
 | Batch 2 coordinator | 8.19–8.25 | `Done` |
-| Batch 3 API (A: 8.26, 8.28, 8.32, 8.33 · B: 8.29, 8.30, 8.31) | `In progress` |
-| Batch 3 UI (field, sick bay, coordinator) | `Pending` |
+| Batch 3 API (A: 8.26, 8.28, 8.32, 8.33 · B: 8.29, 8.30, 8.31) | `Done` |
+| Batch 3 UI (field, sick bay, coordinator) | `Done` |
+| Deferred | 8.35 Web Push (needs VAPID keys and a push service), 8.36 people per team | `Deferred` |
