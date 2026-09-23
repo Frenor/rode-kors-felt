@@ -13,8 +13,12 @@ export interface ChatMessage {
   id: string;
   text: string;
   fromTeamId?: string;
+  /** Set when the coordinator addressed this message to one patrol only. */
+  toTeamId?: string | null;
   fromSelf: boolean;
   sentAt: string;
+  /** True once this patrol has sent its "Mottatt" receipt back. */
+  acknowledged?: boolean;
 }
 
 export interface TeamChatSectionProps {
@@ -28,6 +32,8 @@ export interface TeamChatSectionProps {
   chatEndRef: RefObject<HTMLDivElement | null>;
   /** Messages received while the section was collapsed. */
   unreadCount?: number;
+  /** "Mottatt" on a directed message (gap B10) — undefined disables the button. */
+  onAck?: (message: ChatMessage) => void;
 }
 
 export function TeamChatSection({
@@ -40,6 +46,7 @@ export function TeamChatSection({
   onSend,
   chatEndRef,
   unreadCount = 0,
+  onAck,
 }: TeamChatSectionProps) {
   const hasUnread = !showChat && unreadCount > 0;
   return (
@@ -177,6 +184,32 @@ export function TeamChatSection({
                     minute: '2-digit',
                   })}
                 </div>
+                {/* Directed instruction from the coordinator — radio discipline
+                    expects a read-back (gap B10). */}
+                {!msg.fromSelf && msg.toTeamId && (
+                  msg.acknowledged ? (
+                    <div
+                      data-testid={`firstaid-ack-sent-${msg.id}`}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)',
+                        fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-status-ok)', marginTop: 2,
+                      }}
+                    >
+                      <Icon name="check" size="sm" /> Mottatt
+                    </div>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => onAck?.(msg)}
+                      disabled={!onAck}
+                      data-testid={`firstaid-ack-${msg.id}`}
+                      style={{ marginTop: 'var(--space-1)' }}
+                    >
+                      Mottatt
+                    </Button>
+                  )
+                )}
               </div>
             ))}
             <div ref={chatEndRef} />

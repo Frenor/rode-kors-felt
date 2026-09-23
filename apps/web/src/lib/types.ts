@@ -196,6 +196,9 @@ export interface TeamWorkspacePatient {
   handedOverAt?: string | null;
   handedOverByTeamId?: string | null;
   fieldOutcome?: SharedFieldOutcome | null;
+  /** AMK notified (gap B2) — set once the field team has called 113/AMK. */
+  amkNotifiedAt?: string | null;
+  amkNotifiedBy?: string | null;
 }
 
 export interface TeamWorkspaceResponse {

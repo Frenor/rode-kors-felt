@@ -56,3 +56,29 @@ export function describeOffset(from: LatLng | null, to: LatLng | null): string {
   if (!distance) return '';
   return `${distance} ${compassPoint(bearingDegrees(from, to))}`;
 }
+
+/**
+ * Sorts by distance from `from` (nearest first); items without a position —
+ * or when `from` itself is unknown — keep their original relative order and
+ * sort after every item that does have one (gap A10: "Vi drar til denne" is
+ * a distance decision, not a scroll-through-everything one).
+ */
+export function sortByDistance<T extends { lat: number | null; lon: number | null }>(
+  items: T[],
+  from: LatLng | null,
+): T[] {
+  if (!from) return items;
+  return items
+    .map((item, index) => ({
+      item,
+      index,
+      distance: item.lat != null && item.lon != null ? distanceMeters(from, { lat: item.lat, lng: item.lon }) : null,
+    }))
+    .sort((a, b) => {
+      if (a.distance == null && b.distance == null) return a.index - b.index;
+      if (a.distance == null) return 1;
+      if (b.distance == null) return -1;
+      return a.distance - b.distance;
+    })
+    .map((w) => w.item);
+}

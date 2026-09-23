@@ -23,9 +23,16 @@ import { PatientLocationRow } from './FirstAider/PatientLocationRow';
 import { PatientEngagementPicker } from './FirstAider/PatientEngagementPicker';
 import { TeamSettingsPanel, TRANSPORT_LABELS } from './FirstAider/TeamSettingsPanel';
 import { TeamStatusPickerSheet } from './FirstAider/TeamStatusPickerSheet';
-import { TeamChatSection } from './FirstAider/TeamChatSection';
+import { TeamChatSection, type ChatMessage } from './FirstAider/TeamChatSection';
 import { LastVitalsLine, News2Pill } from './FirstAider/LastVitalsLine';
-import { Button, Icon, Pill } from '../components/ui';
+import { AssignmentBanner } from './FirstAider/AssignmentBanner';
+import { TriageChips } from './FirstAider/TriageChips';
+import { describeAssistanceNote } from './FirstAider/AssistanceReasonStep';
+import { resolveCloseOutcome } from './FirstAider/close-outcome';
+import { Button, Icon, Pill, PatientNumberPill } from '../components/ui';
+import { sortByDistance } from '../lib/geo';
+import { patientNumber } from '../lib/patient-number';
+import { addPendingAssignment, loadPendingAssignments, removePendingAssignment } from '../lib/pending-assignments';
 import {
   FIELD_TRIAGE_ORDER,
   FIELD_TRIAGE_STYLE,
@@ -69,9 +76,19 @@ export function FirstAiderDashboard() {
   const { position: gpsPosition, status: gpsStatus, accuracy: gpsAccuracy, updatedAt: gpsUpdatedAt } = useGeolocation();
   const wsSend = useWsStore((s) => s.send);
   const onMessage = useWsStore((s) => s.onMessage);
-  const [messages, setMessages] = useState<Array<{ id: string; text: string; fromTeamId?: string; fromSelf: boolean; sentAt: string }>>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageText, setMessageText] = useState('');
   const [showChat, setShowChat] = useState(false);
+  // Ref mirror of `assignedPatients` — the team.message/patient.updated WS
+  // handler below has stable deps (see its useEffect) so it must read the
+  // latest value through a ref, not the stale closure over the state.
+  const assignedPatientsRef = useRef<any[]>([]);
+  assignedPatientsRef.current = assignedPatients;
+  // "Koordinator har tildelt dere: …" banner (gap A4) — persisted per
+  // event+team so a reload does not lose an unanswered assignment.
+  const [pendingAssignmentIds, setPendingAssignmentIds] = useState<string[]>([]);
+  // The reason chosen behind "Trenger bistand" (gap A3), shown on the banner.
+  const [needsAssistanceNote, setNeedsAssistanceNote] = useState<string | null>(null);
   // Messages that arrived while the chat was collapsed — shown as a badge and
   // announced with a vibration so a coordinator instruction is not missed.
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -114,7 +131,10 @@ export function FirstAiderDashboard() {
   const [perPatientCloseReason, setPerPatientCloseReason] = useState<Record<string, string>>({});
   const [perPatientCloseNote, setPerPatientCloseNote] = useState<Record<string, string>>({});
   const [perPatientCloseError, setPerPatientCloseError] = useState<Record<string, string>>({});
-  const [closedPatients, setClosedPatients] = useState<Array<{ id: string; label: string; closedAt: string; note: string }>>([]);
+  const [closedPatients, setClosedPatients] = useState<Array<{ id: string; label: string; closedAt: string; outcomeLabel: string; extraNote: string | null; seq?: number | null }>>([]);
+  const [perPatientAmkError, setPerPatientAmkError] = useState<Record<string, string>>({});
+  const [perPatientTriageEdit, setPerPatientTriageEdit] = useState<Record<string, FieldTriageStatus>>({});
+  const [perPatientTriageError, setPerPatientTriageError] = useState<Record<string, string>>({});
   const [showClosedPatients, setShowClosedPatients] = useState(false);
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
@@ -138,6 +158,12 @@ export function FirstAiderDashboard() {
       setSelectedTeam(null);
     }
   }, [selectedTeam, teams, setSelectedTeam]);
+
+  // Restore any assignment banners the patrol has not yet answered (gap A4).
+  useEffect(() => {
+    if (!eventId || !selectedTeam) { setPendingAssignmentIds([]); return; }
+    setPendingAssignmentIds(loadPendingAssignments(eventId, selectedTeam));
+  }, [eventId, selectedTeam]);
 
   /**
    * Adopt the server's view of this team's per-patient engagement unless we
@@ -250,8 +276,20 @@ export function FirstAiderDashboard() {
             monitoredPatients: prev.monitoredPatients.filter((p) => p.id !== patientId),
             unassignedPatients: prev.unassignedPatients.filter((p) => p.id !== patientId),
           } : prev);
-          if (eventId && selectedTeam) clearPatientStatus(eventId, selectedTeam, patientId);
+          if (eventId && selectedTeam) {
+            clearPatientStatus(eventId, selectedTeam, patientId);
+            setPendingAssignmentIds(removePendingAssignment(eventId, selectedTeam, patientId));
+          }
           return;
+        }
+
+        // A fresh assignment to us — not a re-broadcast of one we already had
+        // — vibrates and raises the persistent banner (gap A4). Checked via a
+        // ref because this handler's own deps are intentionally stable.
+        const wasAssignedToUs = assignedPatientsRef.current.some((p) => p.id === patientId);
+        if (selectedTeam && patient.assignedTeamId === selectedTeam && !wasAssignedToUs) {
+          navigator.vibrate?.([200, 100, 200, 100, 200]);
+          if (eventId) setPendingAssignmentIds(addPendingAssignment(eventId, selectedTeam, patientId));
         }
 
         setAssignedPatients((prev) => {
@@ -362,6 +400,13 @@ export function FirstAiderDashboard() {
     const off = onMessage((msg) => {
       if (msg.type === 'team.message') {
         const payload = (msg.payload as any) ?? {};
+        // A receipt ("Mottatt") is not chat — it only flips the ack flag on
+        // the directed message it answers (gap B10).
+        if (payload.ackOf) {
+          const ackOf = payload.ackOf as string;
+          setMessages((prev) => prev.map((m) => (m.id === ackOf ? { ...m, acknowledged: true } : m)));
+          return;
+        }
         // Skip server echo of our own messages — they were added optimistically in sendMessage.
         if (payload.fromTeamId === selectedTeam) return;
         // A message addressed to another patrol is not ours to read.
@@ -372,6 +417,7 @@ export function FirstAiderDashboard() {
             id: payload.id ?? crypto.randomUUID(),
             text: payload.text ?? '',
             fromTeamId: payload.fromTeamId,
+            toTeamId: payload.toTeamId ?? null,
             fromSelf: false,
             sentAt: payload.sentAt ?? new Date().toISOString(),
           },
@@ -452,6 +498,23 @@ export function FirstAiderDashboard() {
     ]);
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     setMessageText('');
+  };
+
+  // "Mottatt" on a directed coordinator message — radio discipline expects a
+  // read-back (gap B10).
+  const handleAckMessage = (message: ChatMessage) => {
+    if (!eventId) return;
+    const delivered = wsSend({
+      type: 'team.message',
+      eventId,
+      payload: { fromTeamId: selectedTeam ?? undefined, toTeamId: 'coordinator', ackOf: message.id, text: 'Mottatt' },
+      timestamp: new Date().toISOString(),
+    });
+    if (!delivered) {
+      addToast({ level: 'urgent', message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.', autoDismissMs: 6_000 });
+      return;
+    }
+    setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, acknowledged: true } : m)));
   };
 
   const TRANSPORT_TRAVEL_MODE: Record<TeamTransport, string> = {
@@ -543,6 +606,7 @@ export function FirstAiderDashboard() {
       clientActionId: crypto.randomUUID(),
     };
     setTeamStatus(eventId, selectedTeam, status);
+    setNeedsAssistanceNote(status === 'needs_assistance' ? (note ?? null) : null);
     await queueAndSyncTeamAction(selectedTeam, payload);
   };
 
@@ -693,20 +757,28 @@ export function FirstAiderDashboard() {
     }
   };
 
-  const handleClosePatient = async (patientId: string, patientLabel: string) => {
+  const handleClosePatient = async (patientId: string, patientLabel: string, patientSeq?: number | null) => {
     const reason = PATIENT_CLOSE_REASONS.find((r) => r.id === perPatientCloseReason[patientId]);
     if (!reason) {
       setPerPatientCloseError((prev) => ({ ...prev, [patientId]: 'Velg årsak for avslutning.' }));
       return;
     }
-    const extra = (perPatientCloseNote[patientId] ?? '').trim();
-    const note = extra ? `${reason.label} — ${extra}` : reason.label;
+    const extra = perPatientCloseNote[patientId] ?? '';
     const author = selectedTeamData?.name ?? 'Ukjent lag';
+    // Hand-over ≠ finished (gap A1): only handed_to_ambulance/treated_on_scene/
+    // false_alarm/disappeared close the patient; handed_to_sickbay keeps it
+    // open — it is in the tent now, not done.
+    const outcome = resolveCloseOutcome({
+      reasonId: reason.id,
+      reasonLabel: reason.label,
+      teamId: selectedTeam,
+      teamName: author,
+      extraNote: extra,
+      nowIso: new Date().toISOString(),
+    });
     try {
-      await api.addPatientNote(patientId, `Avsluttet: ${note}`, author);
-      // Close on the server too — otherwise the coordinator and sick bay keep
-      // the patient as active and it reappears here after a reload.
-      await api.updatePatient(patientId, { status: 'discharged' });
+      await api.addPatientNote(patientId, outcome.noteText, author);
+      await api.updatePatient(patientId, outcome.updatePayload);
       setAssignedPatients((prev) => prev.filter((p) => p.id !== patientId));
       setWorkspace((prev) => prev ? {
         ...prev,
@@ -721,8 +793,18 @@ export function FirstAiderDashboard() {
         status: null,
         clientActionId: crypto.randomUUID(),
       });
+      if (eventId && selectedTeam) {
+        setPendingAssignmentIds(removePendingAssignment(eventId, selectedTeam, patientId));
+      }
       setClosedPatients((prev) => [
-        { id: patientId, label: patientLabel, closedAt: new Date().toISOString(), note },
+        {
+          id: patientId,
+          label: patientLabel,
+          closedAt: new Date().toISOString(),
+          outcomeLabel: outcome.outcomeLabel,
+          extraNote: extra.trim() || null,
+          seq: patientSeq ?? null,
+        },
         ...prev,
       ]);
       setClosingPatientId(null);
@@ -730,10 +812,81 @@ export function FirstAiderDashboard() {
       setPerPatientCloseNote((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
       setPerPatientCloseError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
       if (expandedPatientId === patientId) setExpandedPatientId(null);
-      addToast({ level: 'info', message: 'Pasient avsluttet', autoDismissMs: 3_000 });
+      // Never "Pasient avsluttet" — a hand-over is not the same as finished.
+      const numberLabel = patientNumber({ seq: patientSeq });
+      addToast({
+        level: 'info',
+        message: numberLabel ? `${numberLabel} ${outcome.toastMessage}` : outcome.toastMessage,
+        autoDismissMs: 3_000,
+      });
     } catch {
       setPerPatientCloseError((prev) => ({ ...prev, [patientId]: 'Kunne ikke avslutte pasient — prøv igjen.' }));
     }
+  };
+
+  // "Ring 113 / AMK er varslet" on red/yellow own-patient cards (gap B2).
+  const handleAmkNotified = async (patientId: string) => {
+    setPerPatientAmkError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    try {
+      await api.executePatientAction(patientId, { type: 'amk.notified' });
+      await loadWorkspace();
+    } catch {
+      setPerPatientAmkError((prev) => ({ ...prev, [patientId]: 'Kunne ikke varsle AMK — prøv igjen.' }));
+    }
+  };
+
+  const handleAmkCleared = async (patientId: string) => {
+    setPerPatientAmkError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    try {
+      await api.executePatientAction(patientId, { type: 'amk.cleared' });
+      await loadWorkspace();
+    } catch {
+      setPerPatientAmkError((prev) => ({ ...prev, [patientId]: 'Kunne ikke angre — prøv igjen.' }));
+    }
+  };
+
+  // Triage chips inside "Rediger sammendrag / posisjon" (gap A2).
+  const handleSaveTriage = async (patientId: string, currentTriage: FieldTriageStatus | null) => {
+    const next = perPatientTriageEdit[patientId];
+    if (!next || next === currentTriage) return;
+    const fromLabel = currentTriage ? FIELD_TRIAGE_STYLE[currentTriage].label.toLowerCase() : 'ukjent';
+    const toLabel = FIELD_TRIAGE_STYLE[next].label.toLowerCase();
+    const author = selectedTeamData?.name ?? 'Ukjent lag';
+    try {
+      await api.updatePatient(patientId, { triageStatus: next });
+      await api.addPatientNote(patientId, `Triage endret ${fromLabel} → ${toLabel}`, author);
+      setPerPatientTriageError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'info', message: 'Triage lagret', autoDismissMs: 2_500 });
+      void loadWorkspace();
+    } catch {
+      setPerPatientTriageError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre triage — prøv igjen.' }));
+    }
+  };
+
+  // Assignment banner responses (gap A4).
+  const handleAcceptAssignment = async (patientId: string) => {
+    if (!eventId || !selectedTeam) return;
+    await handleSetPatientStatus(patientId, 'en_route_to_patient');
+    setPendingAssignmentIds(removePendingAssignment(eventId, selectedTeam, patientId));
+  };
+
+  const handleDeclineAssignment = (patientId: string) => {
+    if (!eventId || !selectedTeam) return;
+    const patient = combinedAssignedPatients.find((p) => p.id === patientId);
+    const label = patient ? ((patient as any).label || (patient as any).presentingComplaint || 'pasient') : 'pasient';
+    const number = patient ? patientNumber(patient as any) : null;
+    const teamName = selectedTeamData?.name ?? 'Laget';
+    const text = `${teamName} kan ikke ta ${number ? `${number} ` : ''}${label}`;
+    const delivered = wsSend({
+      type: 'team.message',
+      eventId,
+      payload: { fromTeamId: selectedTeam, toTeamId: 'coordinator', text },
+      timestamp: new Date().toISOString(),
+    });
+    if (!delivered) {
+      addToast({ level: 'urgent', message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.', autoDismissMs: 6_000 });
+    }
+    setPendingAssignmentIds(removePendingAssignment(eventId, selectedTeam, patientId));
   };
 
   const selectedTeamData = useMemo(() => teams.find((t) => t.id === selectedTeam) ?? null, [teams, selectedTeam]);
@@ -756,13 +909,17 @@ export function FirstAiderDashboard() {
     ];
   }, [assignedPatients, monitoredPatients, patientStatusMap, eventId, selectedTeam, workspace?.unassignedPatients]);
 
+  // Sorted by distance from the phone's GPS (gap A10) — "Vi drar til denne"
+  // is a distance decision on a 40 km course; patients without a position
+  // sort last rather than scattering by update order.
   const filteredUnassigned = useMemo(() => {
     const assignedIds = new Set(combinedAssignedPatients.map((p) => p.id));
     const closedIds = new Set(closedPatients.map((p) => p.id));
-    return (workspace?.unassignedPatients ?? []).filter(
+    const filtered = (workspace?.unassignedPatients ?? []).filter(
       (p) => !wsRemovedPatientIds.has(p.id) && !assignedIds.has(p.id) && !closedIds.has(p.id),
     );
-  }, [workspace?.unassignedPatients, wsRemovedPatientIds, combinedAssignedPatients, closedPatients]);
+    return sortByDistance(filtered, gpsPosition);
+  }, [workspace?.unassignedPatients, wsRemovedPatientIds, combinedAssignedPatients, closedPatients, gpsPosition]);
 
   const INJURY_TYPES = [
     'Brudd / skade',
@@ -814,7 +971,14 @@ export function FirstAiderDashboard() {
       setReportDescription('');
       setReportPositionText('');
       setShowReportPatient(false);
-      addToast({ level: 'info', message: 'Pasient meldt til koordinator', autoDismissMs: 3_000 });
+      // Shared patient number (gap A5) — the same "#12" the coordinator and
+      // sick bay will use for this patient from now on.
+      const numberLabel = patientNumber(res.patient);
+      addToast({
+        level: 'info',
+        message: numberLabel ? `Pasient ${numberLabel} meldt til koordinator` : 'Pasient meldt til koordinator',
+        autoDismissMs: 3_000,
+      });
     } catch {
       setReportError('Kunne ikke registrere pasient — prøv igjen.');
     } finally {
@@ -929,6 +1093,21 @@ export function FirstAiderDashboard() {
         </header>
       )}
 
+      {/* Assignment from the coordinator — un-missable and persisted until answered (gap A4) */}
+      {selectedTeam && pendingAssignmentIds.map((id) => {
+        const patient = combinedAssignedPatients.find((p) => p.id === id);
+        if (!patient) return null;
+        const label = (patient as any).label || (patient as any).presentingComplaint || `Pasient ${id.slice(0, 8)}`;
+        return (
+          <AssignmentBanner
+            key={id}
+            patient={{ id, label, seq: (patient as any).seq ?? null }}
+            onAccept={handleAcceptAssignment}
+            onDecline={handleDeclineAssignment}
+          />
+        );
+      })}
+
       {/* Persistent banner while the patrol has asked for help — one tap to stand down */}
       {selectedTeam && selectedTeamStatus === 'needs_assistance' && (
         <section
@@ -946,6 +1125,11 @@ export function FirstAiderDashboard() {
             <Icon name="alert" size="lg" style={{ marginTop: 2 }} />
             <span>Dere har meldt behov for bistand — koordinator og sykestue er varslet.</span>
           </div>
+          {needsAssistanceNote && (
+            <div data-testid="firstaid-needs-assistance-reason" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+              {describeAssistanceNote(needsAssistanceNote) ?? needsAssistanceNote}
+            </div>
+          )}
           <Button variant="secondary" size="lg" block icon="check" onClick={() => setTeamOperationalStatus('available')} style={{ color: 'var(--color-status-critical)', borderColor: 'var(--color-status-critical)' }}>
             Avklart — vi er ledige igjen
           </Button>
@@ -1177,6 +1361,9 @@ export function FirstAiderDashboard() {
               const hasPosition = posText || (lat != null && lon != null);
               const detailsOpen = !!perPatientDetailsOpen[p.id];
               const closeReason = perPatientCloseReason[p.id];
+              const seq = (p as TeamWorkspacePatient).seq ?? (p as any).seq ?? null;
+              const amkNotifiedAt = (p as TeamWorkspacePatient).amkNotifiedAt ?? (p as any).amkNotifiedAt ?? null;
+              const needs113 = triageStatus === 'red' || triageStatus === 'yellow';
               return (
                 <div
                   key={p.id}
@@ -1203,6 +1390,7 @@ export function FirstAiderDashboard() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <PatientNumberPill seq={seq} data-testid={`patient-number-${p.id}`} />
                       {triage && <Pill tone={{ color: triage.text, bg: triage.bg }}>{triage.label}</Pill>}
                       {statusStyle && <Pill dot tone={{ color: statusStyle.color, bg: statusStyle.bg }}>{statusStyle.label}</Pill>}
                       <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', flex: 1, textAlign: 'left' }}>
@@ -1237,6 +1425,43 @@ export function FirstAiderDashboard() {
                         serverStatus={patientServerStatus}
                         onSetStatus={handleSetPatientStatus}
                       />
+
+                      {/* 1b. 113 / AMK — only where it can matter (gap B2) */}
+                      {needs113 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                          <a
+                            href="tel:113"
+                            className="btn btn--danger-soft btn--lg btn--block"
+                            data-testid={`firstaid-ring-113-${p.id}`}
+                            style={{ textDecoration: 'none' }}
+                          >
+                            <Icon name="phone" /> Ring 113
+                          </a>
+                          {amkNotifiedAt ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                              <Pill tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)' }}>
+                                AMK varslet kl. {new Date(amkNotifiedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+                              </Pill>
+                              <Button variant="ghost" size="sm" onClick={() => handleAmkCleared(p.id)}>
+                                Angre
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="secondary"
+                              size="lg"
+                              block
+                              data-testid={`firstaid-amk-notified-${p.id}`}
+                              onClick={() => handleAmkNotified(p.id)}
+                            >
+                              AMK er varslet
+                            </Button>
+                          )}
+                          {perPatientAmkError[p.id] && (
+                            <div role="alert" style={errorTextStyle}>{perPatientAmkError[p.id]}</div>
+                          )}
+                        </div>
+                      )}
 
                       {/* 2. Where — with distance and navigation */}
                       {hasPosition && (
@@ -1307,6 +1532,26 @@ export function FirstAiderDashboard() {
                         </button>
                         {detailsOpen && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
+                            {/* Triage — a moving judgement, not fixed at "Meld pasient" (gap A2) */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                              <div className="section-label">Triage</div>
+                              <TriageChips
+                                value={perPatientTriageEdit[p.id] ?? (triageStatus as FieldTriageStatus | null) ?? null}
+                                onChange={(val) => setPerPatientTriageEdit((prev) => ({ ...prev, [p.id]: val }))}
+                                idPrefix={`firstaid-triage-${p.id}`}
+                              />
+                              <Button
+                                variant="secondary"
+                                onClick={() => handleSaveTriage(p.id, (triageStatus as FieldTriageStatus | null) ?? null)}
+                                disabled={!perPatientTriageEdit[p.id] || perPatientTriageEdit[p.id] === triageStatus}
+                              >
+                                Lagre
+                              </Button>
+                              {perPatientTriageError[p.id] && (
+                                <div role="alert" style={errorTextStyle}>{perPatientTriageError[p.id]}</div>
+                              )}
+                            </div>
+
                             {/* Editable summary */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                               <label htmlFor={`summary-${p.id}`} className="section-label">Sammendrag</label>
@@ -1422,7 +1667,7 @@ export function FirstAiderDashboard() {
                             </div>
                           )}
                           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                            <Button variant="danger" size="lg" onClick={() => handleClosePatient(p.id, label)} disabled={!closeReason} style={{ flex: 1 }}>
+                            <Button variant="danger" size="lg" onClick={() => handleClosePatient(p.id, label, seq)} disabled={!closeReason} style={{ flex: 1 }}>
                               Bekreft avslutning
                             </Button>
                             <Button
@@ -1468,6 +1713,7 @@ export function FirstAiderDashboard() {
                   } as React.CSSProperties}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <PatientNumberPill seq={patient.seq} data-testid={`patient-number-${patient.id}`} />
                     {triage && <Pill tone={{ color: triage.text, bg: triage.bg }}>{triage.label}</Pill>}
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
                       {patient.label || patient.presentingComplaint || 'Ukjent pasient'}
@@ -1514,9 +1760,10 @@ export function FirstAiderDashboard() {
                         <div key={p.id} className="card" style={{
                           padding: 'var(--space-2) var(--space-3)',
                           fontSize: 'var(--text-sm)',
-                          display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)',
                         }}>
-                          <span style={{ fontWeight: 600 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600 }}>
+                            <PatientNumberPill seq={p.seq} data-testid={`patient-number-${p.id}`} />
                             {p.label || p.presentingComplaint || `Pasient ${p.id.slice(0, 8)}`}
                           </span>
                           <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>
@@ -1551,12 +1798,21 @@ export function FirstAiderDashboard() {
                         fontSize: 'var(--text-sm)',
                         display: 'flex', flexDirection: 'column', gap: 'var(--space-1)',
                       }}>
-                        <div style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                          {cp.label}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <PatientNumberPill seq={cp.seq} data-testid={`patient-number-${cp.id}`} />
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                            {cp.label}
+                          </span>
                         </div>
-                        <div style={{ color: 'var(--color-text-subtle)' }}>
-                          {cp.note}
+                        {/* The outcome, not "avsluttet" — a hand-over is not the same as finished. */}
+                        <div style={{ fontWeight: 700, color: 'var(--color-text)' }}>
+                          {cp.outcomeLabel}
                         </div>
+                        {cp.extraNote && (
+                          <div style={{ color: 'var(--color-text-subtle)' }}>
+                            {cp.extraNote}
+                          </div>
+                        )}
                         <div className="data" style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)' }}>
                           {new Date(cp.closedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
                         </div>
@@ -1589,6 +1845,7 @@ export function FirstAiderDashboard() {
         onSend={sendMessage}
         chatEndRef={chatEndRef}
         unreadCount={unreadChatCount}
+        onAck={handleAckMessage}
       />
     </div>
   );

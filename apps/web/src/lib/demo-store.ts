@@ -482,6 +482,8 @@ const mapWorkspacePatient = (patient: any, teamPatientStatus: TeamPatientStatus 
   handedOverAt: patient.handedOverAt ?? null,
   handedOverByTeamId: patient.handedOverByTeamId ?? null,
   fieldOutcome: patient.fieldOutcome ?? null,
+  amkNotifiedAt: patient.amkNotifiedAt ?? null,
+  amkNotifiedBy: patient.amkNotifiedBy ?? null,
 });
 
 const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({

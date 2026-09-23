@@ -65,6 +65,35 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await expect(closeForm.getByRole('radio', { name: 'Falsk alarm' })).toBeVisible();
   await closeForm.getByRole('button', { name: 'Avbryt' }).click();
 
+  // Shared patient number (gap A5): every own-patient row carries "#<n>".
+  const sofiaCard = workspace.getByTestId('firstaid-patient-demo-pat-4');
+  await expect(sofiaCard.getByTestId('patient-number-demo-pat-4')).toBeVisible();
+
+  // "Trenger bistand" (gap A3) opens a second step asking what the patrol
+  // needs, instead of sending the status alone. Back out without sending so
+  // the rest of the flow is unaffected.
+  await workspace.getByTestId('firstaid-field-status-pill').click();
+  await expect(workspace.getByTestId('firstaid-field-status-controls')).toBeVisible();
+  await page.getByTestId('firstaid-field-status-needs_assistance').click();
+  await expect(page.getByTestId('firstaid-assist-reason-more_hands')).toBeVisible();
+  await expect(page.getByTestId('firstaid-assist-reason-transport')).toBeVisible();
+  await expect(page.getByTestId('firstaid-assist-reason-amk_notified')).toBeVisible();
+  await expect(page.getByTestId('firstaid-assist-reason-other')).toBeVisible();
+  await page.getByRole('button', { name: 'Tilbake' }).click();
+  await page.getByRole('button', { name: 'Avbryt' }).click();
+
+  // Hand-over ≠ finished (gap A1): closing Sofia (demo-pat-4, already Alpha's
+  // own patient in the demo seed) with "Overlevert sykestue" removes her from
+  // the field lists but must keep her open for the sick bay — checked below,
+  // after logging in as sick bay, against the seed's untouched state (the
+  // in-memory demo store resets on the persona-switch navigation).
+  await sofiaCard.getByText('Bruddmistanke ankel').click();
+  await sofiaCard.getByRole('button', { name: 'Avslutt pasient' }).click();
+  const sofiaCloseForm = sofiaCard.getByTestId('firstaid-close-form-demo-pat-4');
+  await sofiaCloseForm.getByRole('radio', { name: 'Overlevert sykestue' }).click();
+  await sofiaCloseForm.getByRole('button', { name: 'Bekreft avslutning' }).click();
+  await expect(sofiaCard).toHaveCount(0);
+
   // Dark mode is a one-tap, remembered choice for patrols working at night.
   const themeToggle = page.getByTestId('theme-toggle');
   await expect(themeToggle).toHaveText('Auto');
