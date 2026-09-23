@@ -98,6 +98,10 @@
   - E2E: `pages-demo` asserted the removed "Meld hendelse" button (Demo E2E was red on `main`);
     now covers the report-patient flow and the team status panel. `local-full` reports a patient
     against the real API and verifies it reaches sick bay and coordinator.
+  - Build/CI: API is bundled with esbuild (`dist/server.js` starts, load-test gate passes locally);
+    Dockerfiles use `pnpm deploy` for a self-contained runtime; GitHub Actions pinned to commit SHAs
+    with Dependabot; Semgrep runs from the official container; nginx WebSocket proxy only forwards
+    `Upgrade: websocket`; GCE smoke workflow fails fast or skips with a notice.
 - `(pending commit)` `docs(ai): compact ai instruction files for lower token usage`
   - Centralized shared AI operating rules in `docs/ai/COMPACT-PLAYBOOK.md`.
   - Rewrote `AGENTS.md` and `CLAUDE.md` to compact pointer-based versions.
@@ -230,4 +234,10 @@ Legend: `P0` blocks field use, `P1` degrades the flow, `P2` polish. Status refer
 | 15 | P2 | Team chat history is lost on reload (realtime only). | Open |
 | 16 | P2 | Field vitals/notes are not offline-queued (only team actions are); the offline banner over-promises. | Open |
 | 17 | P2 | Coordinator cannot set/clear a team's status (e.g. acknowledge "Trenger bistand"). | Open |
+| 18 | P0 | Production API could not start: `tsc` output imported `@rkf/shared-types` TypeScript source → `ERR_MODULE_NOT_FOUND`. Broke the API Docker image and the scheduled load-test gate ("Wait for API health"). | Fixed (esbuild bundle) |
+| 19 | P0 | API Docker image copied pnpm symlinks without the store → broken `node_modules`; both Dockerfiles ran husky in `pnpm install`. | Fixed (`pnpm deploy`, `HUSKY=0`, `.dockerignore`) |
+| 20 | P1 | CI Security Scan red on `main`: nginx H2C-smuggling pattern in the WebSocket proxy, 44 unpinned (mutable) action tags, archived `returntocorp/semgrep-action`. | Fixed (map-based upgrade allow-list, SHA pins + Dependabot, official Semgrep container) |
+| 21 | P1 | Scheduled GCE production smoke hung 15 min / failed daily because deploys are paused and the target is unset or unreachable. | Fixed (fails fast, skips with a notice when unconfigured) |
+| 22 | P2 | Load test still targeted the removed `/api/incidents` endpoint and ignored non-2xx responses. | Fixed |
+| 23 | P2 | Semgrep supply-chain rules want `minimumReleaseAge`/`trustPolicy`/`blockExoticSubdeps`, which need pnpm 10. Annotated with rationale; upgrade pnpm when ready. | Open |
 
