@@ -16,10 +16,16 @@ async function loginAsSickBay(page: import('@playwright/test').Page) {
 
 async function selectTeamIfNeeded(page: import('@playwright/test').Page) {
   const chooseTeam = page.getByRole('heading', { name: /Velg patrulje/i });
-  if (await chooseTeam.isVisible().catch(() => false)) {
-    const teamButton = page.locator('button.touch-target').first();
+  const workspaceReady = page.getByRole('button', { name: /Meld pasient/i });
+  // Wait until the dashboard has actually rendered one of its two initial
+  // states — a single isVisible() probe raced the first paint on cold starts
+  // and skipped team selection, which then failed every later assertion.
+  await expect(chooseTeam.or(workspaceReady).first()).toBeVisible({ timeout: 20_000 });
+  if (await chooseTeam.isVisible()) {
+    const teamButton = page.getByRole('button', { name: /^Alpha/ });
     await expect(teamButton).toBeVisible();
     await teamButton.click();
+    await expect(workspaceReady).toBeVisible({ timeout: 20_000 });
   }
 }
 
