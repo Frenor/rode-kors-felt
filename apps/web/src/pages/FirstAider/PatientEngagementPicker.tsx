@@ -1,22 +1,15 @@
 /**
  * PatientEngagementPicker
  *
- * Per-patient status picker shown inside the own-patient accordion.
- * Allows a first-aider to record their engagement status (en route,
- * transporting, monitoring) and clear it. Shows checkmark on active option.
+ * Per-patient status picker shown first inside the own-patient accordion:
+ * "På vei / Transporterer / Overvåker" is what the coordinator and the sick
+ * bay are waiting to hear, so it gets three glove-sized buttons rather than
+ * small chips under three forms.
  */
+import { TEAM_PATIENT_STATUS_STYLE } from '../../lib/constants';
 import type { TeamPatientStatus } from '../../lib/types';
 
-const STATUSES: Array<{
-  value: TeamPatientStatus;
-  label: string;
-  activeBg: string;
-  color: string;
-}> = [
-  { value: 'en_route_to_patient', label: 'På vei',       activeBg: '#fef3c7', color: '#92400e' },
-  { value: 'transporting',        label: 'Transporterer', activeBg: '#dbeafe', color: '#1e40af' },
-  { value: 'monitoring',          label: 'Overvåker',     activeBg: '#dcfce7', color: '#166534' },
-];
+const ORDER: TeamPatientStatus[] = ['en_route_to_patient', 'transporting', 'monitoring'];
 
 export interface PatientEngagementPickerProps {
   patientId: string;
@@ -36,65 +29,75 @@ export function PatientEngagementPicker({
   const activeStatus = localStatus ?? serverStatus;
 
   return (
-    <div>
+    <div data-testid={`engagement-picker-${patientId}`}>
       <div
         style={{
           fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-subtle)',
-          marginBottom: 'var(--space-1)',
-          fontWeight: 600,
+          color: 'var(--color-text-muted)',
+          marginBottom: 'var(--space-2)',
+          fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
         }}
       >
-        Din status på denne pasienten
+        Hva gjør dere nå?
       </div>
-      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        {STATUSES.map(({ value, label, activeBg, color }) => {
+      <div
+        role="radiogroup"
+        aria-label="Din status på denne pasienten"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)' }}
+      >
+        {ORDER.map((value) => {
+          const style = TEAM_PATIENT_STATUS_STYLE[value];
           const isActive = activeStatus === value;
           return (
             <button
               key={value}
+              type="button"
+              role="radio"
+              aria-checked={isActive}
+              data-testid={`engagement-${value}`}
               onClick={() => onSetStatus(patientId, isActive ? null : value)}
-              className="touch-target"
               style={{
-                padding: '4px 12px',
-                minHeight: 36,
-                borderRadius: 'var(--radius-sm)',
-                border: `1.5px solid ${color}`,
-                background: isActive ? activeBg : 'transparent',
-                color,
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
+                minHeight: 'var(--touch-min)',
+                padding: 'var(--space-2)',
+                borderRadius: 'var(--radius-md)',
+                border: `2px solid ${style.color}`,
+                background: isActive ? style.bg : 'transparent',
+                color: style.color,
+                fontSize: 'var(--text-sm)',
+                fontWeight: 700,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
+                lineHeight: 1.2,
               }}
             >
-              {label}{isActive ? ' ✓' : ''}
+              {isActive ? '✓ ' : ''}{style.label}
             </button>
           );
         })}
-        {activeStatus != null && (
-          <button
-            onClick={() => onSetStatus(patientId, null)}
-            className="touch-target"
-            style={{
-              padding: '4px 12px',
-              minHeight: 36,
-              borderRadius: 'var(--radius-sm)',
-              border: '1.5px solid var(--color-border)',
-              background: 'transparent',
-              color: 'var(--color-text-subtle)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            Avslutt
-          </button>
-        )}
       </div>
+      {activeStatus != null && (
+        <button
+          type="button"
+          onClick={() => onSetStatus(patientId, null)}
+          style={{
+            marginTop: 'var(--space-2)',
+            minHeight: 44,
+            padding: '0 var(--space-3)',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--color-border)',
+            background: 'transparent',
+            color: 'var(--color-text-muted)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          Fjern status (ikke lenger på denne pasienten)
+        </button>
+      )}
     </div>
   );
 }

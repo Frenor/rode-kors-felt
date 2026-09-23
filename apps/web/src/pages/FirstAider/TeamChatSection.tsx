@@ -2,7 +2,9 @@
  * TeamChatSection
  *
  * Collapsible team messaging panel. Shows message history and a send input.
- * Scrolls to the bottom whenever the chat is opened or a new message arrives.
+ * While collapsed, an unread badge on the header tells the patrol that a
+ * message (typically from the coordinator) arrived; the parent also vibrates
+ * the phone so it is noticed in the dark with the phone in a pocket.
  */
 import type { RefObject } from 'react';
 
@@ -23,6 +25,8 @@ export interface TeamChatSectionProps {
   onMessageTextChange: (text: string) => void;
   onSend: () => void;
   chatEndRef: RefObject<HTMLDivElement | null>;
+  /** Messages received while the section was collapsed. */
+  unreadCount?: number;
 }
 
 export function TeamChatSection({
@@ -34,25 +38,56 @@ export function TeamChatSection({
   onMessageTextChange,
   onSend,
   chatEndRef,
+  unreadCount = 0,
 }: TeamChatSectionProps) {
+  const hasUnread = !showChat && unreadCount > 0;
   return (
-    <section style={{ marginBottom: 'var(--space-4)' }}>
+    <section style={{ marginBottom: 'var(--space-4)' }} aria-label="Lagmelding">
       <button
+        type="button"
         onClick={onToggleChat}
+        aria-expanded={showChat}
+        data-testid="firstaid-chat-toggle"
         style={{
           width: '100%',
+          minHeight: 'var(--touch-min)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          gap: 'var(--space-2)',
           padding: 'var(--space-3) var(--space-4)',
           borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)',
-          background: 'var(--color-surface)',
+          border: `1px solid ${hasUnread ? 'var(--color-brand)' : 'var(--color-border)'}`,
+          background: hasUnread ? 'var(--color-brand-dim)' : 'var(--color-surface)',
           color: 'var(--color-text)',
           cursor: 'pointer',
         }}
       >
-        <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>Lagmelding</span>
+        <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          Lagmelding
+          {hasUnread && (
+            <span
+              data-testid="firstaid-chat-unread"
+              aria-label={`${unreadCount} uleste meldinger`}
+              style={{
+                minWidth: 28,
+                height: 28,
+                padding: '0 8px',
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--color-brand)',
+                color: 'white',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {unreadCount}
+            </span>
+          )}
+        </span>
         <span
           style={{
             fontFamily: 'var(--font-mono)',
@@ -78,7 +113,7 @@ export function TeamChatSection({
           {/* Message list */}
           <div
             style={{
-              maxHeight: 220,
+              maxHeight: 260,
               overflowY: 'auto',
               padding: 'var(--space-3)',
               display: 'flex',
@@ -89,7 +124,7 @@ export function TeamChatSection({
             {messages.length === 0 && (
               <p
                 style={{
-                  fontSize: 'var(--text-xs)',
+                  fontSize: 'var(--text-sm)',
                   color: 'var(--color-text-subtle)',
                   textAlign: 'center',
                 }}
@@ -108,33 +143,35 @@ export function TeamChatSection({
               >
                 <div
                   style={{
-                    maxWidth: '80%',
+                    maxWidth: '85%',
                     padding: 'var(--space-2) var(--space-3)',
                     borderRadius: 'var(--radius-md)',
                     background: msg.fromSelf
                       ? 'var(--color-brand)'
                       : 'var(--color-surface-sunken)',
                     color: msg.fromSelf ? 'white' : 'var(--color-text)',
-                    fontSize: 'var(--text-sm)',
+                    fontSize: 'var(--text-base)',
                   }}
                 >
-                  {!msg.fromSelf && msg.fromTeamId && (
+                  {!msg.fromSelf && (
                     <div
                       style={{
                         fontSize: 'var(--text-xs)',
-                        fontWeight: 600,
+                        fontWeight: 700,
                         marginBottom: 2,
-                        opacity: 0.7,
+                        opacity: 0.8,
                       }}
                     >
-                      {teams.find((t) => t.id === msg.fromTeamId)?.name ?? 'Ukjent lag'}
+                      {msg.fromTeamId
+                        ? teams.find((t) => t.id === msg.fromTeamId)?.name ?? 'Ukjent lag'
+                        : 'Koordinator'}
                     </div>
                   )}
                   {msg.text}
                 </div>
                 <div
                   style={{
-                    fontSize: 10,
+                    fontSize: 'var(--text-xs)',
                     color: 'var(--color-text-subtle)',
                     marginTop: 2,
                   }}
@@ -169,29 +206,32 @@ export function TeamChatSection({
                 }
               }}
               placeholder="Skriv melding..."
+              aria-label="Melding til laget"
               style={{
                 flex: 1,
-                height: 44,
+                minWidth: 0,
+                height: 48,
                 padding: '0 var(--space-3)',
                 borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--color-input-border)',
                 background: 'var(--color-input-bg)',
                 color: 'var(--color-text)',
-                fontSize: 'var(--text-sm)',
+                fontSize: 'var(--text-base)',
               }}
             />
             <button
+              type="button"
               onClick={onSend}
               disabled={!messageText.trim()}
               style={{
-                height: 44,
-                padding: '0 var(--space-3)',
+                height: 48,
+                padding: '0 var(--space-4)',
                 borderRadius: 'var(--radius-sm)',
                 border: 'none',
                 background: 'var(--color-brand)',
                 color: 'white',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 600,
+                fontSize: 'var(--text-base)',
+                fontWeight: 700,
                 cursor: 'pointer',
                 opacity: !messageText.trim() ? 0.5 : 1,
               }}
