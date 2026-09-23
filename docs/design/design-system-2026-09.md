@@ -1,4 +1,4 @@
-# RKF Design System — v1.2 (September 2026 design pass)
+# RKF Design System — v1.3 (September 2026 design pass)
 
 Companion to `docs/design/ux-review-2026-09.md`. The review says what was wrong per persona;
 this document is the design plan the fixes are derived from, and the rules that keep the next
@@ -101,25 +101,40 @@ Replaces every emoji and dingbat (⚙ ▲ ▼ ✓ ✕ 📍 ⏰), which rendered 
 and vanished in dark mode.
 
 **Disclosure** — a 44 px neutral row with a chevron for collapsed secondary content
-(Rediger sammendrag / posisjon, Andre lags pasienter, Kartinnstillinger).
+(Rediger sammendrag / posisjon, Rediger detaljer on a sick bay card, Andre lags pasienter,
+Kartinnstillinger). A card at rest shows one disclosure, never a stack of edit buttons.
+
+**Status strip** — one band under the header, present only while something is degraded
+(offline, or the realtime socket reconnecting). The nominal state lives in the header dot and
+label and, for a patrol, in the team card ("Alt sendt", "2 venter på sending"). Nothing sits
+between the header and the content when all is well.
+
+**Confirmed action** — a control that hides a distress signal or discards work asks once
+more, inline, in the same row ("Avklart" → "Ja, sett Bravo ledig" / "Avbryt"). Never a
+browser dialog.
 
 **Field** — 48 px inputs; `.field--data` for numbers (mono, centred, 20 px).
 
 ## 6. Per-screen hierarchy
 
-**Field (phone, dark).** Top to bottom: team + status pill → *needs-assistance banner when
-active* → Meld pasient (xl, brand) → own patients (stripe cards; expanded card leads with the
-three engagement chips) → unassigned (stripe cards with a lg primary "Vi drar til denne
-pasienten") → other teams / closed (disclosures) → chat. The status sheet separates the red
+**Field (phone, dark).** Top to bottom: header (dot + connection label; theme and logout
+icon-only) → team + status pill → *needs-assistance banner when active* → Meld pasient (xl,
+brand) → own patients (stripe cards with a NEWS2 pill once a set exists; the expanded card leads
+with the three engagement chips, then "Sist kl. 10:40 · Puls 96 · …" above the vitals form) →
+unassigned (stripe cards with a lg primary "Vi drar til denne pasienten") → other teams / closed
+(disclosures) → chat. The status sheet separates the red
 "Trenger bistand" (xl, danger-soft) from the four routine states.
 
 **Sick bay (tablet).** Header with the two counts that matter (overdue, continuous) → critical
-incoming → three columns by status. Card: stripe + name + complaint → due line → last vitals
-→ primary next step → five equal action buttons → three secondary edit buttons.
+incoming → three columns by status. Card: stripe + name + complaint → who is bringing the
+patient (patrol · engagement) → due line → last vitals → primary next step → "Ring 113" on its
+own row → four openers in a 2 × 2 grid → one "Rediger detaljer" disclosure.
 
-**Coordinator (laptop).** Krever handling (critical ring, each row with its decision inline)
-→ counters → patients + teams + messages beside the sticky map. Map engine and 3D are
-settings, behind a disclosure.
+**Coordinator (laptop).** Krever handling (critical edge, each row with its decision inline:
+assign a team, message a patrol, stand it down) → six counters in rows that always fill
+(6 / 3 + 3 / 2 + 2 + 2) → patients + teams + messages (with a compose box: everyone or one
+patrol) beside the sticky map. Map engine and 3D are settings, behind a disclosure; the map
+carries no caption unless it is in a non-plain state.
 
 ## 7. Rules for the next screen
 

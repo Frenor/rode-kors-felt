@@ -8,7 +8,7 @@
 - Lane 4 (Enum Migration Across Shared/API/Web): `In progress`
 - Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
 - Lane 6 (Field Trial Remediation — production readiness): `In progress`
-- Lane 7 (UX Review — field teams / sick bay / coordinator): `In progress` (review, first fix batch and design-system pass landed)
+- Lane 7 (UX Review — field teams / sick bay / coordinator): `Done` (review, three fix passes, design system and presentation export landed; backlog in the review doc §7)
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -76,6 +76,17 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `ux review pass 3` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23)
+  - Remaining review backlog closed: X6 (one status strip, no permanent sync band), F12, F13
+    (`latestVitals` in the team workspace; NEWS2 pill + "Sist kl." line on the field card), F14
+    (vitals/notes offline-queued as `patient.vitals_record` / `patient.note_add`, replayed against
+    the patient endpoints), S8 (announce only new critical patients), S9 (patrol · engagement on
+    incoming cards, live via `team.session_changed`), C8 ("Avklart" with inline confirm, "Melding"),
+    C9 (coordinator compose to all / one patrol; `fromLabel` on `team.message`; patrols filter
+    `toTeamId`).
+  - Fresh findings T1–T6 (review doc §6): Ring 113 row + 2 × 2 grid, "Rediger detaljer"
+    disclosure, quiet map caption, stats grid 6/3/2, phone header label, directed messages.
+  - Section 12 rows 16 and 17 are now fixed.
 - `calmer palette + red-only banner` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23)
   - Product decision recorded in section 2: the coordinator banner triggers only on red patients
     or assistance requests; `AttentionQueuePanel` filters accordingly and counts the rest quietly.
@@ -210,12 +221,11 @@
 ## 9. Current Focus (September 23, 2026 — post field trial)
 - Production readiness after the field trial:
   - the P0 defects in section 12 are fixed on this branch; next is a second supervised field run.
-  - remaining known gaps (not blocking, tracked in section 12): chat history is not persisted,
-    vitals/notes from the field are not offline-queued, no coordinator → team status override.
-- UX review follow-up (see `docs/design/ux-review-2026-09.md`, section 6 for the ordered backlog):
-  - next: last vitals + NEWS2 on the first aider's own-patient card; coordinator acknowledge/clear
-    of "Trenger bistand" and per-team message compose; move `components/ui` into `@rkf/ui` once
-    that package gets React types.
+  - remaining known gaps (not blocking, tracked in section 12): chat history is not persisted.
+- UX review follow-up (see `docs/design/ux-review-2026-09.md`, section 7 for the ordered backlog):
+  - done: three fix passes, design system v1.3, presentation export (`docs/design/showcase/`).
+  - next: server-side de-duplication of replayed field vitals/notes; chat history on reload;
+    move `components/ui` into `@rkf/ui` once that package gets React types.
 
 ## 9a. Previous Focus (April 5, 2026)
 - First Aider efficiency uplift:
@@ -289,8 +299,8 @@ Legend: `P0` blocks field use, `P1` degrades the flow, `P2` polish. Status refer
 | 13 | P1 | Demo E2E on `main` asserted the removed "Meld hendelse" button. | Fixed |
 | 14 | P2 | No confirmation after saving vitals/notes/summary; chat pretended to send while offline. | Fixed (toasts, delivery check) |
 | 15 | P2 | Team chat history is lost on reload (realtime only). | Open |
-| 16 | P2 | Field vitals/notes are not offline-queued (only team actions are); the offline banner over-promises. | Open |
-| 17 | P2 | Coordinator cannot set/clear a team's status (e.g. acknowledge "Trenger bistand"). | Open |
+| 16 | P2 | Field vitals/notes are not offline-queued (only team actions are); the offline banner over-promises. | Fixed (queued and replayed; toast says "lagret lokalt") |
+| 17 | P2 | Coordinator cannot set/clear a team's status (e.g. acknowledge "Trenger bistand"). | Fixed ("Avklart" with inline confirm; "Melding" to one patrol) |
 | 18 | P0 | Production API could not start: `tsc` output imported `@rkf/shared-types` TypeScript source → `ERR_MODULE_NOT_FOUND`. Broke the API Docker image and the scheduled load-test gate ("Wait for API health"). | Fixed (esbuild bundle) |
 | 19 | P0 | API Docker image copied pnpm symlinks without the store → broken `node_modules`; both Dockerfiles ran husky in `pnpm install`. | Fixed (`pnpm deploy`, `HUSKY=0`, `.dockerignore`) |
 | 20 | P1 | CI Security Scan red on `main`: nginx H2C-smuggling pattern in the WebSocket proxy, 44 unpinned (mutable) action tags, archived `returntocorp/semgrep-action`. | Fixed (map-based upgrade allow-list, SHA pins + Dependabot, official Semgrep container) |
