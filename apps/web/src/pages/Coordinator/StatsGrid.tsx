@@ -1,5 +1,9 @@
 /**
- * StatsGrid — displays event statistics with trend indicators and filter on double-click.
+ * StatsGrid — event counters with a neutral change indicator.
+ *
+ * The arrow only says "this number moved since the last refresh"; it is
+ * deliberately not coloured green/red, because more patients is not good and
+ * fewer incoming is not bad.
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -8,7 +12,6 @@ interface StatsGridProps {
   stats: Record<string, number> | null;
   lastUpdatedAt?: number;
   prevStats?: Record<string, number> | null;
-  onFilter?: (key: string) => void;
 }
 
 const STAT_ENTRIES: { key: string; label: string }[] = [
@@ -20,19 +23,7 @@ const STAT_ENTRIES: { key: string; label: string }[] = [
   { key: 'discharged',          label: 'Utskrevet' },
 ];
 
-function StatCard({
-  label,
-  value,
-  prevValue,
-  onFilter,
-  statKey,
-}: {
-  label: string;
-  value: number;
-  prevValue?: number;
-  onFilter?: (key: string) => void;
-  statKey: string;
-}) {
+function StatCard({ label, value, prevValue }: { label: string; value: number; prevValue?: number }) {
   const prevRef = useRef<number | undefined>(prevValue);
   const [pop, setPop] = useState(false);
 
@@ -52,39 +43,33 @@ function StatCard({
         ? '↑'
         : '↓'
       : null;
-  const trendColor =
-    trend === '↑'
-      ? 'var(--color-status-ok)'
-      : trend === '↓'
-      ? 'var(--color-status-critical)'
-      : undefined;
 
   return (
     <div
-      onDoubleClick={() => onFilter?.(statKey)}
-      title={onFilter ? 'Dobbeltklikk for å filtrere' : undefined}
       style={{
-        padding: 'var(--space-4)', borderRadius: 'var(--radius-md)',
+        padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
         border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-        cursor: onFilter ? 'pointer' : undefined,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-1)' }}>
         <div
           className={pop ? 'animate-count-pop' : undefined}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3xl)', fontWeight: 700 }}
+          style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xl)', fontWeight: 700 }}
         >
           {value ?? 0}
         </div>
         {trend && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: trendColor, fontWeight: 700 }}>
+          <span
+            aria-label={trend === '↑' ? 'økt siden forrige oppdatering' : 'redusert siden forrige oppdatering'}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', fontWeight: 700 }}
+          >
             {trend}
           </span>
         )}
       </div>
       <div style={{
         fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-        color: 'var(--color-text-subtle)', textTransform: 'uppercase',
+        color: 'var(--color-text-muted)', textTransform: 'uppercase',
       }}>
         {label}
       </div>
@@ -92,7 +77,7 @@ function StatCard({
   );
 }
 
-export function StatsGrid({ stats, lastUpdatedAt, prevStats, onFilter }: StatsGridProps) {
+export function StatsGrid({ stats, lastUpdatedAt, prevStats }: StatsGridProps) {
   const [secondsAgo, setSecondsAgo] = useState<number | null>(null);
 
   useEffect(() => {
@@ -106,19 +91,17 @@ export function StatsGrid({ stats, lastUpdatedAt, prevStats, onFilter }: StatsGr
   if (!stats) return null;
 
   return (
-    <div style={{ marginBottom: 'var(--space-6)' }}>
+    <div style={{ marginBottom: 'var(--space-4)' }}>
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-        gap: 'var(--space-3)',
+        gap: 'var(--space-2)',
       }}>
         {STAT_ENTRIES.map(({ key, label }) => (
           <StatCard
             key={key}
-            statKey={key}
             label={label}
             value={stats[key] ?? 0}
             prevValue={prevStats?.[key]}
-            onFilter={onFilter}
           />
         ))}
       </div>

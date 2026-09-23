@@ -89,6 +89,9 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
 
   await loginAsCoordinator(page);
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
+  await expect(page.getByTestId('coordinator-attention-queue')).toBeVisible();
+  // Map engine / 3D are behind "Kartinnstillinger".
+  await page.getByTestId('map-settings-toggle').click();
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /MapLibre/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /3D-presentasjon/i })).toBeVisible();
@@ -96,5 +99,7 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('Sektor B, ved scenen').first()).toBeVisible();
   await expect(page.getByTestId('coordinator-team-status')).toBeVisible();
-  await expect(page.getByText('Patrulje Alpha').first()).toBeVisible();
+  // Scoped to the team panel: the attention queue's assign select also lists
+  // every team name as an <option>.
+  await expect(page.getByTestId('coordinator-team-status').getByText('Patrulje Alpha')).toBeVisible();
 });

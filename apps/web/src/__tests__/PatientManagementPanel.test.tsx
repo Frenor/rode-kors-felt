@@ -5,7 +5,7 @@
  * are responding to a patient and their Norwegian status labels.
  */
 import { describe, expect, it } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { PatientManagementPanel, type FieldPatient } from '../pages/Coordinator/PatientManagementPanel';
 import type { TeamPatientEngagement } from '../lib/types';
 
@@ -67,9 +67,15 @@ describe('PatientManagementPanel — team engagement display', () => {
     );
 
     fireEvent.click(screen.getByText('Testpasient'));
-    expect(screen.getByText('Lag responderer')).toBeTruthy();
-    expect(screen.getByText('Alpha')).toBeTruthy();
-    expect(screen.getByText('Overvåker')).toBeTruthy();
+    const heading = screen.getByText('Lag responderer');
+    // The inline "Tilordnet lag" select also lists "Alpha" as an option, so
+    // scope the lookup to the engagement section.
+    const section = within(heading.parentElement as HTMLElement);
+    expect(section.getByText('Alpha')).toBeTruthy();
+    expect(section.getByText('Overvåker')).toBeTruthy();
+    // Assigning is one interaction from the expanded row, no edit mode needed.
+    expect(screen.getByTestId('assign-select-pat-1')).toBeTruthy();
+    expect(screen.getByTestId('unassigned-badge-pat-1')).toBeTruthy();
   });
 
   it('shows "På vei" label for en_route_to_patient status', () => {

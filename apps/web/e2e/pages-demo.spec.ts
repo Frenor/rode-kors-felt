@@ -56,6 +56,25 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await expect(workspace.getByRole('button', { name: /Meld pasient/i })).toBeVisible({ timeout: 10_000 });
   await expect(workspace.getByText('Brudd / skade').first()).toBeVisible();
 
+  // Open the new patient: the engagement buttons come first, and closing the
+  // patient offers reason chips instead of demanding free text.
+  await workspace.getByText('Brudd / skade').first().click();
+  await expect(workspace.getByTestId('engagement-en_route_to_patient').first()).toBeVisible();
+  await workspace.getByRole('button', { name: 'Avslutt pasient' }).first().click();
+  const closeForm = workspace.getByTestId(/^firstaid-close-form-/).first();
+  await expect(closeForm.getByRole('radio', { name: 'Falsk alarm' })).toBeVisible();
+  await closeForm.getByRole('button', { name: 'Avbryt' }).click();
+
+  // Dark mode is a one-tap, remembered choice for patrols working at night.
+  const themeToggle = page.getByTestId('theme-toggle');
+  await expect(themeToggle).toHaveText('Auto');
+  await themeToggle.click();
+  await expect(themeToggle).toHaveText('Mørk');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  expect(await page.evaluate(() => localStorage.getItem('rkf-theme'))).toBe('dark');
+  await themeToggle.click(); // → Lys
+  await themeToggle.click(); // → Auto
+
   // Sick Bay flow: verify Ring 113 and AMK brief are visible.
   const logoutBtn = page.getByRole('button', { name: /Logg ut/i });
   if (await logoutBtn.isVisible().catch(() => false)) {
@@ -73,6 +92,16 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Problemstilling', exact: true }).fill('Brystsmerter demo');
   await page.getByRole('textbox', { name: 'Behandler', exact: true }).fill('Demo-kliniker');
   await page.getByRole('button', { name: 'Registrer' }).click();
+
+  // A freshly registered patient is incoming: "Start behandling" is a real
+  // button on the card, not a dropdown entry.
+  await expect(page.getByTestId(/^primary-action-/).first()).toHaveText(/Start behandling/);
+
+  // Typing vitals shows a live NEWS2 preview before anything is saved.
+  await page.getByRole('button', { name: 'Vitale', exact: true }).first().click();
+  await page.getByLabel('Puls').first().fill('115'); // pulse 111–130 scores 2
+  await expect(page.getByTestId(/^news2-preview-/).first()).toContainText('NEWS2 foreløpig: 2 · lav');
+  await page.getByRole('button', { name: 'Lukk vitale', exact: true }).first().click();
 
   await page.getByTestId('patient-ring-113').first().click();
   const amkDialog = page.getByRole('dialog', { name: 'AMK-brief' });
@@ -96,6 +125,12 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await page.getByRole('button', { name: /Logg inn/i }).click();
   await page.waitForURL('**/coordinator');
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
+  // The attention queue is the first thing on the page; map engine settings
+  // are demoted behind a disclosure.
+  await expect(page.getByTestId('coordinator-attention-queue')).toBeVisible();
+  await expect(page.getByTestId('attention-queue-count')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Leaflet/i })).toBeHidden();
+  await page.getByTestId('map-settings-toggle').click();
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
   // Team status overview must be present so "Trenger bistand" is visible to the coordinator.
   await expect(page.getByTestId('coordinator-team-status')).toBeVisible();

@@ -5,10 +5,11 @@ import { useNotificationStore } from '../stores/notifications';
 import { api } from '../lib/api';
 import { EventMap } from '../components/EventMap';
 import { useLLMApiKey } from '../hooks/useLLMApiKey';
+import { useNow } from '../hooks/useNow';
 import type { DeteriorationAlert, GeoPoint } from '../lib/types';
 import { CoordinatorHeader } from './Coordinator/CoordinatorHeader';
 import { APIKeyModal } from './Coordinator/APIKeyModal';
-import { DeteriorationAlertsPanel } from './Coordinator/DeteriorationAlertsPanel';
+import { AttentionQueuePanel } from './Coordinator/AttentionQueuePanel';
 import { StatsGrid } from './Coordinator/StatsGrid';
 import { TeamMessageStreamPanel } from './Coordinator/TeamMessageStreamPanel';
 import { TeamStatusPanel } from './Coordinator/TeamStatusPanel';
@@ -20,11 +21,13 @@ export function CoordinatorDashboard() {
   const { eventId } = useAuthStore();
   const onMessage = useWsStore((s) => s.onMessage);
   const addToast = useNotificationStore((s) => s.add);
+  const now = useNow();
   const [teams, setTeams] = useState<Team[]>([]);
   const [eventIndoorLayout, setEventIndoorLayout] = useState<EventIndoorLayout | null>(null);
   const [mapRuntimeConfig, setMapRuntimeConfig] = useState<MapRuntimeConfig | null>(null);
   const [mapProvider, setMapProvider] = useState<'leaflet' | 'maplibre'>('leaflet');
   const [presentation3d, setPresentation3d] = useState(false);
+  const [showMapSettings, setShowMapSettings] = useState(false);
   const [stats, setStats] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
   const [deteriorationAlerts, setDeteriorationAlerts] = useState<DeteriorationAlert[]>([]);
@@ -256,6 +259,17 @@ export function CoordinatorDashboard() {
     setFieldPatients((prev) => prev.map((p) => p.id === id ? res.patient as FieldPatient : p));
   };
 
+  const handleAssignTeam = async (patientId: string, teamId: string) => {
+    try {
+      await handleUpdatePatient(patientId, { assignedTeamId: teamId });
+      const teamName = teams.find((t) => t.id === teamId)?.name ?? 'lag';
+      addToast({ level: 'info', autoDismissMs: 4_000, message: `Pasient tildelt ${teamName}` });
+    } catch (err) {
+      console.error('[coordinator] Failed to assign team', err);
+      addToast({ level: 'urgent', autoDismissMs: 6_000, message: 'Kunne ikke tildele lag — prøv igjen.' });
+    }
+  };
+
   const handleClosePatient = async (id: string, reason: 'false_alarm' | 'disappeared') => {
     const reasonText = reason === 'false_alarm' ? 'Lukket: Falsk alarm' : 'Lukket: Forsvunnet';
     try {
@@ -279,6 +293,14 @@ export function CoordinatorDashboard() {
       }
     : null;
 
+  const mapToggleStyle = (active: boolean) => ({
+    minHeight: 44, padding: '0 var(--space-3)', borderRadius: 'var(--radius-md)',
+    border: `1px solid ${active ? 'var(--color-brand)' : 'var(--color-border)'}`,
+    background: active ? 'var(--color-brand-dim)' : 'var(--color-surface)',
+    color: 'var(--color-text)',
+    cursor: 'pointer', fontWeight: 600, fontSize: 'var(--text-sm)',
+  });
+
   return (
     <div>
       <CoordinatorHeader
@@ -298,13 +320,15 @@ export function CoordinatorDashboard() {
         />
       )}
 
-      {deteriorationAlerts.length > 0 && (
-        <DeteriorationAlertsPanel
-          alerts={deteriorationAlerts}
-          onDismiss={(patientId) => setDeteriorationAlerts((prev) => prev.filter((a) => a.patientId !== patientId))}
-          onDismissAll={() => setDeteriorationAlerts([])}
-        />
-      )}
+      {/* What needs a decision right now — always first. */}
+      <AttentionQueuePanel
+        teams={teams}
+        patients={fieldPatients}
+        alerts={deteriorationAlerts}
+        onAssignTeam={handleAssignTeam}
+        onDismissAlert={(patientId) => setDeteriorationAlerts((prev) => prev.filter((a) => a.patientId !== patientId))}
+        now={now}
+      />
 
       <StatsGrid
         stats={stats}
@@ -312,98 +336,106 @@ export function CoordinatorDashboard() {
         prevStats={prevStats}
       />
 
-      <TeamStatusPanel teams={teams} memberCounts={teamMemberCounts} />
+      {/* Patients + teams + messages on the left, map on the right (stacked on tablets) */}
+      <div className="coordinator-layout">
+        <div>
+          <PatientManagementPanel
+            patients={fieldPatients}
+            teams={teams}
+            creating={creatingPatient}
+            loading={loading}
+            onCreatePatient={handleCreatePatient}
+            onUpdatePatient={handleUpdatePatient}
+            teamPatientEngagements={teamPatientEngagements}
+            onClosePatient={handleClosePatient}
+            onPickLocation={(patientId) => setPickingPatientId(patientId)}
+          />
 
-      <TeamMessageStreamPanel messages={teamMessages} teams={teams} />
+          <TeamStatusPanel teams={teams} memberCounts={teamMemberCounts} />
 
-      {/* Two-column layout: patient list left, map right */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr)',
-        gap: 'var(--space-4)',
-        alignItems: 'start',
-      }}>
-        <PatientManagementPanel
-          patients={fieldPatients}
-          teams={teams}
-          creating={creatingPatient}
-          loading={loading}
-          onCreatePatient={handleCreatePatient}
-          onUpdatePatient={handleUpdatePatient}
-          teamPatientEngagements={teamPatientEngagements}
-          onClosePatient={handleClosePatient}
-          onPickLocation={(patientId) => setPickingPatientId(patientId)}
-        />
+          <TeamMessageStreamPanel messages={teamMessages} teams={teams} />
+        </div>
 
-        <div style={{
-          position: 'sticky',
-          top: 72,
-          height: 'calc(100dvh - 80px)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--color-surface)',
-        }}>
+        <div
+          className="coordinator-map"
+          style={{
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--color-border)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--color-surface)',
+          }}
+        >
           <div style={{
             display: 'flex',
             flexWrap: 'wrap',
+            alignItems: 'center',
             justifyContent: 'space-between',
             gap: 'var(--space-2)',
-            padding: 'var(--space-3)',
+            padding: 'var(--space-2) var(--space-3)',
             borderBottom: '1px solid var(--color-border)',
           }}>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                Kartmotor
-              </span>
-              <button
-                type="button"
-                onClick={() => setMapProvider('leaflet')}
-                aria-pressed={mapProvider === 'leaflet'}
-                style={{
-                  minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-md)',
-                  border: `1px solid ${mapProvider === 'leaflet' ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                  background: mapProvider === 'leaflet' ? 'var(--color-brand-dim)' : 'var(--color-surface)',
-                  cursor: 'pointer', fontWeight: 600,
-                }}
-              >
-                Leaflet
-              </button>
-              <button
-                type="button"
-                onClick={() => setMapProvider('maplibre')}
-                aria-pressed={mapProvider === 'maplibre'}
-                style={{
-                  minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-md)',
-                  border: `1px solid ${mapProvider === 'maplibre' ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                  background: mapProvider === 'maplibre' ? 'var(--color-brand-dim)' : 'var(--color-surface)',
-                  cursor: 'pointer', fontWeight: 600,
-                }}
-              >
-                MapLibre
-              </button>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Kart</span>
               {eventIndoorLayout && (
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                   Innendørs: {eventIndoorLayout.venueName ?? eventIndoorLayout.venueId}
+                </span>
+              )}
+              {pickingPatientId && (
+                <span role="status" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-status-info)' }}>
+                  Klikk i kartet for å plassere pasienten
                 </span>
               )}
             </div>
 
+            {/* Engine and 3D are developer/venue settings, not something a
+                coordinator touches during an event — kept behind a disclosure. */}
             <button
               type="button"
-              onClick={() => setPresentation3d((value) => !value)}
-              aria-pressed={presentation3d}
-              style={{
-                minHeight: 40, padding: '0 var(--space-3)', borderRadius: 'var(--radius-md)',
-                border: `1px solid ${presentation3d ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                background: presentation3d ? 'var(--color-brand-dim)' : 'var(--color-surface)',
-                cursor: 'pointer', fontWeight: 600,
-              }}
+              data-testid="map-settings-toggle"
+              aria-expanded={showMapSettings}
+              onClick={() => setShowMapSettings((v) => !v)}
+              style={{ ...mapToggleStyle(showMapSettings), fontWeight: 500 }}
             >
-              3D-presentasjon {presentation3d ? 'på' : 'av'}
+              Kartinnstillinger {showMapSettings ? '▲' : '▼'}
             </button>
+
+            {showMapSettings && (
+              <div
+                data-testid="map-settings"
+                style={{ flexBasis: '100%', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center' }}
+              >
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  Kartmotor
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMapProvider('leaflet')}
+                  aria-pressed={mapProvider === 'leaflet'}
+                  style={mapToggleStyle(mapProvider === 'leaflet')}
+                >
+                  Leaflet
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMapProvider('maplibre')}
+                  aria-pressed={mapProvider === 'maplibre'}
+                  style={mapToggleStyle(mapProvider === 'maplibre')}
+                >
+                  MapLibre
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPresentation3d((value) => !value)}
+                  aria-pressed={presentation3d}
+                  style={mapToggleStyle(presentation3d)}
+                >
+                  3D-presentasjon {presentation3d ? 'på' : 'av'}
+                </button>
+              </div>
+            )}
           </div>
 
           <EventMap

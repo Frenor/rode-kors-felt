@@ -7,7 +7,7 @@
  * entirely. Teams needing assistance are pinned to the top in red.
  */
 
-import { TEAM_OPERATIONAL_STATUS_LABELS } from '../../lib/constants';
+import { TEAM_OPERATIONAL_STATUS_LABELS, TEAM_OPERATIONAL_STATUS_STYLE } from '../../lib/constants';
 import type { Team, TeamOperationalStatus } from '../../lib/types';
 
 interface TeamStatusPanelProps {
@@ -16,13 +16,7 @@ interface TeamStatusPanelProps {
   memberCounts?: Record<string, number>;
 }
 
-const STATUS_STYLE: Record<TeamOperationalStatus, { color: string; bg: string; border: string }> = {
-  available:        { color: 'var(--color-status-ok)',       bg: 'var(--color-status-ok-bg)',       border: 'var(--color-status-ok-border)' },
-  en_route:         { color: 'var(--color-status-info)',     bg: 'var(--color-status-info-bg)',     border: 'var(--color-status-info-border)' },
-  on_scene:         { color: 'var(--color-status-warning)',  bg: 'var(--color-status-warning-bg)',  border: 'var(--color-status-warning-border)' },
-  needs_assistance: { color: 'var(--color-status-critical)', bg: 'var(--color-status-critical-bg)', border: 'var(--color-status-critical-border)' },
-  unavailable:      { color: 'var(--color-text-subtle)',     bg: 'var(--color-surface-sunken)',     border: 'var(--color-border)' },
-};
+const STATUS_STYLE = TEAM_OPERATIONAL_STATUS_STYLE;
 
 const STATUS_PRIORITY: Record<TeamOperationalStatus, number> = {
   needs_assistance: 0,
