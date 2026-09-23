@@ -4,6 +4,7 @@
  */
 
 import type { News2Result } from '@rkf/shared-types';
+import type { TeamOperationalStatus, TeamPatientStatus } from './types';
 
 export const ACVPU_OPTIONS: { value: string; label: string; short: string }[] = [
   { value: 'alert', label: 'Alert', short: 'A' },
@@ -125,6 +126,56 @@ export const TEAM_OPERATIONAL_STATUS_LABELS: Record<string, string> = {
   needs_assistance: 'Trenger bistand',
   unavailable: 'Utilgjengelig',
 };
+
+/**
+ * Colour per team operational status. Shared by the coordinator's team panel
+ * and the first aider's own status pill so both sides read the same colour.
+ */
+export const TEAM_OPERATIONAL_STATUS_STYLE: Record<
+  TeamOperationalStatus,
+  { color: string; bg: string; border: string }
+> = {
+  available:        { color: 'var(--color-status-ok)',       bg: 'var(--color-status-ok-bg)',       border: 'var(--color-status-ok-border)' },
+  en_route:         { color: 'var(--color-status-info)',     bg: 'var(--color-status-info-bg)',     border: 'var(--color-status-info-border)' },
+  on_scene:         { color: 'var(--color-status-warning)',  bg: 'var(--color-status-warning-bg)',  border: 'var(--color-status-warning-border)' },
+  needs_assistance: { color: 'var(--color-status-critical)', bg: 'var(--color-status-critical-bg)', border: 'var(--color-status-critical-border)' },
+  unavailable:      { color: 'var(--color-text-subtle)',     bg: 'var(--color-surface-sunken)',     border: 'var(--color-border)' },
+};
+
+export type FieldTriageStatus = 'red' | 'yellow' | 'green' | 'black';
+
+export const FIELD_TRIAGE_ORDER: FieldTriageStatus[] = ['red', 'yellow', 'green', 'black'];
+
+/** Field triage pill colours — theme-aware via tokens.css (light + dark). */
+export const FIELD_TRIAGE_STYLE: Record<FieldTriageStatus, { bg: string; text: string; label: string }> = {
+  red:    { bg: 'var(--color-triage-red-bg)',    text: 'var(--color-triage-red)',    label: 'Rød' },
+  yellow: { bg: 'var(--color-triage-yellow-bg)', text: 'var(--color-triage-yellow)', label: 'Gul' },
+  green:  { bg: 'var(--color-triage-green-bg)',  text: 'var(--color-triage-green)',  label: 'Grønn' },
+  black:  { bg: 'var(--color-triage-black-bg)',  text: 'var(--color-triage-black)',  label: 'Svart' },
+};
+
+/** Team ↔ patient engagement pill colours (På vei / Transporterer / Overvåker). */
+export const TEAM_PATIENT_STATUS_STYLE: Record<
+  TeamPatientStatus,
+  { label: string; bg: string; color: string }
+> = {
+  en_route_to_patient: { label: 'På vei',        bg: 'var(--color-engagement-en-route-bg)',     color: 'var(--color-engagement-en-route)' },
+  transporting:        { label: 'Transporterer', bg: 'var(--color-engagement-transporting-bg)', color: 'var(--color-engagement-transporting)' },
+  monitoring:          { label: 'Overvåker',     bg: 'var(--color-engagement-monitoring-bg)',   color: 'var(--color-engagement-monitoring)' },
+};
+
+/**
+ * Why a patrol closes a patient. Chips instead of free text: typing a sentence
+ * with gloves in the dark is the wrong trade-off, and the reason is almost
+ * always one of these.
+ */
+export const PATIENT_CLOSE_REASONS: Array<{ id: string; label: string }> = [
+  { id: 'handed_to_sickbay',   label: 'Overlevert sykestue' },
+  { id: 'handed_to_ambulance', label: 'Overlevert ambulanse' },
+  { id: 'treated_on_scene',    label: 'Ferdig behandlet på stedet' },
+  { id: 'false_alarm',         label: 'Falsk alarm' },
+  { id: 'disappeared',         label: 'Forsvunnet' },
+];
 
 export const SICKBAY_PLACEMENT_LABELS: Record<'chair' | 'bed', string> = {
   chair: 'Stol',

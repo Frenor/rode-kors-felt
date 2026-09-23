@@ -8,6 +8,7 @@ import { DemoBanner } from './DemoBanner';
 import { DemoWalkthrough } from './DemoWalkthrough';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { offlineFirstAiderQueueDb } from '../lib/offline-firstaid-queue';
+import { applyTheme, nextTheme, persistTheme, readStoredTheme, THEME_LABELS, type ThemeChoice } from '../lib/theme';
 
 const IS_DEMO =
   import.meta.env.VITE_DEMO_MODE === 'true' ||
@@ -24,7 +25,9 @@ export function AppShell({ children }: AppShellProps) {
   const { connect, disconnect, status: wsStatus } = useWsStore();
   const navigate = useNavigate();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [theme, setTheme] = useState<'auto' | 'light' | 'dark'>('auto');
+  // Remembered across PWA restarts — a patrol that picked dark mode at dusk
+  // must not get a white screen back after the phone killed the app.
+  const [theme, setTheme] = useState<ThemeChoice>(readStoredTheme);
 
   // Offline sync for first aiders
   useOfflineTeamSync();
@@ -72,11 +75,8 @@ export function AppShell({ children }: AppShellProps) {
   }, []);
 
   useEffect(() => {
-    if (theme === 'auto') {
-      document.documentElement.removeAttribute('data-theme');
-    } else {
-      document.documentElement.setAttribute('data-theme', theme);
-    }
+    applyTheme(theme);
+    persistTheme(theme);
   }, [theme]);
 
   const handleLogout = () => {
@@ -100,11 +100,11 @@ export function AppShell({ children }: AppShellProps) {
         style={{
           background: 'var(--color-surface)',
           borderBottom: '1px solid var(--color-border)',
-          padding: '0 var(--space-4)',
+          padding: '0 var(--space-3)',
           height: '56px',
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--space-4)',
+          gap: 'var(--space-2)',
           position: 'sticky',
           top: 0,
           zIndex: 'var(--z-sticky)',
@@ -152,7 +152,7 @@ export function AppShell({ children }: AppShellProps) {
 
         {/* Event name */}
         {eventName && (
-          <span style={{
+          <span className="app-header-event" style={{
             fontFamily: 'var(--font-mono)',
             fontSize: 'var(--text-xs)',
             color: 'var(--color-text-subtle)',
@@ -202,42 +202,49 @@ export function AppShell({ children }: AppShellProps) {
               }}
             >
               <div style={{
-                width: 8, height: 8,
+                width: 10, height: 10,
                 borderRadius: 'var(--radius-full)',
                 background: color,
+                flexShrink: 0,
               }} />
-              {label}
+              <span className="app-header-conn-label">{label}</span>
             </div>
           );
         })()}
 
-        {/* Theme toggle — single cycling button */}
+        {/* Theme toggle — cycles Auto → Mørk → Lys, remembered across restarts */}
         <button
-          onClick={() => setTheme(theme === 'light' ? 'auto' : theme === 'auto' ? 'dark' : 'light')}
-          aria-label={`Tema: ${theme === 'light' ? 'Lys' : theme === 'dark' ? 'Mørk' : 'Auto'} — klikk for å bytte`}
-          title={`Tema: ${theme === 'light' ? 'Lys' : theme === 'dark' ? 'Mørk' : 'Auto'}`}
+          type="button"
+          onClick={() => setTheme((current) => nextTheme(current))}
+          aria-label={`Tema: ${THEME_LABELS[theme]} — trykk for å bytte`}
+          title={`Tema: ${THEME_LABELS[theme]}`}
+          data-testid="theme-toggle"
           style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            padding: '4px 8px',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
+            minHeight: 44,
+            padding: '0 var(--space-3)',
             borderRadius: 'var(--radius-sm)',
             border: '1px solid var(--color-border)',
-            background: 'var(--color-surface-raised)',
+            background: theme === 'dark' ? 'var(--color-surface-sunken)' : 'var(--color-surface-raised)',
             color: 'var(--color-text)',
             cursor: 'pointer',
             flexShrink: 0,
           }}
         >
-          {theme === 'light' ? '☀' : theme === 'dark' ? '☾' : 'Auto'}
+          {THEME_LABELS[theme]}
         </button>
 
         {/* Logout */}
         <button
+          type="button"
           onClick={handleLogout}
           style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            padding: '6px 12px',
+            fontSize: 'var(--text-sm)',
+            minHeight: 44,
+            padding: '0 var(--space-3)',
             borderRadius: 'var(--radius-sm)',
             border: '1px solid var(--color-border)',
             background: 'transparent',

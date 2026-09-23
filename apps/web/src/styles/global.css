@@ -153,6 +153,51 @@ body {
 }
 
 /* ═══════════════════════════════════════════════
+   APP HEADER — phones get the dot, the theme and
+   logout buttons; the event name and the connection
+   text only fit from tablet width up.
+═══════════════════════════════════════════════ */
+@media (max-width: 639px) {
+  .app-header-event {
+    display: none;
+  }
+}
+
+@media (max-width: 479px) {
+  .app-header-conn-label {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   COORDINATOR LAYOUT — single column on tablets,
+   patient list + sticky map side by side from 960px.
+═══════════════════════════════════════════════ */
+.coordinator-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.coordinator-map {
+  height: 60vh;
+  min-height: 360px;
+}
+
+@media (min-width: 960px) {
+  .coordinator-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+
+  .coordinator-map {
+    position: sticky;
+    top: 72px;
+    height: calc(100dvh - 80px);
+  }
+}
+
+/* ═══════════════════════════════════════════════
    SICKBAY GROUPS GRID — 1/2/3 responsive columns
    Each status-group occupies exactly one column.
 ═══════════════════════════════════════════════ */
