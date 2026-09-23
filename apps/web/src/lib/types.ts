@@ -164,6 +164,11 @@ export interface Team {
   contactPhone?: string | null;
   contactRadio?: string | null;
   currentPosition?: GeoPoint | null;
+  lastPositionUpdate?: string | null;
+  /** Latest team.status_set — provided by GET /events/:id and kept live via team.status_changed. */
+  operationalStatus?: TeamOperationalStatus;
+  statusNote?: string | null;
+  statusUpdatedAt?: string | null;
 }
 
 export interface TeamWorkspacePatient {

@@ -12,7 +12,7 @@ interface GeoPoint {
 interface Team {
   id: string;
   name: string;
-  currentPosition?: GeoPoint;
+  currentPosition?: GeoPoint | null;
 }
 
 interface PatientPin {

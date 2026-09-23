@@ -991,7 +991,12 @@ export const demoStore = {
 
   getEvent: (_id: string) => ({
     event: { ...demoEvent },
-    teams: DEMO_TEAMS,
+    teams: DEMO_TEAMS.map((team) => ({
+      ...team,
+      operationalStatus: teamWorkspaceState[team.id]?.latestStatus ?? 'available',
+      statusNote: null,
+      statusUpdatedAt: null,
+    })),
   }),
 
   getEvents: () => ({
