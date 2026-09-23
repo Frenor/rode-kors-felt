@@ -6,6 +6,7 @@
 @import '@fontsource/ibm-plex-mono/500.css';
 @import '@fontsource/ibm-plex-mono/600.css';
 @import './tokens.css';
+@import './components.css';
 
 /* ═══════════════════════════════════════════════
    RESET & BASE
@@ -139,17 +140,18 @@ body {
   }
 }
 
-/* Action buttons grid — 3 cols; collapses to 2 cols on very narrow viewports */
+/* Card action buttons — as many columns as fit a 108 px button, so
+   "Ring 113" never breaks onto two lines in a narrow sick bay column. */
 .patient-action-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: var(--space-2);
 }
 
-@media (max-width: 399px) {
-  .patient-action-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+.patient-action-grid .btn {
+  white-space: nowrap;
+  padding-inline: var(--space-1);
+  gap: 4px;
 }
 
 /* ═══════════════════════════════════════════════
