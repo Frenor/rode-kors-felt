@@ -503,12 +503,29 @@ const mapWorkspacePatient = (patient: any, teamPatientStatus: TeamPatientStatus 
   fieldOutcome: patient.fieldOutcome ?? null,
   amkNotifiedAt: patient.amkNotifiedAt ?? null,
   amkNotifiedBy: patient.amkNotifiedBy ?? null,
+  // Transport request (gap B3)
+  transportNeed: patient.transportNeed ?? null,
+  transportPickupText: patient.transportPickupText ?? null,
+  transportRequestedAt: patient.transportRequestedAt ?? null,
+  transportRequestedBy: patient.transportRequestedBy ?? null,
+  transportTeamId: patient.transportTeamId ?? null,
+  transportAssignedAt: patient.transportAssignedAt ?? null,
 });
 
 const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({
   ...entity,
   actionHistory: actionEvents.filter((a) => a.entityType === entityType && a.entityId === entity.id),
 });
+
+// Quick log (gap A8): mirrors the API's Norwegian label for the note written
+// when a patient is registered already closed.
+const FIELD_OUTCOME_LABELS: Record<string, string> = {
+  treated_on_scene: 'Behandlet på stedet',
+  handed_to_sickbay: 'Overlevert sykestue',
+  handed_to_ambulance: 'Overlevert ambulanse',
+  false_alarm: 'Falsk alarm',
+  disappeared: 'Forsvunnet',
+};
 
 const mapCriticality = (score: number): AmkCriticality => {
   if (score >= 7) return 'critical';
@@ -552,6 +569,20 @@ const getLatestVitalsSummary = (patient: any) => {
     criticality: mapCriticality(news.total),
   };
 };
+
+// Journal export (gap B7): same shape as the API's buildPatientJournal.
+const buildDemoJournal = (patient: any) => ({
+  patient: mapWithHistory('patient', patient),
+  vitalsHistory: patient.vitalsHistory ?? [],
+  notes: patient.notes ?? [],
+  medications: medications[patient.id] ?? [],
+  amkCallLogs: actionEvents
+    .filter((a) => a.entityType === 'patient' && a.entityId === patient.id && a.actionType === 'patient.amk_call_logged')
+    .map((a) => (a.payload as { callLog?: AmkCallLog }).callLog)
+    .filter((callLog): callLog is AmkCallLog => Boolean(callLog)),
+  actionHistory: actionEvents.filter((a) => a.entityType === 'patient' && a.entityId === patient.id),
+  teams: DEMO_TEAMS.map((t) => ({ id: t.id, name: t.name })),
+});
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
@@ -676,6 +707,13 @@ export const demoStore = {
           fieldOutcome: patient.fieldOutcome ?? null,
           amkNotifiedAt: patient.amkNotifiedAt ?? null,
           amkNotifiedBy: patient.amkNotifiedBy ?? null,
+          // Transport request (gap B3)
+          transportNeed: patient.transportNeed ?? null,
+          transportPickupText: patient.transportPickupText ?? null,
+          transportRequestedAt: patient.transportRequestedAt ?? null,
+          transportRequestedBy: patient.transportRequestedBy ?? null,
+          transportTeamId: patient.transportTeamId ?? null,
+          transportAssignedAt: patient.transportAssignedAt ?? null,
         };
       })
       .filter((item) => item.critical)
@@ -715,6 +753,24 @@ export const demoStore = {
       ? data.gender
       : undefined;
     patientCounter += 1;
+    const createdAt = new Date().toISOString();
+
+    // Quick log (gap A8): registered already closed — write the one-line
+    // note the same way the API does, mirroring `POST /events/:id/patients`.
+    let quickLogNotes: Array<{ id: string; text: string; author: string; createdAt: string }> = [];
+    if (data.status === 'discharged' && data.fieldOutcome) {
+      const assignedTeamId = data.assignedTeamId as string | undefined;
+      const teamName = assignedTeamId ? DEMO_TEAMS.find((t) => t.id === assignedTeamId)?.name : undefined;
+      const outcomeLabel = FIELD_OUTCOME_LABELS[data.fieldOutcome as string] ?? (data.fieldOutcome as string);
+      const author = teamName ?? 'ukjent';
+      quickLogNotes = [{
+        id: `demo-note-${Date.now()}`,
+        text: `${outcomeLabel} av ${author}`,
+        author,
+        createdAt,
+      }];
+    }
+
     const patient = {
       id: `demo-pat-${Date.now()}`,
       status: 'incoming',
@@ -724,13 +780,14 @@ export const demoStore = {
       gender,
       vitalsHistory: [],
       latestVitals: null,
-      notes: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      notes: quickLogNotes,
+      createdAt,
+      updatedAt: createdAt,
       ...data,
       // Shared patient number (gap A5): always server-allocated, never client input.
       seq: patientCounter,
     };
+
     patients = [patient, ...patients];
     return { patient };
   },
@@ -835,7 +892,11 @@ export const demoStore = {
     data:
       | { type: 'status.set'; status: string }
       | { type: 'amk.notified'; by?: string }
-      | { type: 'amk.cleared' },
+      | { type: 'amk.cleared' }
+      // Transport request (gap B3)
+      | { type: 'transport.requested'; need: string; pickupText?: string }
+      | { type: 'transport.assigned'; teamId: string }
+      | { type: 'transport.cleared' },
   ) => {
     const patient = patients.find((p) => p.id === patientId);
     if (!patient) throw new Error('Pasient ikke funnet');
@@ -873,6 +934,85 @@ export const demoStore = {
         entityId: updated.id,
         actionType: 'amk.notified',
         payload: { amkNotifiedAt, amkNotifiedBy },
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    if (data.type === 'transport.requested') {
+      const requestedAt = new Date().toISOString();
+      let requestedBy = 'demo-user';
+      if (patient.assignedTeamId) {
+        const team = DEMO_TEAMS.find((t) => t.id === patient.assignedTeamId);
+        if (team) requestedBy = team.name;
+      }
+      patients = patients.map((p) =>
+        p.id === patientId
+          ? {
+              ...p,
+              transportNeed: data.need,
+              transportPickupText: data.pickupText?.trim() || null,
+              transportRequestedAt: requestedAt,
+              transportRequestedBy: requestedBy,
+              transportTeamId: null,
+              transportAssignedAt: null,
+              updatedAt: requestedAt,
+            }
+          : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'transport.requested',
+        payload: { need: data.need, pickupText: data.pickupText, requestedBy },
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    if (data.type === 'transport.assigned') {
+      const team = DEMO_TEAMS.find((t) => t.id === data.teamId);
+      if (!team) throw new Error('Ukjent lag for transport');
+      const assignedAt = new Date().toISOString();
+      patients = patients.map((p) =>
+        p.id === patientId
+          ? { ...p, transportTeamId: team.id, transportAssignedAt: assignedAt, updatedAt: assignedAt }
+          : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'transport.assigned',
+        payload: { teamId: team.id },
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    if (data.type === 'transport.cleared') {
+      const clearedAt = new Date().toISOString();
+      patients = patients.map((p) =>
+        p.id === patientId
+          ? {
+              ...p,
+              transportNeed: null,
+              transportPickupText: null,
+              transportRequestedAt: null,
+              transportRequestedBy: null,
+              transportTeamId: null,
+              transportAssignedAt: null,
+              updatedAt: clearedAt,
+            }
+          : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'transport.cleared',
+        payload: {},
       });
       return { patient: mapWithHistory('patient', updated), action };
     }
@@ -1200,6 +1340,59 @@ export const demoStore = {
     const revokedAt = existing.revokedAt ?? new Date().toISOString();
     demoAccessCodes = demoAccessCodes.map((c) => (c.id === codeId ? { ...c, revokedAt } : c));
     return { code: demoAccessCodes.find((c) => c.id === codeId)! };
+  },
+  // Journal export (gap B7)
+  getPatientJournal: (patientId: string) => {
+    const patient = patients.find((p) => p.id === patientId);
+    if (!patient) throw new Error('Pasient ikke funnet');
+    return buildDemoJournal(patient);
+  },
+
+  getEventJournals: (eventId: string) => ({
+    journals: patients.filter((p) => p.eventId === eventId).map((p) => buildDemoJournal(p)),
+  }),
+
+  // Retention (gap B8) — demo events have no lifecycle state today, so the
+  // active-event gate only fires once a later batch sets `demoEvent.status`;
+  // until then anonymising always succeeds, same as archiving a real event first.
+  anonymiseEvent: (eventId: string) => {
+    if (demoEvent.anonymisedAt) {
+      return { anonymisedAt: demoEvent.anonymisedAt as string, alreadyAnonymised: true, patientsAnonymised: 0 };
+    }
+    if (demoEvent.status === 'active') {
+      throw new Error('Arrangementet er fortsatt aktivt');
+    }
+
+    const eventPatientIds = new Set(patients.filter((p) => p.eventId === eventId).map((p) => p.id));
+    const now = new Date().toISOString();
+
+    patients = patients.map((p) =>
+      eventPatientIds.has(p.id)
+        ? {
+            ...p,
+            fullName: null,
+            birthDate: null,
+            gender: null,
+            description: null,
+            positionText: null,
+            notes: (p.notes ?? []).map((n: any) => ({ ...n, text: '[anonymisert]' })),
+            updatedAt: now,
+          }
+        : p,
+    );
+
+    actionEvents = actionEvents.map((a) => {
+      if (a.actionType !== 'patient.amk_call_logged' || !eventPatientIds.has(a.entityId)) return a;
+      const callLog = (a.payload as { callLog?: AmkCallLog }).callLog;
+      if (!callLog) return a;
+      return {
+        ...a,
+        payload: { ...a.payload, callLog: { ...callLog, summaryGiven: '[anonymisert]', amkGuidance: '[anonymisert]' } },
+      };
+    });
+
+    demoEvent = { ...demoEvent, anonymisedAt: now };
+    return { anonymisedAt: now, alreadyAnonymised: false, patientsAnonymised: eventPatientIds.size };
   },
 
 };

@@ -8,7 +8,7 @@ import {
   type FieldTriageStatus,
 } from '../../lib/constants';
 import { formatRelativeAge } from '../../lib/observation';
-import type { FieldOutcome, TeamPatientEngagement, TeamPatientStatus } from '../../lib/types';
+import type { FieldOutcome, TeamPatientEngagement, TeamPatientStatus, TransportNeed } from '../../lib/types';
 import { Button, Icon, Pill, PatientNumberPill } from '../../components/ui';
 
 export type { FieldTriageStatus } from '../../lib/constants';
@@ -35,6 +35,13 @@ export interface FieldPatient {
   /** AMK notified (gap B2 data half). */
   amkNotifiedAt?: string | null;
   amkNotifiedBy?: string | null;
+  /** Transport request (gap B3). */
+  transportNeed?: TransportNeed | null;
+  transportPickupText?: string | null;
+  transportRequestedAt?: string | null;
+  transportRequestedBy?: string | null;
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
 }
 
 interface Team {

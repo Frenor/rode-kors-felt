@@ -43,6 +43,10 @@ export type FieldOutcome = z.infer<typeof FieldOutcome>;
 export const TeamTransport = z.enum(['foot', 'bike', 'vehicle', 'atv']);
 export type TeamTransport = z.infer<typeof TeamTransport>;
 
+/** What a field team needs to move a patient (gap B3 — transport request). */
+export const TransportNeed = z.enum(['stretcher', 'atv', 'ambulance']);
+export type TransportNeed = z.infer<typeof TransportNeed>;
+
 export const SickBayPlacementType = z.enum(['chair', 'bed']);
 export type SickBayPlacementType = z.infer<typeof SickBayPlacementType>;
 
@@ -190,6 +194,13 @@ export const Patient = z.object({
   // AMK notified (gap B2 data half)
   amkNotifiedAt: z.string().datetime().nullable().optional(),
   amkNotifiedBy: z.string().max(100).nullable().optional(),
+  // Transport request (gap B3)
+  transportNeed: TransportNeed.nullable().optional(),
+  transportPickupText: z.string().max(500).nullable().optional(),
+  transportRequestedAt: z.string().datetime().nullable().optional(),
+  transportRequestedBy: z.string().max(100).nullable().optional(),
+  transportTeamId: z.string().uuid().nullable().optional(),
+  transportAssignedAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -304,6 +315,13 @@ export const TeamWorkspacePatient = z.object({
   fieldOutcome: FieldOutcome.nullable().optional(),
   amkNotifiedAt: z.string().datetime().nullable().optional(),
   amkNotifiedBy: z.string().max(100).nullable().optional(),
+  // Transport request (gap B3)
+  transportNeed: TransportNeed.nullable().optional(),
+  transportPickupText: z.string().max(500).nullable().optional(),
+  transportRequestedAt: z.string().datetime().nullable().optional(),
+  transportRequestedBy: z.string().max(100).nullable().optional(),
+  transportTeamId: z.string().uuid().nullable().optional(),
+  transportAssignedAt: z.string().datetime().nullable().optional(),
 });
 export type TeamWorkspacePatient = z.infer<typeof TeamWorkspacePatient>;
 
@@ -358,6 +376,13 @@ export const SickbayIncomingItem = z.object({
   handedOverAt: z.string().datetime().nullable().optional(),
   handedOverByTeamId: z.string().uuid().nullable().optional(),
   fieldOutcome: FieldOutcome.nullable().optional(),
+  // Transport request (gap B3)
+  transportNeed: TransportNeed.nullable().optional(),
+  transportPickupText: z.string().max(500).nullable().optional(),
+  transportRequestedAt: z.string().datetime().nullable().optional(),
+  transportRequestedBy: z.string().max(100).nullable().optional(),
+  transportTeamId: z.string().uuid().nullable().optional(),
+  transportAssignedAt: z.string().datetime().nullable().optional(),
 });
 export type SickbayIncomingItem = z.infer<typeof SickbayIncomingItem>;
 

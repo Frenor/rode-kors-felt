@@ -9,7 +9,7 @@ import {
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
 import { actionEvents, events, medicationRecords, patients, teams, vitalReadings } from '../db/schema.js';
-import { canAccessEvent, requireAuth } from '../middleware/auth.js';
+import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { applyPatientAction, getActionHistoryByEntityIds, type PatientActionBody } from './action-events.js';
 import { broadcast } from './ws.js';
 import { generateAmkAssistDraft } from '../lib/ai-assist.js';
@@ -525,6 +525,20 @@ export async function patientRoutes(app: FastifyInstance) {
       });
     }
 
+    // Transport request (gap B3): broadcast so the coordinator's transport
+    // queue and the patrol's own card update without a refresh.
+    if (
+      (body.type === 'transport.requested' || body.type === 'transport.assigned' || body.type === 'transport.cleared')
+      && result.action
+    ) {
+      broadcast({
+        type: 'patient.updated',
+        eventId: patient.eventId,
+        payload: { patient: result.patient, changedFields: ['transport'] },
+        timestamp: result.patient!.updatedAt,
+      });
+    }
+
     return result;
   });
 
@@ -849,6 +863,21 @@ export async function patientRoutes(app: FastifyInstance) {
 
     return reply.code(201).send({ vitals: mapped });
   });
+
+  // Journal export (gap B7): a single patient's printable journal — read-only,
+  // pulls together every append-only clinical record for this patient.
+  app.get('/:id/journal', { preHandler: [requireAuth, requireRole(['sickbay', 'coordinator', 'admin'])] }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id } = request.params as { id: string };
+
+    const [patient] = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
+    if (!patient) return reply.code(404).send({ error: 'Pasient ikke funnet' });
+    if (!canAccessEvent(user, patient.eventId)) {
+      return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+    }
+
+    return buildPatientJournal(patient);
+  });
 }
 
 export function mapPatient(row: typeof patients.$inferSelect, extras?: { actionHistory?: unknown[] }) {
@@ -879,6 +908,13 @@ export function mapPatient(row: typeof patients.$inferSelect, extras?: { actionH
     // AMK notified (gap B2 data half)
     amkNotifiedAt: row.amkNotifiedAt ? row.amkNotifiedAt.toISOString() : null,
     amkNotifiedBy: row.amkNotifiedBy ?? null,
+    // Transport request (gap B3)
+    transportNeed: row.transportNeed ?? null,
+    transportPickupText: row.transportPickupText ?? null,
+    transportRequestedAt: row.transportRequestedAt ? row.transportRequestedAt.toISOString() : null,
+    transportRequestedBy: row.transportRequestedBy ?? null,
+    transportTeamId: row.transportTeamId ?? null,
+    transportAssignedAt: row.transportAssignedAt ? row.transportAssignedAt.toISOString() : null,
     arrivalTime: row.arrivalTime.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -899,5 +935,55 @@ function mapVitals(row: typeof vitalReadings.$inferSelect) {
     temperature: row.temperature ?? undefined,
     onSupplementalOxygen: row.onSupplementalOxygen ?? undefined,
     acvpu: row.acvpu ?? undefined,
+  };
+}
+
+/**
+ * Journal export (gap B7): every append-only clinical record for one patient,
+ * shaped for the printable journal page and the event-wide export. Pure
+ * reads — no mutation, no broadcast.
+ */
+export async function buildPatientJournal(patient: typeof patients.$inferSelect) {
+  const [vitalsRows, medicationRows, actionRows, eventTeams] = await Promise.all([
+    db
+      .select()
+      .from(vitalReadings)
+      .where(eq(vitalReadings.patientId, patient.id))
+      .orderBy(desc(vitalReadings.timestamp)),
+    db
+      .select()
+      .from(medicationRecords)
+      .where(eq(medicationRecords.patientId, patient.id))
+      .orderBy(desc(medicationRecords.givenAt)),
+    db
+      .select()
+      .from(actionEvents)
+      .where(and(eq(actionEvents.eventId, patient.eventId), eq(actionEvents.entityId, patient.id)))
+      .orderBy(desc(actionEvents.createdAt)),
+    db.select({ id: teams.id, name: teams.name }).from(teams).where(eq(teams.eventId, patient.eventId)),
+  ]);
+
+  const actionHistory = actionRows
+    .filter((row) => row.entityType === 'patient')
+    .map((row) => ({
+      ...row,
+      createdAt: row.createdAt.toISOString(),
+      revertedAt: row.revertedAt?.toISOString(),
+    }));
+
+  const amkCallLogs = actionRows
+    .filter((row) => row.entityType === 'patient' && row.actionType === 'patient.amk_call_logged')
+    .map((row) => (row.payload as { callLog?: unknown }).callLog)
+    .filter((log): log is unknown => Boolean(log))
+    .map((log) => AmkCallLog.parse(log));
+
+  return {
+    patient: mapPatient(patient, { actionHistory }),
+    vitalsHistory: vitalsRows.map(mapVitals),
+    notes: patient.notes ?? [],
+    medications: medicationRows.map((r) => ({ ...r, givenAt: r.givenAt.toISOString() })),
+    amkCallLogs,
+    actionHistory,
+    teams: eventTeams,
   };
 }

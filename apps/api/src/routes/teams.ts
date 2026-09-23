@@ -521,6 +521,13 @@ export async function teamRoutes(app: FastifyInstance) {
       handedOverAt: row.handedOverAt ? row.handedOverAt.toISOString() : null,
       handedOverByTeamId: row.handedOverByTeamId ?? null,
       fieldOutcome: row.fieldOutcome ?? null,
+      // Transport request (gap B3)
+      transportNeed: row.transportNeed ?? null,
+      transportPickupText: row.transportPickupText ?? null,
+      transportRequestedAt: row.transportRequestedAt ? row.transportRequestedAt.toISOString() : null,
+      transportRequestedBy: row.transportRequestedBy ?? null,
+      transportTeamId: row.transportTeamId ?? null,
+      transportAssignedAt: row.transportAssignedAt ? row.transportAssignedAt.toISOString() : null,
     });
 
     const response = TeamWorkspaceResponse.parse({

@@ -7,11 +7,13 @@ import type {
   AmkCallLog,
   EventIndoorLayout,
   MapRuntimeConfig,
+  PatientJournal,
   SickbayIncomingItem,
   TeamOperationalStatus,
   TeamPatientEngagement,
   TeamPatientStatus,
   TeamWorkspaceResponse,
+  TransportNeed,
 } from './types';
 // Lane 8 batch 3 (B): a second import block, appended rather than merged into
 // the one above, so this change never collides with edits to it elsewhere.
@@ -255,7 +257,11 @@ class ApiClient {
     data:
       | { type: 'status.set'; status: string }
       | { type: 'amk.notified'; by?: string }
-      | { type: 'amk.cleared' },
+      | { type: 'amk.cleared' }
+      // Transport request (gap B3)
+      | { type: 'transport.requested'; need: TransportNeed; pickupText?: string }
+      | { type: 'transport.assigned'; teamId: string }
+      | { type: 'transport.cleared' },
   ) {
     if (DEMO) return demoStore.executePatientAction(patientId, data);
     return this.request<{ patient: any; action: any }>(`/patients/${patientId}/actions`, {
@@ -296,6 +302,10 @@ class ApiClient {
     lat?: number | null;
     lon?: number | null;
     assignedTeamId?: string | null;
+    // Quick log (gap A8) — closes the patient at the moment of registration.
+    fieldOutcome?: string | null;
+    status?: 'discharged';
+    ageGroup?: string | null;
   }) {
     if (DEMO) return demoStore.createPatient({ ...data, eventId });
     return this.request<{ patient: any }>(`/events/${eventId}/patients`, {
@@ -472,6 +482,25 @@ class ApiClient {
     return this.request<{ code: AccessCode }>(`/access-codes/${codeId}/revoke`, {
       method: 'POST',
     });
+  }
+  // Journal export (gap B7)
+  async getPatientJournal(patientId: string) {
+    if (DEMO) return demoStore.getPatientJournal(patientId);
+    return this.request<PatientJournal>(`/patients/${patientId}/journal`);
+  }
+
+  async getEventJournals(eventId: string) {
+    if (DEMO) return demoStore.getEventJournals(eventId);
+    return this.request<{ journals: PatientJournal[] }>(`/events/${eventId}/journals`);
+  }
+
+  // Retention (gap B8)
+  async anonymiseEvent(eventId: string) {
+    if (DEMO) return demoStore.anonymiseEvent(eventId);
+    return this.request<{ anonymisedAt: string; alreadyAnonymised: boolean; patientsAnonymised: number }>(
+      `/events/${eventId}/anonymise`,
+      { method: 'POST' },
+    );
   }
 }
 

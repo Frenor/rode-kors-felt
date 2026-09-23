@@ -6,8 +6,9 @@ import { events, patients, teams, actionEvents, vitalReadings, accessCodes } fro
 import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { broadcast } from './ws.js';
 import { getLatestTeamStatuses } from './teams.js';
-import { mapPatient } from './patients.js';
-import { calculateNEWS2 } from '@rkf/shared-types';
+import { buildPatientJournal, mapPatient } from './patients.js';
+import { calculateNEWS2, FieldOutcome } from '@rkf/shared-types';
+import { anonymiseEvent } from '../lib/retention.js';
 
 type AuthUser = { role?: string; eventId?: string };
 
@@ -84,6 +85,18 @@ function mergeRuntimeConfig(base?: MapRuntimeConfig, override?: MapRuntimeConfig
   };
   return sanitizeRuntimeConfig(merged);
 }
+
+// Quick log (gap A8): Norwegian label for the note written when a patient is
+// registered already closed. `treated_on_scene` reads shorter here than its
+// PATIENT_CLOSE_REASONS label ("Ferdig behandlet på stedet") — this is the
+// one-line registration note, not the full close-flow summary.
+const FIELD_OUTCOME_LABELS: Record<string, string> = {
+  treated_on_scene: 'Behandlet på stedet',
+  handed_to_sickbay: 'Overlevert sykestue',
+  handed_to_ambulance: 'Overlevert ambulanse',
+  false_alarm: 'Falsk alarm',
+  disappeared: 'Forsvunnet',
+};
 
 export async function eventRoutes(app: FastifyInstance) {
   // List events
@@ -452,6 +465,13 @@ export async function eventRoutes(app: FastifyInstance) {
         fieldOutcome: patient.fieldOutcome ?? null,
         amkNotifiedAt: patient.amkNotifiedAt ? patient.amkNotifiedAt.toISOString() : null,
         amkNotifiedBy: patient.amkNotifiedBy ?? null,
+        // Transport request (gap B3)
+        transportNeed: patient.transportNeed ?? null,
+        transportPickupText: patient.transportPickupText ?? null,
+        transportRequestedAt: patient.transportRequestedAt ? patient.transportRequestedAt.toISOString() : null,
+        transportRequestedBy: patient.transportRequestedBy ?? null,
+        transportTeamId: patient.transportTeamId ?? null,
+        transportAssignedAt: patient.transportAssignedAt ? patient.transportAssignedAt.toISOString() : null,
       };
     });
 
@@ -596,6 +616,10 @@ export async function eventRoutes(app: FastifyInstance) {
       lat?: number;
       lon?: number;
       assignedTeamId?: string;
+      // Quick log (gap A8)
+      fieldOutcome?: string;
+      status?: string;
+      ageGroup?: string;
     };
 
     const label = body.label?.trim();
@@ -609,6 +633,39 @@ export async function eventRoutes(app: FastifyInstance) {
     if (body.assignedTeamId) {
       const [teamRow] = await db.select({ id: teams.id, eventId: teams.eventId }).from(teams).where(eq(teams.id, body.assignedTeamId)).limit(1);
       if (!teamRow || teamRow.eventId !== eventId) return reply.code(400).send({ error: 'Ukjent lag' });
+    }
+
+    // Quick log (gap A8): a patient may be registered already closed —
+    // `status` is only ever 'discharged' and only rides along with a
+    // `fieldOutcome`, so a bare `status` with no outcome is rejected rather
+    // than silently discharging a patient with no recorded reason.
+    if (body.fieldOutcome !== undefined && !FieldOutcome.safeParse(body.fieldOutcome).success) {
+      return reply.code(400).send({ error: 'Ugyldig utfall' });
+    }
+    if (body.status !== undefined) {
+      if (!body.fieldOutcome) {
+        return reply.code(400).send({ error: 'Utfall kreves for å lukke ved registrering' });
+      }
+      if (body.status !== 'discharged') {
+        return reply.code(400).send({ error: "Bare status 'discharged' er tillatt ved registrering" });
+      }
+    }
+    const closesAtRegistration = body.status === 'discharged' && Boolean(body.fieldOutcome);
+
+    let registrationNotes: Array<{ text: string; timestamp: string; author: string }> = [];
+    if (closesAtRegistration) {
+      let teamName: string | null = null;
+      if (body.assignedTeamId) {
+        const [teamRow] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, body.assignedTeamId)).limit(1);
+        teamName = teamRow?.name ?? null;
+      }
+      const outcomeLabel = FIELD_OUTCOME_LABELS[body.fieldOutcome!] ?? body.fieldOutcome!;
+      const author = teamName ?? user.role ?? 'ukjent';
+      registrationNotes = [{
+        text: `${outcomeLabel} av ${author}`,
+        timestamp: new Date().toISOString(),
+        author,
+      }];
     }
 
     // Shared patient number (gap A5): allocate the next seq atomically in the
@@ -633,7 +690,10 @@ export async function eventRoutes(app: FastifyInstance) {
           lat: body.lat ?? null,
           lon: body.lon ?? null,
           assignedTeamId: body.assignedTeamId ?? null,
-          notes: [],
+          ageGroup: body.ageGroup,
+          fieldOutcome: body.fieldOutcome ?? undefined,
+          status: closesAtRegistration ? 'discharged' : undefined,
+          notes: registrationNotes,
           diagnosisFlags: [],
         })
         .returning();
@@ -729,6 +789,43 @@ export async function eventRoutes(app: FastifyInstance) {
 
     return { engagements: result };
   });
+
+  // Journal export (gap B7): every patient's journal for the event, for the
+  // coordinator's "Eksporter journaler" download.
+  app.get('/:id/journals', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id: eventId } = request.params as { id: string };
+
+    const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, eventId)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    if (!canAccessEvent(user, eventId)) return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+
+    const eventPatients = await db.select().from(patients).where(eq(patients.eventId, eventId)).orderBy(desc(patients.createdAt));
+    const journals = await Promise.all(eventPatients.map((p) => buildPatientJournal(p)));
+
+    return { journals };
+  });
+
+  // Retention (gap B8): scrub PII from every patient once the event is over.
+  app.post('/:id/anonymise', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { id: eventId } = request.params as { id: string };
+
+    const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, eventId)).limit(1);
+    if (!event) return reply.code(404).send({ error: 'Arrangement ikke funnet' });
+    if (!canAccessEvent(user, eventId)) return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+
+    try {
+      const result = await anonymiseEvent(eventId);
+      return result;
+    } catch (err) {
+      const statusCode = (err as { statusCode?: number }).statusCode ?? 500;
+      const message = statusCode === 409
+        ? 'Arrangementet er fortsatt aktivt og kan ikke anonymiseres ennå'
+        : (err instanceof Error ? err.message : 'Kunne ikke anonymisere arrangementet');
+      return reply.code(statusCode).send({ error: message });
+    }
+  });
 }
 
 function mapEvent(row: typeof events.$inferSelect) {
@@ -760,6 +857,8 @@ function mapEvent(row: typeof events.$inferSelect) {
     endDate: rest.endDate.toISOString(),
     createdAt: rest.createdAt.toISOString(),
     updatedAt: rest.updatedAt.toISOString(),
+    // Retention (gap B8)
+    anonymisedAt: rest.anonymisedAt ? rest.anonymisedAt.toISOString() : null,
   };
 }
 

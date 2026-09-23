@@ -82,6 +82,9 @@ export const events = pgTable('events', {
   settings: jsonb('settings').$type<{
     sickbay?: { chairs?: number; beds?: number };
   }>(),
+
+  /** Retention (gap B8): set once PII has been scrubbed from this event's patients. */
+  anonymisedAt: timestamp('anonymised_at', { withTimezone: true }),
 });
 
 export const fieldTriageStatusEnum = pgEnum('field_triage_status', ['green', 'yellow', 'red', 'black']);
@@ -153,6 +156,13 @@ export const patients = pgTable('patients', {
   /** AMK notified (gap B2 data half). */
   amkNotifiedAt: timestamp('amk_notified_at', { withTimezone: true }),
   amkNotifiedBy: varchar('amk_notified_by', { length: 100 }),
+  /** Transport request (gap B3): what/if a field team needs to move this patient. */
+  transportNeed: varchar('transport_need', { length: 16 }),
+  transportPickupText: text('transport_pickup_text'),
+  transportRequestedAt: timestamp('transport_requested_at', { withTimezone: true }),
+  transportRequestedBy: varchar('transport_requested_by', { length: 100 }),
+  transportTeamId: uuid('transport_team_id').references(() => teams.id, { onDelete: 'set null' }),
+  transportAssignedAt: timestamp('transport_assigned_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

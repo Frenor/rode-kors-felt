@@ -1,11 +1,11 @@
-import type { AcvpuLevel as SharedAcvpuLevel, FieldOutcome as SharedFieldOutcome } from '@rkf/shared-types';
+import type { AcvpuLevel as SharedAcvpuLevel, FieldOutcome as SharedFieldOutcome, TransportNeed as SharedTransportNeed } from '@rkf/shared-types';
 
 /**
  * Shared frontend types — replaces `any` in both dashboards.
  * Enums are re-exported from @rkf/shared-types where available.
  */
 
-export type { AcvpuLevel, PatientStatus as PatientStatusKey, FieldOutcome } from '@rkf/shared-types';
+export type { AcvpuLevel, PatientStatus as PatientStatusKey, FieldOutcome, TransportNeed } from '@rkf/shared-types';
 
 export interface VitalsReading {
   id?: string;
@@ -155,6 +155,13 @@ export interface SickBayPatient {
   /** AMK notified (gap B2 data half). */
   amkNotifiedAt?: string | null;
   amkNotifiedBy?: string | null;
+  /** Transport request (gap B3) — what/if a field team has asked to move this patient. */
+  transportNeed?: SharedTransportNeed | null;
+  transportPickupText?: string | null;
+  transportRequestedAt?: string | null;
+  transportRequestedBy?: string | null;
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
   vitalsHistory: VitalsReading[];
   latestVitals: VitalsReading | null;
   notes: PatientNote[];
@@ -204,6 +211,13 @@ export interface TeamWorkspacePatient {
   /** AMK notified (gap B2) — set once the field team has called 113/AMK. */
   amkNotifiedAt?: string | null;
   amkNotifiedBy?: string | null;
+  /** Transport request (gap B3). */
+  transportNeed?: SharedTransportNeed | null;
+  transportPickupText?: string | null;
+  transportRequestedAt?: string | null;
+  transportRequestedBy?: string | null;
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
 }
 
 export interface TeamWorkspaceResponse {
@@ -246,6 +260,13 @@ export interface SickbayIncomingItem {
   /** AMK notified (gap B2) — set once the sick bay (or the field) has called 113. */
   amkNotifiedAt?: string | null;
   amkNotifiedBy?: string | null;
+  /** Transport request (gap B3). */
+  transportNeed?: SharedTransportNeed | null;
+  transportPickupText?: string | null;
+  transportRequestedAt?: string | null;
+  transportRequestedBy?: string | null;
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
 }
 
 export interface DeteriorationAlert {
@@ -297,4 +318,14 @@ export interface AccessCode {
   code: string;
   expiresAt: string;
   revokedAt?: string | null;
+}
+/** Journal export (gap B7) — `GET /patients/:id/journal` and `GET /events/:id/journals`. */
+export interface PatientJournal {
+  patient: SickBayPatient;
+  vitalsHistory: VitalsReading[];
+  notes: PatientNote[];
+  medications: MedicationRecord[];
+  amkCallLogs: AmkCallLog[];
+  actionHistory: ActionHistoryEntry[];
+  teams: Array<{ id: string; name: string }>;
 }

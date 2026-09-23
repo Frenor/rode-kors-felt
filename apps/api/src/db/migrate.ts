@@ -313,6 +313,17 @@ export async function runMigrations(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_team_messages_event_sent_at
       ON team_messages (event_id, sent_at DESC);
     `);
+    // ── Lane 8 batch 3 (A): transport, retention ──
+    await client.query(`
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_need VARCHAR(16);
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_pickup_text TEXT;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_requested_at TIMESTAMPTZ;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_requested_by VARCHAR(100);
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_team_id UUID REFERENCES teams(id) ON DELETE SET NULL;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_assigned_at TIMESTAMPTZ;
+
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS anonymised_at TIMESTAMPTZ;
+    `);
 
     await client.query('COMMIT');
   } catch (err) {
