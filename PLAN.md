@@ -9,7 +9,7 @@
 - Lane 5 (QA Matrix + Pages Visibility Verification): `In progress`
 - Lane 6 (Field Trial Remediation — production readiness): `In progress`
 - Lane 7 (UX Review — field teams / sick bay / coordinator): `Done` (review, three fix passes, design system and presentation export landed; backlog in the review doc §7)
-- Lane 8 (Gap review implementation — see section 13): `In progress` (batch 1 API foundation done; batch 2 UI pending)
+- Lane 8 (Gap review implementation — see section 13): `In progress` (batches 1 and 2 landed; batch 3 next)
 
 ## 1. Summary
 - Decision-complete replacement for prior sprint execution plans.
@@ -78,6 +78,18 @@
 - `docs/sprints/v3.1/task-cards.md`
 
 ## 8. Checkpoint Log (Active Resume Source)
+- `lane 8 batch 2` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23, three Sonnet agents in
+  worktrees, integrated by cherry-pick)
+  - Field 8.6–8.13: close reasons map to outcomes (hand-over keeps the patient open), assistance
+    reason step, distance-sorted unassigned list, Ring 113 + "AMK er varslet", triage chips,
+    assignment banner with "Vi drar" / "Kan ikke" (persisted), "Mottatt" receipts, number pills.
+  - Sick bay 8.14–8.18: "På vei" / "Venter i teltet" stacks with live distance, hand-over line,
+    triage editor, AMK pill (AMK brief also records `amk.notified`), number pills.
+  - Coordinator 8.19–8.25: number pills and `#seq` markers, "Venter for lenge" and "Ikke bekreftet
+    tildeling" queue groups, "I sykestua", "Send til" dispatch (`team.sector_assigned`), receipts
+    and "Ikke kvittert" in the stream, AMK pill.
+  - Verification on the merged branch: lint, typecheck, 100 API + 294 web unit tests,
+    `pages-demo` 1/1, `local-full` 8/8, captures of all three screens.
 - `gap review` (branch `claude/sickbay-ux-review-x6ihme`, 2026-09-23, docs only)
   - `docs/design/gap-review-2026-09.md`: missing functionality and flows that do not match the
     users' mental models, checked against the code. Headline: field hand-over to the sick bay
@@ -504,7 +516,7 @@ with `en_route_to_patient` is the acknowledgement; the coordinator derives "bekr
 | Step | Items | Status |
 |---|---|---|
 | Batch 1 | 8.1, 8.2, 8.3 | `Done` |
-| Batch 2 field | 8.6–8.13 | `Pending` |
-| Batch 2 sick bay | 8.14–8.18 | `Pending` |
-| Batch 2 coordinator | 8.19–8.25 | `Pending` |
-| Batch 3 | 8.26–8.36 | `Pending` |
+| Batch 2 field | 8.6–8.13 | `Done` |
+| Batch 2 sick bay | 8.14–8.18 | `Done` |
+| Batch 2 coordinator | 8.19–8.25 | `Done` |
+| Batch 3 | 8.26–8.36 | `Next` |

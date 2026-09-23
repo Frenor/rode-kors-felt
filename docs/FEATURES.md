@@ -19,20 +19,6 @@ Built or being built; verification still owed. Move a row down when it has evide
 
 | Feature | Area | Build status | Verification owed | Ref |
 |---|---|---|---|---|
-| Field close flow → outcomes (hand-over keeps the patient open) | Field | Planned (8.6) | unit, e2e-demo (hand-over keeps the patient visible to the sick bay) | gap A1 |
-| Assistance reason chips after "Trenger bistand" | Field | Planned (8.7) | unit, e2e-demo | gap A3 |
-| Unassigned patients sorted by distance with "≈ 1,2 km NØ" | Field | Planned (8.8) | unit (sorting), manual | gap A10 |
-| "Ring 113" and "AMK er varslet" on red/yellow field cards | Field | Planned (8.9) | unit, e2e-demo | gap B2 |
-| Triage chips in the field summary editor and sick bay "Rediger detaljer" | Field, Sick bay | Planned (8.10, 8.16) | unit | gap A2 |
-| Assignment banner with "Vi drar" acknowledgement; coordinator sees "Bekreftet av" | Field, Coordinator | Planned (8.11, 8.21) | unit both sides, e2e-local | gap A4 |
-| "Mottatt" on directed messages; coordinator sees the receipt | Field, Coordinator | Planned (8.12, 8.24) | unit | gap B10 |
-| Patient number pill on every card, row, marker and toast | All | Planned (8.13, 8.18, 8.19) | unit, e2e-demo | gap A5 |
-| "På vei" / "Venter i teltet" split with distance | Sick bay | Planned (8.14) | unit, e2e-demo | gap A9, A7 |
-| "Overlevert av Alpha kl." on the sick bay card | Sick bay | Planned (8.15) | unit | gap A1 |
-| "AMK varslet kl." pill in all three views | All | Planned (8.17, 8.25) | unit | gap B2 |
-| Time-based escalation "Venter for lenge" (yellow > 10 min, green > 30 min) | Coordinator | Planned (8.20) | unit | gap A6 |
-| "I sykestua" badge; queue excludes handed-over patients | Coordinator | Planned (8.22) | unit | gap A1 |
-| Dispatch a team to a sector or map position | Coordinator | Planned (8.23) | unit, e2e-local | gap B4 |
 | Transport request (stretcher / ATV / ambulance) end to end | Field, Coordinator, Sick bay | Planned (8.26) | API unit, unit, e2e-local | gap B3 |
 | Sick bay offline queue for vitals, notes, status, edits | Sick bay | Planned (8.27) | unit (queue, replay), manual offline | gap B1 |
 | Quick log "Behandlet på stedet" | Field | Planned (8.28) | unit, e2e-demo | gap A8 |
@@ -89,6 +75,20 @@ Built or being built; verification still owed. Move a row down when it has evide
 | WebSocket heartbeat, reconnect with backoff, token refresh | API, web | `unit` (ws.store, session) | 2026-09-23 |
 | Load test gate (p95 targets) | API | CI workflow | 2026-09-23 |
 | Presentation export (`showcase:export`) | Tooling | `manual` (opened from file, no console errors) | 2026-09-23 |
+| Close reasons map to outcomes; "Overlevert sykestue" keeps the patient open and clears the patrol | Field | `unit` (close-outcome, FirstAider tests), `e2e-demo` | 2026-09-23 |
+| "Trenger bistand" asks what is needed (flere hender / transport / AMK / annet) and sends it as the status note | Field | `unit` (AssistanceReasonStep), `e2e-demo` | 2026-09-23 |
+| Unassigned patients sorted by distance from the phone, with offset text | Field | `unit` (geo sortByDistance), `manual` | 2026-09-23 |
+| "Ring 113" and "AMK er varslet" / undo on red and yellow field cards | Field | `unit`, `e2e-demo` | 2026-09-23 |
+| Re-triage from the field summary editor and from the sick bay's "Rediger detaljer", with a note | Field, Sick bay | `unit` (TriageChips, PatientCard.triage) | 2026-09-23 |
+| Assignment banner with vibration, "Vi drar" / "Kan ikke", persisted; coordinator shows "Bekreftet av" / "Ikke bekreftet" and escalates after 5 min | Field, Coordinator | `unit` (AssignmentBanner, pending-assignments, PatientManagementPanel, AttentionQueuePanel) | 2026-09-23 |
+| "Mottatt" receipts on directed messages; coordinator sees "Mottatt av" and "Ikke kvittert" | Field, Coordinator | `unit` (TeamChatSection, TeamMessageStreamPanel) | 2026-09-23 |
+| Shared patient number `#12` on every card, row, map marker and toast | All | `unit` (EventMap.patientNumbers, PatientCard, panels), `e2e-demo`, `e2e-local` | 2026-09-23 |
+| "På vei" / "Venter i teltet" stacks in Innkommende, with live distance to the patrol | Sick bay | `unit` (SickBayDashboard.stacks, FieldEngagementLine), `e2e-demo` | 2026-09-23 |
+| "Overlevert av Alpha kl." on the sick bay card | Sick bay | `unit` (PatientCard.handover) | 2026-09-23 |
+| "AMK varslet kl." pill in all three views; the AMK brief records it | All | `unit` (PatientCard.amk, panels) | 2026-09-23 |
+| "Venter for lenge": yellow > 10 min or green > 30 min without a team enter the queue | Coordinator | `unit` (AttentionQueuePanel) | 2026-09-23 |
+| "I sykestua" badge; the queue ignores patients already in the tent | Coordinator | `unit` (PatientManagementPanel, AttentionQueuePanel) | 2026-09-23 |
+| "Send til": dispatch a patrol to a sector or place; the patrol sees the sector badge | Coordinator, Field | `unit` (TeamStatusPanel), `e2e-demo` | 2026-09-23 |
 
 ---
 
