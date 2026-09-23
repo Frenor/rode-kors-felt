@@ -471,6 +471,8 @@ export async function teamRoutes(app: FastifyInstance) {
       positionText: row.positionText ?? null,
       teamPatientStatus: patientStatusMap.get(row.id) ?? null,
       latestVitals: latestVitalsByPatient.get(row.id) ?? null,
+      amkNotifiedAt: row.amkNotifiedAt ? row.amkNotifiedAt.toISOString() : null,
+      amkNotifiedBy: row.amkNotifiedBy ?? null,
       seq: row.seq ?? null,
       handedOverAt: row.handedOverAt ? row.handedOverAt.toISOString() : null,
       handedOverByTeamId: row.handedOverByTeamId ?? null,

@@ -302,6 +302,8 @@ export const TeamWorkspacePatient = z.object({
   handedOverAt: z.string().datetime().nullable().optional(),
   handedOverByTeamId: z.string().uuid().nullable().optional(),
   fieldOutcome: FieldOutcome.nullable().optional(),
+  amkNotifiedAt: z.string().datetime().nullable().optional(),
+  amkNotifiedBy: z.string().max(100).nullable().optional(),
 });
 export type TeamWorkspacePatient = z.infer<typeof TeamWorkspacePatient>;
 
