@@ -97,9 +97,9 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   // button on the card, not a dropdown entry.
   await expect(page.getByTestId(/^primary-action-/).first()).toHaveText(/Start behandling/);
 
-  // A patrol on its way is visible on the incoming card (Delta → Sofia in the demo seed),
+  // A patrol on its way is visible on the incoming card (Alpha → Sofia in the demo seed),
   // and the three secondary editors sit behind one "Rediger detaljer" row.
-  await expect(page.getByTestId('field-engagement-demo-pat-4')).toContainText('Delta · På vei');
+  await expect(page.getByTestId('field-engagement-demo-pat-4')).toContainText('Alpha · På vei');
   await expect(page.getByTestId('edit-details-toggle-demo-pat-4')).toBeVisible();
   await expect(page.getByTestId('demographics-editor-toggle-demo-pat-4')).toBeHidden();
 

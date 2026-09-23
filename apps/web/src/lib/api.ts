@@ -265,7 +265,7 @@ class ApiClient {
 
   // Patients
   async getPatients(eventId: string, opts?: { assignedTeamId?: string }) {
-    if (DEMO) return demoStore.getPatients(eventId);
+    if (DEMO) return demoStore.getPatients(eventId, opts);
     const params = new URLSearchParams({ eventId });
     if (opts?.assignedTeamId) params.set('assignedTeamId', opts.assignedTeamId);
     return this.request<{ patients: any[] }>(`/patients?${params}`);

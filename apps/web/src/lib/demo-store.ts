@@ -293,7 +293,7 @@ let patients: any[] = [
     eventId: 'demo-event',
     label: null,
     triageStatus: 'yellow',
-    assignedTeamId: 'team-delta',
+    assignedTeamId: 'team-alpha',
     fullName: 'Sofia Nilsen',
     gender: 'female',
     birthDate: '1988-11-05',
@@ -392,10 +392,10 @@ const teamWorkspaceState: Record<string, {
   ]),
 );
 
-// Delta has claimed Sofia (demo-pat-4) and is on its way — the sick bay and the
+// Alpha has Sofia (demo-pat-4) and is on its way to her — the sick bay and the
 // coordinator both see who is bringing her in.
-teamWorkspaceState['team-delta']!.patientStatusMap.set('demo-pat-4', 'en_route_to_patient');
-teamWorkspaceState['team-delta']!.latestStatus = 'en_route';
+teamWorkspaceState['team-alpha']!.patientStatusMap.set('demo-pat-4', 'en_route_to_patient');
+teamWorkspaceState['team-alpha']!.latestStatus = 'en_route';
 
 let demoEvent: any = {
   id: 'demo-event',
@@ -654,8 +654,12 @@ export const demoStore = {
     return { incident };
   },
 
-  getPatients: (_eventId: string) => ({
-    patients: patients.map((p) => mapWithHistory('patient', p)),
+  // Mirrors the API: a patrol asking for its own patients gets only those
+  // assigned to it, not every patient in the event.
+  getPatients: (_eventId: string, opts?: { assignedTeamId?: string }) => ({
+    patients: patients
+      .filter((p) => !opts?.assignedTeamId || p.assignedTeamId === opts.assignedTeamId)
+      .map((p) => mapWithHistory('patient', p)),
   }),
 
   createPatient: (data: Record<string, unknown>) => {
