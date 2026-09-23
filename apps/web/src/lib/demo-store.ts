@@ -655,6 +655,8 @@ export const demoStore = {
           handedOverAt: patient.handedOverAt ?? null,
           handedOverByTeamId: patient.handedOverByTeamId ?? null,
           fieldOutcome: patient.fieldOutcome ?? null,
+          amkNotifiedAt: patient.amkNotifiedAt ?? null,
+          amkNotifiedBy: patient.amkNotifiedBy ?? null,
         };
       })
       .filter((item) => item.critical)

@@ -55,4 +55,34 @@ describe('IncomingCriticalPanel', () => {
     expect(screen.getByTestId('sickbay-critical-announcer')).toHaveTextContent('Ny kritisk innkommende: Brystsmerter, km 8');
     expect(screen.getByTestId('sickbay-critical-banner')).not.toHaveAttribute('role', 'alert');
   });
+
+  it('shows the shared patient number on the row', () => {
+    render(
+      <IncomingCriticalPanel items={[item({ seq: 12 })]} onStartTreatment={vi.fn()} onAssignPlacement={vi.fn()} />,
+    );
+    expect(screen.getByTestId('patient-number-p1')).toHaveTextContent('#12');
+  });
+
+  it('renders no number pill when seq is not yet known', () => {
+    render(
+      <IncomingCriticalPanel items={[item({ seq: null })]} onStartTreatment={vi.fn()} onAssignPlacement={vi.fn()} />,
+    );
+    expect(screen.queryByTestId('patient-number-p1')).not.toBeInTheDocument();
+  });
+
+  it('shows the "AMK varslet" pill once amkNotifiedAt is set', () => {
+    render(
+      <IncomingCriticalPanel
+        items={[item({ amkNotifiedAt: '2026-09-23T11:40:00Z' })]}
+        onStartTreatment={vi.fn()}
+        onAssignPlacement={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('amk-notified-pill-p1')).toHaveTextContent(/^AMK varslet kl\. \d{2}:\d{2}$/);
+  });
+
+  it('renders no AMK pill before AMK has been notified', () => {
+    render(<IncomingCriticalPanel items={[item({})]} onStartTreatment={vi.fn()} onAssignPlacement={vi.fn()} />);
+    expect(screen.queryByTestId('amk-notified-pill-p1')).not.toBeInTheDocument();
+  });
 });

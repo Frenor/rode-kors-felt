@@ -126,9 +126,16 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   // button on the card, not a dropdown entry.
   await expect(page.getByTestId(/^primary-action-/).first()).toHaveText(/Start behandling/);
 
-  // A patrol on its way is visible on the incoming card (Alpha → Sofia in the demo seed),
-  // and the three secondary editors sit behind one "Rediger detaljer" row.
+  // The "Innkommende" stack split (gap A9): Sofia is on her way with Alpha, so
+  // her card sits in "På vei", not "Venter i teltet", with her patient number
+  // visible on the card (gap A5).
+  const onTheWayStack = page.getByTestId('sickbay-stack-on-the-way');
+  await expect(onTheWayStack).toBeVisible();
+  await expect(onTheWayStack.getByTestId('field-engagement-demo-pat-4')).toBeVisible();
   await expect(page.getByTestId('field-engagement-demo-pat-4')).toContainText('Alpha · På vei');
+  await expect(page.getByTestId('patient-number-demo-pat-4')).toBeVisible();
+
+  // The three secondary editors sit behind one "Rediger detaljer" row.
   await expect(page.getByTestId('edit-details-toggle-demo-pat-4')).toBeVisible();
   await expect(page.getByTestId('demographics-editor-toggle-demo-pat-4')).toBeHidden();
 

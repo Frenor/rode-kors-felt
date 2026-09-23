@@ -17,18 +17,27 @@ import {
   STATUS_TRANSITIONS,
   statusColors,
   statusLabels,
+  type FieldTriageStatus,
 } from '../../lib/constants';
 import { describeObservationDue, nextObservationDue } from '../../lib/observation';
 import { useNow } from '../../hooks/useNow';
-import type { SickBayPatient, MedicationRecord, TeamPatientEngagement } from '../../lib/types';
-import { FieldEngagementLine } from './FieldEngagementLine';
+import type { SickBayPatient, MedicationRecord, Team, TeamPatientEngagement } from '../../lib/types';
+import { FieldEngagementLine, engagementDistanceLabel } from './FieldEngagementLine';
 import { PatientVitalsDisplay } from './PatientVitalsDisplay';
 import { PatientActionButtons } from './PatientActionButtons';
 import { VitalsEntryForm, type VitalsFormShape } from './VitalsEntryForm';
 import { MedicationPanel, type MedFormShape } from './MedicationPanel';
 import { NotePanel, type NoteFormShape } from './NotePanel';
 import { PatientHistoryTimeline } from './PatientHistoryTimeline';
-import { Button, Icon, Pill, type IconName } from '../../components/ui';
+import { Button, Icon, PatientNumberPill, Pill, type IconName } from '../../components/ui';
+
+/** Chip order for the sick bay's own triage editor (gap A2) — clinically most-to-least urgent
+ *  reads oddly here, so this follows the reviewed spec order instead: green, yellow, red, black. */
+const SICKBAY_TRIAGE_ORDER: FieldTriageStatus[] = ['green', 'yellow', 'red', 'black'];
+
+function formatClockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+}
 
 const EMPTY_VITALS_FORM: VitalsFormShape = {
   pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '',
@@ -54,6 +63,8 @@ interface PatientCardProps {
   medications: MedicationRecord[];
   /** Patrols currently with this patient (på vei / transporterer / overvåker). */
   fieldEngagements?: TeamPatientEngagement[];
+  /** Teams in this event — the hand-over line's team name and the "på vei" distance line. */
+  teams?: Team[];
   onStatusChange: (status: string) => void;
   onSubmitVitals: (form: VitalsFormShape) => void;
   onSubmitNote: (text: string, author: string) => void;
@@ -63,12 +74,15 @@ interface PatientCardProps {
   onUpdatePlacement: (placementType: 'chair' | 'bed' | '', placementNumber: string) => void;
   onUpdateDemographics: (form: DemographicsFormShape) => void;
   onUpdateComplaint: (complaint: string) => void;
+  /** Triage chips in "Rediger detaljer" (gap A2). */
+  onUpdateTriage?: (triage: FieldTriageStatus | null) => void;
 }
 
 export function PatientCard({
   patient,
   medications,
   fieldEngagements = [],
+  teams = [],
   onStatusChange,
   onSubmitVitals,
   onSubmitNote,
@@ -78,6 +92,7 @@ export function PatientCard({
   onUpdatePlacement,
   onUpdateDemographics,
   onUpdateComplaint,
+  onUpdateTriage = () => {},
 }: PatientCardProps) {
   const [showVitals, setShowVitals] = useState(false);
   // The three secondary editors sit behind one row so a resting card stays short.
@@ -88,6 +103,7 @@ export function PatientCard({
   const [showPlacementEditor, setShowPlacementEditor] = useState(false);
   const [showDemographicsEditor, setShowDemographicsEditor] = useState(false);
   const [showComplaintEditor, setShowComplaintEditor] = useState(false);
+  const [showTriageEditor, setShowTriageEditor] = useState(false);
   const [complaintDraft, setComplaintDraft] = useState(patient.presentingComplaint ?? '');
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -151,6 +167,12 @@ export function PatientCard({
   // them so a patient arriving from a patrol is not shown as "Ukjent pasient".
   const patientName = patient.fullName ?? patient.label ?? patient.presentingComplaint ?? 'Ukjent pasient';
   const fieldTriage = patient.triageStatus ? FIELD_TRIAGE_STYLE[patient.triageStatus] ?? null : null;
+  // Hand-over model (gap A1) — the patient stays "incoming", not discharged, once handed off.
+  const handoverTeamName = patient.handedOverByTeamId
+    ? (teams.find((t) => t.id === patient.handedOverByTeamId)?.name ?? null)
+    : null;
+  // "På vei" distance (gap A7) — only when a patrol is approaching and both positions are known.
+  const distanceLabel = engagementDistanceLabel(fieldEngagements, teams, patient);
   const patientAgeLabel = formatPatientAge({
     birthDate: patient.birthDate ?? null,
     ageGroup: patient.ageGroup ?? null,
@@ -266,6 +288,15 @@ export function PatientCard({
     setShowComplaintEditor((prev) => !prev);
   };
 
+  const handleToggleTriageEditor = () => {
+    setShowTriageEditor((prev) => !prev);
+  };
+
+  const handleSelectTriage = (value: FieldTriageStatus | null) => {
+    onUpdateTriage(value);
+    setShowTriageEditor(false);
+  };
+
   // Re-initialise placement state only when the patient identity changes.
   // NOT on individual field changes — that would clobber what the user is
   // currently typing if a concurrent prop update (WS / fetchPatients) arrives.
@@ -310,6 +341,7 @@ export function PatientCard({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: '1 1 160px' }}>
           <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, minWidth: 0 }}>
+            <PatientNumberPill seq={patient.seq} data-testid={`patient-number-${patient.id}`} />
             {fieldTriage && (
               <Pill aria-label={`Felt-triage ${fieldTriage.label}`} tone={{ color: fieldTriage.text, bg: fieldTriage.bg }}>
                 {fieldTriage.label}
@@ -353,6 +385,14 @@ export function PatientCard({
                 <span aria-hidden="true" style={{ fontWeight: 700, color: trendColor }}>{trendArrow}</span>
               )}
             </span>
+          )}
+          {patient.amkNotifiedAt && (
+            <Pill
+              data-testid={`amk-notified-pill-${patient.id}`}
+              tone={{ color: 'var(--color-status-critical)', bg: 'transparent', border: 'transparent' }}
+            >
+              AMK varslet kl. {formatClockTime(patient.amkNotifiedAt)}
+            </Pill>
           )}
           <div ref={statusMenuRef} style={{ position: 'relative' }} data-testid={`patient-status-${patient.id}`}>
             <button
@@ -429,7 +469,21 @@ export function PatientCard({
         </div>
       </div>
 
-      {!isClosed && <FieldEngagementLine patientId={patient.id} engagements={fieldEngagements} />}
+      {!isClosed && (
+        <FieldEngagementLine patientId={patient.id} engagements={fieldEngagements} distanceLabel={distanceLabel} />
+      )}
+
+      {/* Hand-over model (gap A1) — the patient is in the tent now, not "finished". */}
+      {patient.handedOverAt && (
+        <div
+          data-testid={`handover-line-${patient.id}`}
+          style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-muted)' }}
+        >
+          {handoverTeamName
+            ? `Overlevert av ${handoverTeamName} kl. ${formatClockTime(patient.handedOverAt)}`
+            : `Overlevert kl. ${formatClockTime(patient.handedOverAt)}`}
+        </div>
+      )}
 
       {/* When is this patient due for a new set of observations — the thing a
           busy clinician with six patients forgets first. */}
@@ -536,6 +590,20 @@ export function PatientCard({
           onClick={handleToggleComplaintEditor}
         >
           Beskrivelse
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          pill
+          icon={showTriageEditor ? 'x' : 'edit'}
+          selected={showTriageEditor}
+          aria-label={showTriageEditor ? 'Lukk triage' : 'Rediger triage'}
+          aria-expanded={showTriageEditor}
+          data-testid={`triage-editor-toggle-${patient.id}`}
+          onClick={handleToggleTriageEditor}
+        >
+          Triage
         </Button>
       </div>
       )}
@@ -693,6 +761,55 @@ className="field"
 
           <Button variant="secondary" size="lg" onClick={handleSubmitComplaint} style={{ alignSelf: 'flex-start' }}>
             Lagre problemstilling
+          </Button>
+        </div>
+      )}
+
+      {showTriageEditor && (
+        <div
+          data-testid={`triage-editor-${patient.id}`}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-3)',
+            background: 'var(--color-surface-sunken)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-3)',
+          }}
+        >
+          <span className="section-label">Triage</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
+            {SICKBAY_TRIAGE_ORDER.map((value) => {
+              const style = FIELD_TRIAGE_STYLE[value];
+              const active = patient.triageStatus === value;
+              return (
+                <Button
+                  key={value}
+                  variant="tone"
+                  tone={{ color: style.text, bg: style.bg }}
+                  size="lg"
+                  aria-pressed={active}
+                  icon={active ? 'check' : undefined}
+                  data-testid={`triage-chip-${patient.id}-${value}`}
+                  onClick={() => handleSelectTriage(value)}
+                  style={{ padding: 0 }}
+                >
+                  {style.label}
+                </Button>
+              );
+            })}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="x"
+            disabled={!patient.triageStatus}
+            data-testid={`triage-clear-${patient.id}`}
+            onClick={() => handleSelectTriage(null)}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            Fjern triage
           </Button>
         </div>
       )}

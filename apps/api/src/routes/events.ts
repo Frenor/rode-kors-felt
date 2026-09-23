@@ -256,6 +256,8 @@ export async function eventRoutes(app: FastifyInstance) {
         handedOverAt: patient.handedOverAt ? patient.handedOverAt.toISOString() : null,
         handedOverByTeamId: patient.handedOverByTeamId ?? null,
         fieldOutcome: patient.fieldOutcome ?? null,
+        amkNotifiedAt: patient.amkNotifiedAt ? patient.amkNotifiedAt.toISOString() : null,
+        amkNotifiedBy: patient.amkNotifiedBy ?? null,
       };
     });
 

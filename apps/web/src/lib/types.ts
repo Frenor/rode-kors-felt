@@ -142,6 +142,9 @@ export interface SickBayPatient {
   description?: string | null;
   triageStatus?: 'green' | 'yellow' | 'red' | 'black' | null;
   positionText?: string | null;
+  /** Patient position (gap A7/A9 distance line) — set from a field report. */
+  lat?: number | null;
+  lon?: number | null;
   assignedTeamId?: string | null;
   /** Hand-over model (gap A1) — set once the field team has handed the patient off. */
   handedOverAt?: string | null;
@@ -238,6 +241,9 @@ export interface SickbayIncomingItem {
   handedOverAt?: string | null;
   handedOverByTeamId?: string | null;
   fieldOutcome?: SharedFieldOutcome | null;
+  /** AMK notified (gap B2) — set once the sick bay (or the field) has called 113. */
+  amkNotifiedAt?: string | null;
+  amkNotifiedBy?: string | null;
 }
 
 export interface DeteriorationAlert {

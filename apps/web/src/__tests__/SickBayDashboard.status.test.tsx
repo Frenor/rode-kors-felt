@@ -62,6 +62,7 @@ vi.mock('../lib/api', () => ({
     getPatients: vi.fn(),
     getSickbayIncoming: vi.fn().mockResolvedValue({ items: [] }),
     getTeamPatientEngagements: vi.fn().mockResolvedValue({ engagements: {} }),
+    getEvent: vi.fn().mockResolvedValue({ event: {}, teams: [] }),
     executePatientAction: (...args: unknown[]) => mockExecutePatientAction(...args),
     addPatientNote: (...args: unknown[]) => mockAddPatientNote(...args),
     createPatient: vi.fn(),
@@ -515,6 +516,41 @@ describe('AMK brief modal — structured 113 flow', () => {
         followUpOwner: 'Lege Andersen',
       }));
     });
+  });
+
+  it('"Lagre AMK-logg" also marks AMK as notified, naming the clinician from the form', async () => {
+    const { patient } = await renderWithPatient('in_treatment');
+    fireEvent.click(screen.getByTestId('patient-ring-113'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'AMK-brief' });
+    fireEvent.change(within(dialog).getByLabelText('Oppsummering gitt'), { target: { value: 'Pasient med brystsmerter' } });
+    fireEvent.change(within(dialog).getByLabelText('AMK-veiledning'), { target: { value: 'Kontakt AMK' } });
+    fireEvent.change(within(dialog).getByLabelText('Videre ansvar'), { target: { value: 'Lege Andersen' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre AMK-logg' }));
+
+    await waitFor(() => {
+      expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'amk.notified', by: 'Lege Andersen' });
+    });
+  });
+
+  it('shows a visible error line when marking AMK notified fails, without hiding that the log itself saved', async () => {
+    mockExecutePatientAction.mockRejectedValueOnce(new Error('Nettverksfeil'));
+    await renderWithPatient('in_treatment');
+    fireEvent.click(screen.getByTestId('patient-ring-113'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'AMK-brief' });
+    fireEvent.change(within(dialog).getByLabelText('Oppsummering gitt'), { target: { value: 'Pasient med brystsmerter' } });
+    fireEvent.change(within(dialog).getByLabelText('AMK-veiledning'), { target: { value: 'Kontakt AMK' } });
+    fireEvent.change(within(dialog).getByLabelText('Videre ansvar'), { target: { value: 'Lege Andersen' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre AMK-logg' }));
+
+    await waitFor(() => {
+      expect(within(dialog).getByText(/AMK-samtalen er logget, men klarte ikke å markere AMK som varslet/)).toBeInTheDocument();
+    });
+    // The call log itself was still saved — the failure is additive, not a rollback.
+    expect(mockCreateAmkCallLog).toHaveBeenCalled();
   });
 
   it('renders dedicated AMK and AI timeline rows from action history artifacts', async () => {

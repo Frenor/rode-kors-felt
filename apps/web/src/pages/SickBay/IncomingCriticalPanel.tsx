@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SickbayIncomingItem, TeamPatientEngagement } from '../../lib/types';
 import { FIELD_TRIAGE_STYLE, type FieldTriageStatus } from '../../lib/constants';
-import { Button, Icon, Pill } from '../../components/ui';
+import { Button, Icon, PatientNumberPill, Pill } from '../../components/ui';
 import { FieldEngagementLine } from './FieldEngagementLine';
+
+function formatClockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+}
 
 interface IncomingCriticalPanelProps {
   items: SickbayIncomingItem[];
@@ -116,6 +120,7 @@ export function IncomingCriticalPanel({ items, engagements = {}, onStartTreatmen
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 220px', minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  <PatientNumberPill seq={item.seq} data-testid={`patient-number-${item.patientId}`} />
                   {triage && <Pill tone={{ color: triage.text, bg: triage.bg }}>{triage.label}</Pill>}
                   <span style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
                     {item.label ?? `Pasient ${item.patientId.slice(0, 8)}`}
@@ -124,6 +129,14 @@ export function IncomingCriticalPanel({ items, engagements = {}, onStartTreatmen
                     <span className="data" aria-label="NEWS2" style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--color-status-critical)' }}>
                       NEWS2 {item.news2.total}
                     </span>
+                  )}
+                  {item.amkNotifiedAt && (
+                    <Pill
+                      data-testid={`amk-notified-pill-${item.patientId}`}
+                      tone={{ color: 'var(--color-status-critical)', bg: 'transparent', border: 'transparent' }}
+                    >
+                      AMK varslet kl. {formatClockTime(item.amkNotifiedAt)}
+                    </Pill>
                   )}
                 </div>
                 <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text)', fontWeight: 600 }}>

@@ -9,7 +9,7 @@ import {
   news2MonitoringLabel,
   type News2Result,
 } from '@rkf/shared-types';
-import type { SickBayPatient, MedicationRecord, SickbayIncomingItem, TeamPatientEngagement } from '../lib/types';
+import type { SickBayPatient, MedicationRecord, SickbayIncomingItem, Team, TeamPatientEngagement } from '../lib/types';
 import { SickBayHeader } from './SickBay/SickBayHeader';
 import { PatientIntakeModal, isIntakeFormValid, type IntakeFormShape } from './SickBay/PatientIntakeModal';
 import { PatientDischargeModal, type DischargeFormShape, EMPTY_DISCHARGE_FORM, buildDischargeNote } from './SickBay/PatientDischargeModal';
@@ -18,7 +18,17 @@ import { PatientCard, type DemographicsFormShape } from './SickBay/PatientCard';
 import { IncomingCriticalPanel } from './SickBay/IncomingCriticalPanel';
 import type { VitalsFormShape } from './SickBay/VitalsEntryForm';
 import type { MedFormShape } from './SickBay/MedicationPanel';
-import { formatPatientAge, formatSickbayPlacement, GENDER_LABELS, statusColors, statusLabels } from '../lib/constants';
+import {
+  FIELD_TRIAGE_STYLE,
+  formatPatientAge,
+  formatSickbayPlacement,
+  GENDER_LABELS,
+  statusColors,
+  statusLabels,
+  TEAM_PATIENT_STATUS_STYLE,
+  type FieldTriageStatus,
+} from '../lib/constants';
+import { patientNumber } from '../lib/patient-number';
 import { nextObservationDue } from '../lib/observation';
 import { useNow } from '../hooks/useNow';
 import { Icon } from '../components/ui';
@@ -31,6 +41,31 @@ type PatientStatus = 'incoming' | 'in_treatment' | 'observation' | 'discharged' 
 
 const STATUS_GROUP_ORDER: PatientStatus[] = ['incoming', 'in_treatment', 'observation', 'discharged', 'transferred'];
 const CLOSED_STATUSES = new Set<PatientStatus>(['discharged', 'transferred']);
+
+/** Engagement statuses that mean "a patrol is bringing this patient in" (gap A9). */
+const APPROACHING_ENGAGEMENT_STATUSES = new Set(['en_route_to_patient', 'transporting']);
+
+/** Sub-stack heading inside "Innkommende" — same style as the group heading
+ *  (dot + title + count + rule), one size down. */
+function StackHeading({ title, count, dotColor }: { title: string; count: number; dotColor: string }) {
+  return (
+    <div
+      style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-2)',
+        paddingBottom: 'var(--space-1)',
+        borderBottom: '1px solid var(--color-border)',
+      }}
+    >
+      <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, margin: 0, textWrap: 'balance', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+        {title}
+      </h3>
+      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+        <span className="data">{count}</span> pasient{count === 1 ? '' : 'er'}
+      </span>
+    </div>
+  );
+}
 
 export function SickBayDashboard() {
   const { eventId } = useAuthStore();
@@ -61,6 +96,8 @@ export function SickBayDashboard() {
   const [incomingItems, setIncomingItems] = useState<SickbayIncomingItem[]>([]);
   /** Which patrol is with which patient (på vei / transporterer / overvåker), by patient id. */
   const [fieldEngagements, setFieldEngagements] = useState<Record<string, TeamPatientEngagement[]>>({});
+  /** Teams in this event, with live position — the "på vei" distance line (gap A7/A9). */
+  const [teams, setTeams] = useState<Team[]>([]);
   const [expandedClosedCards, setExpandedClosedCards] = useState<Record<string, boolean>>({});
   const now = useNow();
   const UNDO_WINDOW_MS = 10_000;
@@ -118,6 +155,15 @@ export function SickBayDashboard() {
     fetchPatients();
   }, [eventId]);
 
+  // Team positions for the "på vei" distance line (gap A7/A9) — initial snapshot
+  // from getEvent, kept live via the team.position WS handler below.
+  useEffect(() => {
+    if (!eventId) return;
+    api.getEvent(eventId)
+      .then((res) => setTeams((res.teams ?? []) as Team[]))
+      .catch((err) => console.error('[sickbay] Failed to load team positions', err));
+  }, [eventId]);
+
   // Re-sync when realtime comes back or the tablet wakes up — otherwise the
   // sick bay works from a list that silently stopped updating.
   useEffect(() => {
@@ -162,6 +208,11 @@ export function SickBayDashboard() {
         || msg.type === 'team.session_changed'
       ) {
         scheduleRefetch();
+      } else if (msg.type === 'team.position') {
+        const { teamId, position } = (msg.payload as { teamId?: string; position?: { lat: number; lng: number } }) ?? {};
+        if (teamId && position) {
+          setTeams((prev) => prev.map((t) => (t.id === teamId ? { ...t, currentPosition: position } : t)));
+        }
       }
     });
     return off;
@@ -183,7 +234,7 @@ export function SickBayDashboard() {
       });
       return;
     }
-    await api.createPatient({
+    const { patient: created } = await api.createPatient({
       eventId,
       fullName: intakeForm.fullName.trim() || undefined,
       gender: intakeForm.gender || undefined,
@@ -204,6 +255,13 @@ export function SickBayDashboard() {
       ageGroup: 'adult',
       presentingComplaint: '',
       assignedClinician: '',
+    });
+    // Shared patient number (gap A5) — server-allocated, so only shown once the create response has it.
+    const numberLabel = patientNumber(created ?? {});
+    addToast({
+      message: numberLabel ? `Pasient ${numberLabel} registrert` : 'Pasient registrert',
+      level: 'info',
+      autoDismissMs: 4_000,
     });
     fetchPatients();
   };
@@ -374,6 +432,22 @@ export function SickBayDashboard() {
     fetchPatients();
   };
 
+  const handleUpdateTriage = async (patient: SickBayPatient, next: FieldTriageStatus | null) => {
+    const previous = (patient.triageStatus ?? null) as FieldTriageStatus | null;
+    if (previous === next) return;
+    await api.updatePatient(patient.id, { triageStatus: next });
+    const prevLabel = previous ? FIELD_TRIAGE_STYLE[previous].label.toLowerCase() : null;
+    const nextLabel = next ? FIELD_TRIAGE_STYLE[next].label.toLowerCase() : null;
+    const noteText = prevLabel && nextLabel
+      ? `Triage endret ${prevLabel} → ${nextLabel}`
+      : nextLabel
+        ? `Triage satt til ${nextLabel}`
+        : `Triage fjernet (var ${prevLabel})`;
+    await api.addPatientNote(patient.id, noteText, 'Triage');
+    addToast({ message: 'Triage oppdatert', level: 'info', autoDismissMs: 3_000 });
+    fetchPatients();
+  };
+
   const handleStartTreatment = async (patientId: string) => {
     const patient = patients.find((row) => row.id === patientId);
     await handleStatusChange(patientId, 'in_treatment', patient);
@@ -437,6 +511,31 @@ export function SickBayDashboard() {
   const toggleClosedCard = (patientId: string) => {
     setExpandedClosedCards((prev) => ({ ...prev, [patientId]: !prev[patientId] }));
   };
+
+  /** True once a patrol is en route to or transporting this patient (gap A9). */
+  const isOnTheWay = (patientId: string) =>
+    (fieldEngagements[patientId] ?? []).some((eng) => APPROACHING_ENGAGEMENT_STATUSES.has(eng.status));
+
+  const renderPatientCard = (patient: SickBayPatient) => (
+    <PatientCard
+      key={patient.id}
+      patient={patient}
+      medications={medications[patient.id] ?? []}
+      fieldEngagements={fieldEngagements[patient.id] ?? []}
+      teams={teams}
+      onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
+      onSubmitVitals={(form) => handleRecordVitals(patient, form)}
+      onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
+      onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
+      onLoadMedications={() => handleLoadMedications(patient.id)}
+      onOpenAmk={() => handleOpenAmk(patient)}
+      onUpdatePlacement={(placementType, placementNumber) =>
+        handleUpdatePlacement(patient.id, placementType, placementNumber)}
+      onUpdateDemographics={(form) => handleUpdateDemographics(patient.id, form)}
+      onUpdateComplaint={(complaint) => handleUpdateComplaint(patient.id, complaint)}
+      onUpdateTriage={(triage) => handleUpdateTriage(patient, triage)}
+    />
+  );
 
   return (
     <div className="animate-fade-in">
@@ -529,6 +628,44 @@ export function SickBayDashboard() {
                   </span>
                 </div>
 
+                {group.status === 'incoming' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                    {(() => {
+                      const onTheWay = group.patients.filter((p) => isOnTheWay(p.id));
+                      const waiting = group.patients.filter((p) => !isOnTheWay(p.id));
+                      return (
+                        <>
+                          {onTheWay.length > 0 && (
+                            <div
+                              data-testid="sickbay-stack-on-the-way"
+                              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}
+                            >
+                              <StackHeading
+                                title="På vei"
+                                count={onTheWay.length}
+                                dotColor={TEAM_PATIENT_STATUS_STYLE.en_route_to_patient.color}
+                              />
+                              {onTheWay.map(renderPatientCard)}
+                            </div>
+                          )}
+                          {waiting.length > 0 && (
+                            <div
+                              data-testid="sickbay-stack-waiting"
+                              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}
+                            >
+                              <StackHeading
+                                title="Venter i teltet"
+                                count={waiting.length}
+                                dotColor={(statusColors.incoming ?? { color: 'var(--color-border-strong)' }).color}
+                              />
+                              {waiting.map(renderPatientCard)}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                ) : (
                 <div
                   style={{
                     display: 'flex',
@@ -538,24 +675,7 @@ export function SickBayDashboard() {
                 >
                   {group.patients.map((patient) => {
                     if (!isClosedGroup) {
-                      return (
-                        <PatientCard
-                          key={patient.id}
-                          patient={patient}
-                          medications={medications[patient.id] ?? []}
-                          fieldEngagements={fieldEngagements[patient.id] ?? []}
-                          onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
-                          onSubmitVitals={(form) => handleRecordVitals(patient, form)}
-                          onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
-                          onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
-                          onLoadMedications={() => handleLoadMedications(patient.id)}
-                          onOpenAmk={() => handleOpenAmk(patient)}
-                          onUpdatePlacement={(placementType, placementNumber) =>
-                            handleUpdatePlacement(patient.id, placementType, placementNumber)}
-                          onUpdateDemographics={(form) => handleUpdateDemographics(patient.id, form)}
-                          onUpdateComplaint={(complaint) => handleUpdateComplaint(patient.id, complaint)}
-                        />
-                      );
+                      return renderPatientCard(patient);
                     }
 
                     const expanded = !!expandedClosedCards[patient.id];
@@ -626,27 +746,14 @@ export function SickBayDashboard() {
 
                         {expanded && (
                           <div id={`closed-panel-${patient.id}`} data-testid={`closed-panel-${patient.id}`} style={{ padding: 'var(--space-3)' }}>
-                            <PatientCard
-                              patient={patient}
-                              medications={medications[patient.id] ?? []}
-                              fieldEngagements={fieldEngagements[patient.id] ?? []}
-                              onStatusChange={(status) => handleStatusChange(patient.id, status, patient)}
-                              onSubmitVitals={(form) => handleRecordVitals(patient, form)}
-                              onSubmitNote={(text, author) => handleAddNote(patient.id, text, author)}
-                              onSubmitMedication={(form) => handleRecordMedication(patient.id, form)}
-                              onLoadMedications={() => handleLoadMedications(patient.id)}
-                              onOpenAmk={() => handleOpenAmk(patient)}
-                              onUpdatePlacement={(placementType, placementNumber) =>
-                                handleUpdatePlacement(patient.id, placementType, placementNumber)}
-                              onUpdateDemographics={(form) => handleUpdateDemographics(patient.id, form)}
-                              onUpdateComplaint={(complaint) => handleUpdateComplaint(patient.id, complaint)}
-                            />
+                            {renderPatientCard(patient)}
                           </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
+                )}
               </section>
             );
           })}
