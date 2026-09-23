@@ -231,6 +231,16 @@ async function run() {
     'Valget varsler koordinator og sykestue umiddelbart.',
   ], PHONE, await snapshot(page));
   await workspace.getByTestId('firstaid-field-status-needs_assistance').click();
+  // Second step: what is needed — the desk hears "transport" instead of having to ask.
+  await workspace.getByTestId('firstaid-assist-reasons').waitFor();
+  await workspace.getByTestId('firstaid-assist-reason-transport').click();
+  const reasonText = workspace.getByTestId('firstaid-assist-reasons').locator('input, textarea').first();
+  if (await reasonText.isVisible().catch(() => false)) await reasonText.fill('Båre til km 8, pasient kan ikke gå');
+  add('felt', 'bistand-hva', 'Hva trenger dere?', [
+    'Etter «Trenger bistand» spør appen hva som trengs: flere hender, transport, AMK er varslet, annet.',
+    'Valget går med som notat på statusen, så koordinator slipper å spørre over samband.',
+  ], PHONE, await snapshot(page));
+  await workspace.getByTestId('firstaid-assist-reason-send').click();
   await workspace.getByTestId('firstaid-needs-assistance-banner').waitFor();
   await page.evaluate(() => window.scrollTo(0, 0));
   add('felt', 'bistand', 'Trenger bistand', [
