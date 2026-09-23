@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuthStore } from '../stores/auth';
 import { useNotificationStore } from '../stores/notifications';
 import { useFirstAidWorkspaceStore } from '../stores/firstaid-workspace';
-import { useGeolocation } from '../hooks/useGeolocation';
+import { useGeolocation, GPS_STALE_AFTER_MS } from '../hooks/useGeolocation';
 import { useTeamPositionBroadcast } from '../hooks/useTeamPositionBroadcast';
 import { useWsStore } from '../stores/ws';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -54,7 +54,7 @@ export function FirstAiderDashboard() {
   // Map of patientId → Set of field names currently highlighted
   const [highlightedFields, setHighlightedFields] = useState<Map<string, Set<string>>>(new Map());
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const { position: gpsPosition } = useGeolocation();
+  const { position: gpsPosition, status: gpsStatus, accuracy: gpsAccuracy, updatedAt: gpsUpdatedAt } = useGeolocation();
   const wsSend = useWsStore((s) => s.send);
   const onMessage = useWsStore((s) => s.onMessage);
   const [messages, setMessages] = useState<Array<{ id: string; text: string; fromTeamId?: string; fromSelf: boolean; sentAt: string }>>([]);
@@ -84,8 +84,11 @@ export function FirstAiderDashboard() {
   const [reportInjuryType, setReportInjuryType] = useState('');
   const [reportTriage, setReportTriage] = useState('');
   const [reportDescription, setReportDescription] = useState('');
+  const [reportPositionText, setReportPositionText] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [reportError, setReportError] = useState('');
+  // Re-render every 15 s while the report form is open so the GPS age stays honest.
+  const [gpsAgeTick, setGpsAgeTick] = useState(0);
   // Close patient flow
   const [closingPatientId, setClosingPatientId] = useState<string | null>(null);
   const [perPatientCloseNote, setPerPatientCloseNote] = useState<Record<string, string>>({});
@@ -744,19 +747,32 @@ export function FirstAiderDashboard() {
     { value: 'black',  label: 'Svart',  bg: '#f1f5f9', color: '#1e293b' },
   ];
 
+  useEffect(() => {
+    if (!showReportPatient) return;
+    const id = setInterval(() => setGpsAgeTick((t) => t + 1), 15_000);
+    return () => clearInterval(id);
+  }, [showReportPatient]);
+
+  const gpsAgeMs = gpsUpdatedAt ? Date.now() - gpsUpdatedAt : null;
+  const gpsIsStale = gpsAgeMs !== null && gpsAgeMs > GPS_STALE_AFTER_MS;
+  void gpsAgeTick;
+
   const handleReportPatient = async () => {
     if (!eventId || !selectedTeam) return;
-    const label = reportInjuryType || reportDescription || 'Ny pasient';
+    const description = reportDescription.trim();
+    const label = reportInjuryType
+      || (description.length > 60 ? `${description.slice(0, 57).trimEnd()}…` : description)
+      || 'Ny pasient';
     setReportSubmitting(true);
     setReportError('');
     try {
       const res = await api.createFieldPatient(eventId, {
         label,
         triageStatus: reportTriage || null,
-        description: reportDescription.trim() || null,
-        positionText: gpsPosition
-          ? `${gpsPosition.lat.toFixed(5)}, ${gpsPosition.lng.toFixed(5)}`
-          : null,
+        description: description || null,
+        // Human-readable location only; coordinates travel in lat/lon so the
+        // coordinator sees "Sektor B, ved scenen" instead of "59.96345, 10.66512".
+        positionText: reportPositionText.trim() || null,
         lat: gpsPosition?.lat ?? null,
         lon: gpsPosition?.lng ?? null,
         assignedTeamId: selectedTeam,
@@ -765,7 +781,9 @@ export function FirstAiderDashboard() {
       setReportInjuryType('');
       setReportTriage('');
       setReportDescription('');
+      setReportPositionText('');
       setShowReportPatient(false);
+      addToast({ level: 'info', message: 'Pasient meldt til koordinator', autoDismissMs: 3_000 });
     } catch {
       setReportError('Kunne ikke registrere pasient — prøv igjen.');
     } finally {
@@ -778,6 +796,7 @@ export function FirstAiderDashboard() {
     setReportInjuryType('');
     setReportTriage('');
     setReportDescription('');
+    setReportPositionText('');
     setReportError('');
   };
 
@@ -1601,11 +1620,50 @@ export function FirstAiderDashboard() {
                   />
                 </div>
 
-                {gpsPosition && (
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-                    📍 GPS-posisjon registreres automatisk ({gpsPosition.lat.toFixed(4)}, {gpsPosition.lng.toFixed(4)})
-                  </div>
-                )}
+                {/* Where is the patient? Free text the coordinator can act on. */}
+                <div>
+                  <label
+                    htmlFor="report-position-text"
+                    style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}
+                  >
+                    Hvor er pasienten?
+                  </label>
+                  <input
+                    id="report-position-text"
+                    value={reportPositionText}
+                    onChange={(e) => setReportPositionText(e.target.value)}
+                    placeholder="f.eks. Sektor B, ved drikkestasjon 3"
+                    style={{
+                      width: '100%', height: 44, padding: '0 var(--space-3)',
+                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
+                      background: 'var(--color-input-bg)', color: 'var(--color-text)',
+                      fontSize: 'var(--text-sm)', fontFamily: 'inherit', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+
+                <div
+                  data-testid="report-gps-status"
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color: gpsPosition && !gpsIsStale ? 'var(--color-text-subtle)' : 'var(--color-status-warning)',
+                  }}
+                >
+                  {gpsPosition ? (
+                    <>
+                      📍 GPS-posisjon legges ved automatisk
+                      {gpsAccuracy != null ? ` (±${gpsAccuracy} m` : ' ('}
+                      {gpsAgeMs != null ? `${gpsAccuracy != null ? ', ' : ''}oppdatert for ${Math.max(0, Math.round(gpsAgeMs / 1000))} s siden)` : ')'}
+                      {gpsIsStale && ' — posisjonen kan være utdatert, beskriv stedet over.'}
+                    </>
+                  ) : gpsStatus === 'denied' ? (
+                    '⚠ Posisjonstilgang er avslått — beskriv hvor pasienten er.'
+                  ) : gpsStatus === 'acquiring' ? (
+                    '⏳ Henter GPS-posisjon… beskriv gjerne stedet i tillegg.'
+                  ) : (
+                    '⚠ Ingen GPS-posisjon — beskriv hvor pasienten er.'
+                  )}
+                </div>
 
                 {reportError && (
                   <div role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-status-critical)', fontWeight: 600 }}>
