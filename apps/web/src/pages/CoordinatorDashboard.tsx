@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { EventMap } from '../components/EventMap';
 import { useLLMApiKey } from '../hooks/useLLMApiKey';
 import { useNow } from '../hooks/useNow';
+import { patientNumber } from '../lib/patient-number';
 import type { DeteriorationAlert, GeoPoint } from '../lib/types';
 import { CoordinatorHeader } from './Coordinator/CoordinatorHeader';
 import { APIKeyModal } from './Coordinator/APIKeyModal';
@@ -43,6 +44,8 @@ export function CoordinatorDashboard() {
   const [teamMemberPositions, setTeamMemberPositions] = useState<Record<string, Record<string, GeoPoint>>>({});
   /** ID of the patient whose location is being picked on the map (null = not picking) */
   const [pickingPatientId, setPickingPatientId] = useState<string | null>(null);
+  /** Sector/place last dispatched to each team (gap B4 / item 8.23) — shown on the row until changed. */
+  const [teamSectors, setTeamSectors] = useState<Record<string, { sector: string; assignedAt: string }>>({});
 
   const [teamMessages, setTeamMessages] = useState<Array<{
     id: string;
@@ -50,6 +53,8 @@ export function CoordinatorDashboard() {
     fromTeamId?: string | null;
     fromLabel?: string | null;
     toTeamId?: string | null;
+    /** Set on a receipt: the id of the message it acknowledges (gap B10). */
+    ackOf?: string | null;
     sentAt: string;
   }>>([]);
   /** "Melding" on a team row: which team to preselect, and a nonce so the same team can be picked twice. */
@@ -189,6 +194,7 @@ export function CoordinatorDashboard() {
                 fromTeamId: payload.fromTeamId ?? null,
                 fromLabel: typeof payload.fromLabel === 'string' ? payload.fromLabel : null,
                 toTeamId: payload.toTeamId ?? null,
+                ackOf: payload.ackOf ?? null,
                 sentAt: payload.sentAt ?? new Date().toISOString(),
               },
               ...prev,
@@ -268,13 +274,41 @@ export function CoordinatorDashboard() {
 
   const handleAssignTeam = async (patientId: string, teamId: string) => {
     try {
-      await handleUpdatePatient(patientId, { assignedTeamId: teamId });
       const teamName = teams.find((t) => t.id === teamId)?.name ?? 'lag';
-      addToast({ level: 'info', autoDismissMs: 4_000, message: `Pasient tildelt ${teamName}` });
+      // The patient's number does not change on assignment — read it from the
+      // pre-update list so the toast can say "#12 tildelt Bravo" (gap A5).
+      const number = patientNumber(fieldPatients.find((p) => p.id === patientId) ?? {});
+      await handleUpdatePatient(patientId, { assignedTeamId: teamId });
+      addToast({ level: 'info', autoDismissMs: 4_000, message: `${number ?? 'Pasient'} tildelt ${teamName}` });
     } catch (err) {
       console.error('[coordinator] Failed to assign team', err);
       addToast({ level: 'urgent', autoDismissMs: 6_000, message: 'Kunne ikke tildele lag — prøv igjen.' });
     }
+  };
+
+  // "Send til" on a team row (gap B4 / item 8.23) — dispatch to a sector or
+  // place, distinct from assigning a specific patient. There is no server
+  // echo of the coordinator's own dispatch, so the sector is kept locally
+  // once the send has actually gone out (or always, in demo mode).
+  const handleDispatchTeam = async (teamId: string, sector: string) => {
+    const trimmed = sector.trim();
+    if (!trimmed) return;
+    const assignedAt = new Date().toISOString();
+    if (isDemo) {
+      addToast({ level: 'info', autoDismissMs: 4_000, message: 'Demo — sendt lokalt' });
+    } else {
+      const delivered = wsSend({
+        type: 'team.sector_assigned',
+        eventId,
+        payload: { teamId, sector: trimmed, assignedBy: 'Koordinator', assignedAt },
+        timestamp: assignedAt,
+      });
+      if (!delivered) {
+        addToast({ level: 'urgent', autoDismissMs: 6_000, message: 'Ikke tilkoblet — bruk samband' });
+        return;
+      }
+    }
+    setTeamSectors((prev) => ({ ...prev, [teamId]: { sector: trimmed, assignedAt } }));
   };
 
   // Stand a patrol down from the desk. Optimistic so the realtime echo of our
@@ -381,6 +415,7 @@ export function CoordinatorDashboard() {
         onDismissAlert={(patientId) => setDeteriorationAlerts((prev) => prev.filter((a) => a.patientId !== patientId))}
         onClearTeamAssistance={handleClearTeamAssistance}
         onMessageTeam={handleMessageTeam}
+        teamPatientEngagements={teamPatientEngagements}
         now={now}
       />
 
@@ -403,6 +438,7 @@ export function CoordinatorDashboard() {
             teamPatientEngagements={teamPatientEngagements}
             onClosePatient={handleClosePatient}
             onPickLocation={(patientId) => setPickingPatientId(patientId)}
+            now={now}
           />
 
           <TeamStatusPanel
@@ -410,6 +446,8 @@ export function CoordinatorDashboard() {
             memberCounts={teamMemberCounts}
             onClearAssistance={handleClearTeamAssistance}
             onMessageTeam={handleMessageTeam}
+            sectors={teamSectors}
+            onDispatchTeam={handleDispatchTeam}
           />
 
           <TeamMessageStreamPanel
@@ -418,6 +456,7 @@ export function CoordinatorDashboard() {
             onSend={handleSendTeamMessage}
             composeTeamId={composeTeamId}
             composeNonce={composeNonce}
+            now={now}
           />
         </div>
 

@@ -146,6 +146,83 @@ describe('AttentionQueuePanel', () => {
     await waitFor(() => expect(onClearTeamAssistance).toHaveBeenCalledWith('t-bravo'));
   });
 
+  it('escalates a yellow patient past 10 min and a green patient past 30 min into "Venter for lenge" (gap A6)', () => {
+    const patients = [
+      patient({ id: 'p-yellow-fresh', label: 'Gul fersk', triageStatus: 'yellow', updatedAt: minutesAgo(9) }),
+      patient({ id: 'p-yellow-old', label: 'Gul gammel', triageStatus: 'yellow', updatedAt: minutesAgo(11) }),
+      patient({ id: 'p-green-boundary', label: 'Grønn på grensen', triageStatus: 'green', updatedAt: minutesAgo(30) }),
+      patient({ id: 'p-green-old', label: 'Grønn gammel', triageStatus: 'green', updatedAt: minutesAgo(31) }),
+    ];
+    render(
+      <AttentionQueuePanel
+        teams={[]}
+        patients={patients}
+        alerts={[]}
+        onAssignTeam={vi.fn()}
+        onDismissAlert={vi.fn()}
+        now={NOW}
+      />,
+    );
+    // Only the two past their threshold enter the banner; "older than", so the
+    // green patient exactly at 30 minutes stays out.
+    expect(screen.getByTestId('attention-queue-count')).toHaveTextContent('2 oppgaver');
+    expect(screen.getByTestId('attention-waitlong-p-yellow-old')).toBeInTheDocument();
+    expect(screen.getByTestId('attention-waitlong-p-green-old')).toBeInTheDocument();
+    expect(screen.queryByTestId('attention-waitlong-p-yellow-fresh')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('attention-waitlong-p-green-boundary')).not.toBeInTheDocument();
+    // The two still under threshold are only mentioned quietly.
+    expect(screen.getByTestId('attention-queue-other-unassigned')).toHaveTextContent('2 pasienter uten lag (gul/grønn)');
+  });
+
+  it('excludes handed-over patients from every queue group (gap A1 / item 8.22)', () => {
+    render(
+      <AttentionQueuePanel
+        teams={[]}
+        patients={[
+          patient({ id: 'p-red-tent', label: 'Rød i teltet', triageStatus: 'red', handedOverAt: minutesAgo(2) }),
+          patient({ id: 'p-yellow-tent', label: 'Gul i teltet', triageStatus: 'yellow', updatedAt: minutesAgo(20), handedOverAt: minutesAgo(2) }),
+        ]}
+        alerts={[]}
+        onAssignTeam={vi.fn()}
+        onDismissAlert={vi.fn()}
+        now={NOW}
+      />,
+    );
+    expect(screen.getByTestId('attention-queue-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('attention-patient-p-red-tent')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('attention-waitlong-p-yellow-tent')).not.toBeInTheDocument();
+  });
+
+  it('enters "Ikke bekreftet tildeling" once an assignment goes unacknowledged past 5 minutes (gap A4)', () => {
+    const patients = [
+      patient({ id: 'p-just-assigned', label: 'Nettopp tildelt', assignedTeamId: 't-alpha', updatedAt: minutesAgo(3) }),
+      patient({ id: 'p-stale-assigned', label: 'Ubekreftet lenge', assignedTeamId: 't-alpha', updatedAt: minutesAgo(6) }),
+      patient({ id: 'p-confirmed', label: 'Bekreftet', assignedTeamId: 't-alpha', updatedAt: minutesAgo(9) }),
+    ];
+    const onMessageTeam = vi.fn();
+    render(
+      <AttentionQueuePanel
+        teams={[{ id: 't-alpha', name: 'Alpha', operationalStatus: 'available' }]}
+        patients={patients}
+        alerts={[]}
+        onAssignTeam={vi.fn()}
+        onDismissAlert={vi.fn()}
+        onMessageTeam={onMessageTeam}
+        teamPatientEngagements={{
+          'p-confirmed': [{ teamId: 't-alpha', teamName: 'Alpha', patientId: 'p-confirmed', status: 'en_route_to_patient' }],
+        }}
+        now={NOW}
+      />,
+    );
+    expect(screen.getByTestId('attention-unacked-p-stale-assigned')).toBeInTheDocument();
+    expect(within(screen.getByTestId('attention-unacked-p-stale-assigned')).getByText(/Ikke bekreftet · 6 min/)).toBeInTheDocument();
+    expect(screen.queryByTestId('attention-unacked-p-just-assigned')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('attention-unacked-p-confirmed')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('attention-unacked-message-p-stale-assigned'));
+    expect(onMessageTeam).toHaveBeenCalledWith('t-alpha');
+  });
+
   it('dismisses an alert', () => {
     const onDismissAlert = vi.fn();
     render(

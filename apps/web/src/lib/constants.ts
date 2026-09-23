@@ -237,3 +237,44 @@ export function formatSickbayPlacement(
   if (!label) return null;
   return `${label} ${placementNumber}`;
 }
+
+/**
+ * Whole (fractional) minutes elapsed since an ISO timestamp, or `null` when
+ * the timestamp is missing or invalid. Shared by the coordinator's wait-time
+ * (gap A6), assignment-acknowledgement (gap A4) and message-receipt (gap B10)
+ * thresholds below — one place to get the arithmetic right.
+ */
+export function minutesSince(iso: string | null | undefined, now: Date = new Date()): number | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return null;
+  return (now.getTime() - then) / 60_000;
+}
+
+/**
+ * How long a yellow/green patient can wait without a team before the
+ * coordinator's "Krever handling" banner escalates it into "Venter for
+ * lenge" (gap A6 / lane 8 item 8.20). Red patients are always in the banner
+ * regardless of age — this only adds time as a second trigger for the rest.
+ */
+export const ATTENTION_WAIT_MINUTES: Record<'yellow' | 'green', number> = {
+  yellow: 10,
+  green: 30,
+};
+
+/**
+ * Assignment-acknowledgement thresholds (gap A4 / item 8.21): a patrol
+ * "acknowledges" an assignment by going en route or transporting for that
+ * patient. Past `warn` minutes without that, the patient row shows "Ikke
+ * bekreftet"; past `escalate` minutes it also enters the attention queue.
+ */
+export const ASSIGNMENT_ACK_MINUTES: Record<'warn' | 'escalate', number> = {
+  warn: 2,
+  escalate: 5,
+};
+
+/**
+ * A directed coordinator message with no "Mottatt" receipt after this many
+ * minutes shows "Ikke kvittert" in the message stream (gap B10 / item 8.24).
+ */
+export const MESSAGE_UNACKED_MINUTES = 3;

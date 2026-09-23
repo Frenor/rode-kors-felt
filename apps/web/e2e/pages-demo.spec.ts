@@ -133,14 +133,20 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
   // The attention queue is the first thing on the page; map engine settings
   // are demoted behind a disclosure.
-  await expect(page.getByTestId('coordinator-attention-queue')).toBeVisible();
+  const attentionQueue = page.getByTestId('coordinator-attention-queue');
+  await expect(attentionQueue).toBeVisible();
   await expect(page.getByTestId('attention-queue-count')).toBeVisible();
+  // The shared patient number (gap A5) is on the queue row — demo-pat-5 is the
+  // red, unassigned patient, so it lands in "Røde pasienter uten lag".
+  await expect(attentionQueue.getByTestId('patient-number-demo-pat-5')).toBeVisible();
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeHidden();
   await page.getByTestId('map-settings-toggle').click();
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
   // Team status overview must be present so "Trenger bistand" is visible to the coordinator.
   await expect(page.getByTestId('coordinator-team-status')).toBeVisible();
   await expect(page.getByTestId('team-status-row-team-alpha')).toBeVisible();
+  // The coordinator can dispatch a team to a sector or place (gap B4).
+  await expect(page.getByTestId('team-status-dispatch-team-alpha')).toBeVisible();
   // The coordinator can write to the patrols from the dashboard (demo: shown locally).
   await page.getByTestId('coordinator-message-text').fill('Samling ved mål kl. 14');
   await page.getByTestId('coordinator-message-send').click();

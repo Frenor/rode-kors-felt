@@ -151,6 +151,96 @@ describe('PatientManagementPanel — team engagement display', () => {
     expect(screen.getByText('På vei')).toBeTruthy();
   });
 
+  it('shows the patient number pill when seq is known', () => {
+    render(
+      <PatientManagementPanel
+        patients={[makePatient({ id: 'pat-1', seq: 12 })]}
+        teams={[]}
+        creating={false}
+        onCreatePatient={NOOP_CREATE}
+        onUpdatePatient={NOOP_UPDATE}
+      />,
+    );
+    expect(screen.getByTestId('patient-number-pat-1')).toHaveTextContent('#12');
+  });
+
+  it('shows "I sykestua" instead of "Ikke tildelt" once handed over (gap A1 / item 8.22)', () => {
+    render(
+      <PatientManagementPanel
+        patients={[makePatient({ id: 'pat-1', assignedTeamId: null, handedOverAt: '2026-09-23T11:00:00Z' })]}
+        teams={[]}
+        creating={false}
+        onCreatePatient={NOOP_CREATE}
+        onUpdatePatient={NOOP_UPDATE}
+      />,
+    );
+    expect(screen.getByTestId('handed-over-pat-1')).toHaveTextContent('I sykestua');
+    expect(screen.queryByTestId('unassigned-badge-pat-1')).toBeNull();
+  });
+
+  it('shows "AMK varslet kl." when amkNotifiedAt is set (gap B2 / item 8.25)', () => {
+    render(
+      <PatientManagementPanel
+        patients={[makePatient({ id: 'pat-1', amkNotifiedAt: '2026-09-23T11:40:00Z' })]}
+        teams={[]}
+        creating={false}
+        onCreatePatient={NOOP_CREATE}
+        onUpdatePatient={NOOP_UPDATE}
+      />,
+    );
+    expect(screen.getByTestId('amk-notified-pat-1')).toHaveTextContent('AMK varslet kl.');
+  });
+
+  describe('assignment acknowledgement (gap A4 / item 8.21)', () => {
+    const NOW = new Date('2026-09-23T12:00:00Z');
+    const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
+
+    it('shows "Bekreftet av <team>" once the assigned team is en route or transporting', () => {
+      render(
+        <PatientManagementPanel
+          patients={[makePatient({ id: 'pat-1', assignedTeamId: 'team-1', updatedAt: minutesAgo(10) })]}
+          teams={[{ id: 'team-1', name: 'Alpha' }]}
+          creating={false}
+          onCreatePatient={NOOP_CREATE}
+          onUpdatePatient={NOOP_UPDATE}
+          teamPatientEngagements={{ 'pat-1': [{ teamId: 'team-1', teamName: 'Alpha', patientId: 'pat-1', status: 'transporting' }] }}
+          now={NOW}
+        />,
+      );
+      expect(screen.getByTestId('ack-confirmed-pat-1')).toHaveTextContent('Bekreftet av Alpha');
+      expect(screen.queryByTestId('ack-unconfirmed-pat-1')).toBeNull();
+    });
+
+    it('shows nothing before 2 minutes, then "Ikke bekreftet · N min" after', () => {
+      const { rerender } = render(
+        <PatientManagementPanel
+          patients={[makePatient({ id: 'pat-1', assignedTeamId: 'team-1', updatedAt: minutesAgo(1) })]}
+          teams={[{ id: 'team-1', name: 'Alpha' }]}
+          creating={false}
+          onCreatePatient={NOOP_CREATE}
+          onUpdatePatient={NOOP_UPDATE}
+          teamPatientEngagements={{}}
+          now={NOW}
+        />,
+      );
+      expect(screen.queryByTestId('ack-unconfirmed-pat-1')).toBeNull();
+      expect(screen.queryByTestId('ack-confirmed-pat-1')).toBeNull();
+
+      rerender(
+        <PatientManagementPanel
+          patients={[makePatient({ id: 'pat-1', assignedTeamId: 'team-1', updatedAt: minutesAgo(4) })]}
+          teams={[{ id: 'team-1', name: 'Alpha' }]}
+          creating={false}
+          onCreatePatient={NOOP_CREATE}
+          onUpdatePatient={NOOP_UPDATE}
+          teamPatientEngagements={{}}
+          now={NOW}
+        />,
+      );
+      expect(screen.getByTestId('ack-unconfirmed-pat-1')).toHaveTextContent('Ikke bekreftet · 4 min');
+    });
+  });
+
   it('only shows engagement section for the patient that has engagements', () => {
     const patients = [
       makePatient({ id: 'pat-1', label: 'Pasient A' }),

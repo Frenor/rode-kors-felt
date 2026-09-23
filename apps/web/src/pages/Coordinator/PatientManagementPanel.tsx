@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import {
+  ASSIGNMENT_ACK_MINUTES,
   FIELD_TRIAGE_ORDER,
   FIELD_TRIAGE_STYLE,
   TEAM_PATIENT_STATUS_STYLE,
+  minutesSince,
   type FieldTriageStatus,
 } from '../../lib/constants';
 import { formatRelativeAge } from '../../lib/observation';
 import type { FieldOutcome, TeamPatientEngagement, TeamPatientStatus } from '../../lib/types';
-import { Button, Icon, Pill } from '../../components/ui';
+import { Button, Icon, Pill, PatientNumberPill } from '../../components/ui';
 
 export type { FieldTriageStatus } from '../../lib/constants';
 
@@ -30,6 +32,9 @@ export interface FieldPatient {
   fieldOutcome?: FieldOutcome | null;
   /** Shared patient number (gap A5). */
   seq?: number | null;
+  /** AMK notified (gap B2 data half). */
+  amkNotifiedAt?: string | null;
+  amkNotifiedBy?: string | null;
 }
 
 interface Team {
@@ -47,6 +52,8 @@ interface PatientManagementPanelProps {
   teamPatientEngagements?: Record<string, TeamPatientEngagement[]>;
   onClosePatient?: (id: string, reason: 'false_alarm' | 'disappeared') => Promise<void>;
   onPickLocation?: (patientId: string) => void;
+  /** Clock for age-based state (acknowledgement); defaults to `new Date()`. */
+  now?: Date;
 }
 
 const TRIAGE_RANK: Record<string, number> = { red: 0, none: 1, yellow: 2, green: 3, black: 4 };
@@ -54,6 +61,81 @@ const TRIAGE_RANK: Record<string, number> = { red: 0, none: 1, yellow: 2, green:
 /** What the coordinator calls this patient: field label, else what is wrong with them. */
 export function fieldPatientName(p: Pick<FieldPatient, 'label' | 'presentingComplaint' | 'description'>): string {
   return p.label?.trim() || p.presentingComplaint?.trim() || p.description?.trim() || 'Ukjent pasient';
+}
+
+export type AssignmentAck =
+  | { kind: 'confirmed'; teamName: string }
+  | { kind: 'unconfirmed'; minutes: number }
+  | { kind: 'none' };
+
+/**
+ * Assignment acknowledgement (gap A4 / item 8.21). A patrol "acknowledges" an
+ * assignment by going en route or starting transport for that patient. There
+ * is no stored assignment timestamp, so the patient's `updatedAt` — bumped by
+ * the assigning PATCH — is used as an honest proxy for "when the assignment
+ * happened"; any other edit also bumps it, so this is a proxy, not an exact
+ * measurement, and deliberately documented as such here rather than presented
+ * as more precise than it is.
+ */
+export function assignmentAckState(
+  patient: Pick<FieldPatient, 'assignedTeamId' | 'updatedAt'>,
+  engagements: TeamPatientEngagement[],
+  now: Date,
+): AssignmentAck {
+  if (!patient.assignedTeamId) return { kind: 'none' };
+  const confirmed = engagements.find(
+    (e) => e.teamId === patient.assignedTeamId
+      && (e.status === 'en_route_to_patient' || e.status === 'transporting'),
+  );
+  if (confirmed) return { kind: 'confirmed', teamName: confirmed.teamName };
+  const minutes = minutesSince(patient.updatedAt, now);
+  if (minutes == null) return { kind: 'none' };
+  return { kind: 'unconfirmed', minutes };
+}
+
+function clockTime(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** "AMK varslet kl." pill (gap B2 data half / item 8.25) — critical text tone. */
+export function AmkNotifiedPill({ patientId, amkNotifiedAt }: { patientId: string; amkNotifiedAt?: string | null }) {
+  const clock = clockTime(amkNotifiedAt);
+  if (!clock) return null;
+  return (
+    <Pill
+      data-testid={`amk-notified-${patientId}`}
+      tone={{ color: 'var(--color-status-critical)', bg: 'var(--color-status-critical-bg)', border: 'var(--color-status-critical-border)' }}
+    >
+      {`AMK varslet kl. ${clock}`}
+    </Pill>
+  );
+}
+
+/** Assignment-acknowledgement pill shared by the patient row and the attention queue. */
+export function AssignmentAckPill({ patientId, ack }: { patientId: string; ack: AssignmentAck }) {
+  if (ack.kind === 'confirmed') {
+    return (
+      <Pill
+        data-testid={`ack-confirmed-${patientId}`}
+        tone={{ color: 'var(--color-status-ok)', bg: 'var(--color-status-ok-bg)', border: 'var(--color-status-ok-border)' }}
+      >
+        {`Bekreftet av ${ack.teamName}`}
+      </Pill>
+    );
+  }
+  if (ack.kind === 'unconfirmed' && ack.minutes > ASSIGNMENT_ACK_MINUTES.warn) {
+    return (
+      <Pill
+        data-testid={`ack-unconfirmed-${patientId}`}
+        tone={{ color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)', border: 'var(--color-status-warning-border)' }}
+      >
+        {`Ikke bekreftet · ${Math.floor(ack.minutes)} min`}
+      </Pill>
+    );
+  }
+  return null;
 }
 
 /** Dense coordinator inputs: 44 px, 14 px text. */
@@ -80,6 +162,7 @@ function PatientRow({
   onUpdate,
   onClose,
   onPickLocation,
+  now = new Date(),
 }: {
   patient: FieldPatient;
   teams: Team[];
@@ -87,6 +170,7 @@ function PatientRow({
   onUpdate: (data: Partial<Omit<FieldPatient, 'id' | 'updatedAt'>>) => Promise<void>;
   onClose?: (reason: 'false_alarm' | 'disappeared') => Promise<void>;
   onPickLocation?: () => void;
+  now?: Date;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -137,13 +221,16 @@ function PatientRow({
   };
 
   const isClosed = patient.status === 'discharged' || patient.status === 'transferred';
-  const isUnassigned = !patient.assignedTeamId && !isClosed;
+  // A handed-over patient is in the tent now, not "unassigned" in the sense
+  // the warning badge means (gap A1 / item 8.22).
+  const isUnassigned = !patient.assignedTeamId && !isClosed && !patient.handedOverAt;
   const assignedTeam = teams.find((t) => t.id === patient.assignedTeamId);
   const hasCoords = patient.lat != null && patient.lon != null;
   const coordsText = hasCoords ? `${patient.lat!.toFixed(5)}, ${patient.lon!.toFixed(5)}` : null;
   // Field reports often carry GPS coordinates but no text — still show *something*.
   const positionSummary = patient.positionText ?? (coordsText ? `GPS ${coordsText}` : null);
   const age = formatRelativeAge(patient.updatedAt);
+  const ack = assignmentAckState(patient, engagements, now);
 
   return (
     <div
@@ -170,6 +257,7 @@ function PatientRow({
         }}
       >
         <TriageBadge status={patient.triageStatus} />
+        <PatientNumberPill seq={patient.seq} data-testid={`patient-number-${patient.id}`} />
         <span style={{ flex: 1, minWidth: 120, fontWeight: 700, fontSize: 'var(--text-sm)', textDecoration: isClosed ? 'line-through' : undefined }}>
           {fieldPatientName(patient)}
         </span>
@@ -186,11 +274,21 @@ function PatientRow({
             Ikke tildelt
           </Pill>
         )}
+        {patient.handedOverAt && (
+          <Pill
+            data-testid={`handed-over-${patient.id}`}
+            tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', border: 'var(--color-status-info-border)' }}
+          >
+            I sykestua
+          </Pill>
+        )}
         {assignedTeam && (
           <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-muted)' }}>
             {assignedTeam.name}
           </span>
         )}
+        <AssignmentAckPill patientId={patient.id} ack={ack} />
+        <AmkNotifiedPill patientId={patient.id} amkNotifiedAt={patient.amkNotifiedAt} />
         {positionSummary && (
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {positionSummary}
@@ -420,6 +518,7 @@ export function PatientManagementPanel({
   teamPatientEngagements = {},
   onClosePatient,
   onPickLocation,
+  now = new Date(),
 }: PatientManagementPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [newLabel, setNewLabel] = useState('');
@@ -580,6 +679,7 @@ export function PatientManagementPanel({
             onUpdate={(data) => onUpdatePatient(p.id, data)}
             onClose={onClosePatient ? (reason) => onClosePatient(p.id, reason) : undefined}
             onPickLocation={onPickLocation ? () => onPickLocation(p.id) : undefined}
+            now={now}
           />
         ))}
 

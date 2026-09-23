@@ -7,9 +7,10 @@
  * entirely. Teams needing assistance are pinned to the top in red.
  */
 
+import { useState, type FormEvent } from 'react';
 import { TEAM_OPERATIONAL_STATUS_LABELS, TEAM_OPERATIONAL_STATUS_STYLE } from '../../lib/constants';
 import type { Team, TeamOperationalStatus } from '../../lib/types';
-import { Pill } from '../../components/ui';
+import { Button, Pill } from '../../components/ui';
 import { TeamAssistanceActions } from './TeamAssistanceActions';
 
 interface TeamStatusPanelProps {
@@ -20,6 +21,10 @@ interface TeamStatusPanelProps {
   onClearAssistance?: (teamId: string) => Promise<void> | void;
   /** Open the message compose addressed to this patrol. */
   onMessageTeam?: (teamId: string) => void;
+  /** Last sector/place dispatched to each team (gap B4 / item 8.23). */
+  sectors?: Record<string, { sector: string; assignedAt: string }>;
+  /** Dispatch a team to a sector or place — distinct from assigning a patient. */
+  onDispatchTeam?: (teamId: string, sector: string) => Promise<void> | void;
 }
 
 const STATUS_STYLE = TEAM_OPERATIONAL_STATUS_STYLE;
@@ -46,7 +51,87 @@ function formatClock(iso?: string | null): string | null {
   return d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function TeamStatusPanel({ teams, memberCounts = {}, onClearAssistance, onMessageTeam }: TeamStatusPanelProps) {
+/**
+ * "Send til" (gap B4 / item 8.23) — a coordinator control for the sector-
+ * assignment relay that already existed on the wire and in the field, but
+ * had no sender. An inline text field beats a picker here: sectors are named
+ * things ("Sektor B", "km 12"), not a fixed list.
+ */
+function TeamDispatchForm({
+  team,
+  sector,
+  onDispatch,
+}: {
+  team: Team;
+  sector?: { sector: string; assignedAt: string };
+  onDispatch?: (teamId: string, sector: string) => Promise<void> | void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const [sending, setSending] = useState(false);
+
+  if (!onDispatch) return null;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = value.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    try {
+      await onDispatch(team.id, trimmed);
+      setValue('');
+      setOpen(false);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+      {sector?.sector && (
+        <span data-testid={`team-status-sector-${team.id}`} className="data" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+          → {sector.sector}
+        </span>
+      )}
+      {open ? (
+        <form onSubmit={(e) => void submit(e)} style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center' }}>
+          <label className="sr-only" htmlFor={`team-status-dispatch-input-${team.id}`}>
+            Sektor eller sted for {team.name}
+          </label>
+          <input
+            id={`team-status-dispatch-input-${team.id}`}
+            data-testid={`team-status-dispatch-input-${team.id}`}
+            className="field"
+            type="text"
+            placeholder="Sektor eller sted"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoFocus
+            style={{ minHeight: 44, fontSize: 'var(--text-sm)', width: 150 }}
+          />
+          <Button type="submit" variant="secondary" size="sm" icon="send" disabled={!value.trim() || sending}>
+            {sending ? 'Sender…' : 'Send'}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            Avbryt
+          </Button>
+        </form>
+      ) : (
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="navigate"
+          data-testid={`team-status-dispatch-${team.id}`}
+          onClick={() => setOpen(true)}
+        >
+          Send til
+        </Button>
+      )}
+    </span>
+  );
+}
+
+export function TeamStatusPanel({ teams, memberCounts = {}, onClearAssistance, onMessageTeam, sectors = {}, onDispatchTeam }: TeamStatusPanelProps) {
   const rows = [...teams].sort((a, b) => {
     const pa = STATUS_PRIORITY[(a.operationalStatus ?? 'available') as TeamOperationalStatus] ?? 9;
     const pb = STATUS_PRIORITY[(b.operationalStatus ?? 'available') as TeamOperationalStatus] ?? 9;
@@ -125,6 +210,7 @@ export function TeamStatusPanel({ teams, memberCounts = {}, onClearAssistance, o
                   {members ? <span><span className="data">{members}</span> enhet{members === 1 ? '' : 'er'}</span> : null}
                   {updated && <span>kl. <span className="data">{updated}</span></span>}
                 </span>
+                <TeamDispatchForm team={team} sector={sectors[team.id]} onDispatch={onDispatchTeam} />
                 {isCritical && (
                   <TeamAssistanceActions team={team} onClear={onClearAssistance} onMessage={onMessageTeam} testIdPrefix="team-status" />
                 )}

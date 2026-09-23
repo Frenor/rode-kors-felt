@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { MESSAGE_UNACKED_MINUTES, minutesSince } from '../../lib/constants';
 import { Button } from '../../components/ui';
 
 interface TeamMessageItem {
@@ -7,6 +8,8 @@ interface TeamMessageItem {
   /** Sender name when the message did not come from a patrol (the coordinator desk). */
   fromLabel?: string | null;
   toTeamId?: string | null;
+  /** Set on a receipt: the id of the message it acknowledges (gap B10). */
+  ackOf?: string | null;
   text: string;
   sentAt: string;
 }
@@ -19,14 +22,20 @@ interface TeamMessageStreamPanelProps {
   /** Preselects a recipient and focuses the compose box each time the nonce changes. */
   composeTeamId?: string | null;
   composeNonce?: number;
+  /** Clock for the "Ikke kvittert" (unacknowledged) threshold; defaults to `new Date()`. */
+  now?: Date;
 }
+
+/** The pseudo team id a patrol addresses when it writes to the desk, not a real team. */
+const COORDINATOR_ID = 'coordinator';
 
 function resolveTeamName(teams: Array<{ id: string; name: string }>, teamId?: string | null): string {
   if (!teamId) return 'Ukjent lag';
+  if (teamId === COORDINATOR_ID) return 'Koordinator';
   return teams.find((team) => team.id === teamId)?.name ?? teamId;
 }
 
-export function TeamMessageStreamPanel({ messages, teams, onSend, composeTeamId = null, composeNonce = 0 }: TeamMessageStreamPanelProps) {
+export function TeamMessageStreamPanel({ messages, teams, onSend, composeTeamId = null, composeNonce = 0, now = new Date() }: TeamMessageStreamPanelProps) {
   const [toTeamId, setToTeamId] = useState<string>(composeTeamId ?? '');
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -40,6 +49,16 @@ export function TeamMessageStreamPanel({ messages, teams, onSend, composeTeamId 
     sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     inputRef.current?.focus();
   }, [composeNonce, composeTeamId]);
+
+  // Receipts (gap B10): a message with `ackOf` is a "Mottatt" reply, not a row
+  // of its own — it annotates the original message it acknowledges instead.
+  const receiptsByAckOf = new Map<string, TeamMessageItem>();
+  for (const message of messages) {
+    if (message.ackOf && !receiptsByAckOf.has(message.ackOf)) {
+      receiptsByAckOf.set(message.ackOf, message);
+    }
+  }
+  const visibleMessages = messages.filter((message) => !message.ackOf);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -119,12 +138,12 @@ export function TeamMessageStreamPanel({ messages, teams, onSend, composeTeamId 
           paddingRight: 'var(--space-1)',
         }}
       >
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
             Ingen lagsmeldinger ennå.
           </p>
         ) : (
-          messages.map((message) => {
+          visibleMessages.map((message) => {
             const from = message.fromTeamId ? resolveTeamName(teams, message.fromTeamId) : (message.fromLabel ?? 'Ukjent avsender');
             const toTeam = message.toTeamId ? resolveTeamName(teams, message.toTeamId) : null;
             const sentAt = new Date(message.sentAt).toLocaleTimeString('nb-NO', {
@@ -132,6 +151,12 @@ export function TeamMessageStreamPanel({ messages, teams, onSend, composeTeamId 
               minute: '2-digit',
               second: '2-digit',
             });
+            const receipt = receiptsByAckOf.get(message.id);
+            // A message addressed to a real team (not "Alle", not the desk
+            // itself) that nobody has read back after a while (gap B10).
+            const isDirectedToTeam = Boolean(message.toTeamId) && message.toTeamId !== COORDINATOR_ID;
+            const unackedMinutes = minutesSince(message.sentAt, now);
+            const isUnacked = isDirectedToTeam && !receipt && unackedMinutes != null && unackedMinutes > MESSAGE_UNACKED_MINUTES;
 
             return (
               <article
@@ -163,6 +188,22 @@ export function TeamMessageStreamPanel({ messages, teams, onSend, composeTeamId 
                 <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>
                   {message.text}
                 </p>
+                {receipt && (
+                  <p
+                    data-testid={`coordinator-message-receipt-${message.id}`}
+                    style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-status-ok)' }}
+                  >
+                    {`Mottatt av ${resolveTeamName(teams, receipt.fromTeamId)} kl. ${new Date(receipt.sentAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`}
+                  </p>
+                )}
+                {isUnacked && (
+                  <p
+                    data-testid={`coordinator-message-unacked-${message.id}`}
+                    style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-status-warning)' }}
+                  >
+                    Ikke kvittert
+                  </p>
+                )}
               </article>
             );
           })

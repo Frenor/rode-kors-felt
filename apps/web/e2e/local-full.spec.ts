@@ -98,6 +98,8 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   // Coordinator sees the field report with its location and the team status overview.
   await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('Sektor B, ved scenen').first()).toBeVisible();
+  // Every reported patient carries the shared per-event number (gap A5).
+  await expect(page.getByTestId(/^patient-number-/).first()).toBeVisible();
   await expect(page.getByTestId('coordinator-team-status')).toBeVisible();
   // Scoped to the team panel: the attention queue's assign select also lists
   // every team name as an <option>.
