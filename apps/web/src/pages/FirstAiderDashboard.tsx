@@ -1158,7 +1158,7 @@ export function FirstAiderDashboard() {
                   className="card card--stripe"
                   style={{
                     '--stripe': triage?.text ?? 'var(--color-border-strong)',
-                    borderColor: isFlashing ? 'var(--color-status-warning)' : isExpanded ? 'var(--color-brand)' : undefined,
+                    borderColor: isFlashing ? 'var(--color-status-warning)' : isExpanded ? 'var(--color-border-strong)' : undefined,
                     background: isFlashing ? 'var(--color-status-warning-bg)' : undefined,
                     overflow: 'hidden',
                     transition: 'border-color 0.3s ease',
@@ -1337,7 +1337,6 @@ export function FirstAiderDashboard() {
                         icon="alert"
                         onClick={async () => { await setTeamOperationalStatus('needs_assistance', label); setExpandedPatientId(null); }}
                         data-testid={`firstaid-needs-assistance-${p.id}`}
-                        style={{ fontSize: 'var(--text-lg)' }}
                       >
                         Trenger bistand her
                       </Button>

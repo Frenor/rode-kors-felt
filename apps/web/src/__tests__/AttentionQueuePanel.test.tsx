@@ -47,10 +47,27 @@ describe('AttentionQueuePanel', () => {
     expect(screen.getByTestId('attention-queue-count')).toHaveTextContent('Ingen ventende');
   });
 
-  it('lists teams needing assistance, unassigned patients by triage then age, and alerts with names', () => {
+  it('stays empty for yellow and green patients without a team, but counts them', () => {
+    render(
+      <AttentionQueuePanel
+        teams={TEAMS.filter((t) => t.operationalStatus === 'available')}
+        patients={[patient({ id: 'p-yellow', triageStatus: 'yellow' }), patient({ id: 'p-green', triageStatus: 'green' })]}
+        alerts={[]}
+        onAssignTeam={vi.fn()}
+        onDismissAlert={vi.fn()}
+        now={NOW}
+      />,
+    );
+    expect(screen.getByTestId('attention-queue-count')).toHaveTextContent('Ingen ventende');
+    expect(screen.getByTestId('attention-queue-empty')).toHaveTextContent('2 pasienter uten lag (gul/grønn)');
+    expect(screen.queryByTestId(/^attention-patient-/)).not.toBeInTheDocument();
+  });
+
+  it('lists teams needing assistance, only red unassigned patients (oldest first), and alerts with names', () => {
     const patients = [
       patient({ id: 'p-green', label: 'Grønn gammel', triageStatus: 'green', updatedAt: minutesAgo(30) }),
       patient({ id: 'p-red', label: 'Rød ny', triageStatus: 'red', updatedAt: minutesAgo(2) }),
+      patient({ id: 'p-red-old', label: 'Rød gammel', triageStatus: 'red', updatedAt: minutesAgo(20) }),
       patient({ id: 'p-untriaged', label: 'Uten triage', triageStatus: null, updatedAt: minutesAgo(10) }),
       patient({ id: 'p-assigned', label: 'Har lag', triageStatus: 'red', assignedTeamId: 't-alpha' }),
       patient({ id: 'p-closed', label: 'Lukket', triageStatus: 'red', status: 'discharged' }),
@@ -66,18 +83,22 @@ describe('AttentionQueuePanel', () => {
       />,
     );
 
-    // 1 team + 3 unassigned + 1 alert
-    expect(screen.getByTestId('attention-queue-count')).toHaveTextContent('5 oppgaver');
+    // 1 team + 2 red unassigned + 1 alert; green and untriaged stay out of the banner
+    expect(screen.getByTestId('attention-queue-count')).toHaveTextContent('4 oppgaver');
 
     const bravo = screen.getByTestId('attention-team-t-bravo');
     expect(within(bravo).getByText('Bravo')).toBeInTheDocument();
     expect(within(bravo).getByText('Bevisstløs ved mål')).toBeInTheDocument();
 
     const rows = screen.getAllByTestId(/^attention-patient-/).map((el) => el.getAttribute('data-testid'));
-    expect(rows).toEqual(['attention-patient-p-red', 'attention-patient-p-untriaged', 'attention-patient-p-green']);
+    expect(rows).toEqual(['attention-patient-p-red-old', 'attention-patient-p-red']);
+    expect(screen.queryByTestId('attention-patient-p-green')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('attention-patient-p-untriaged')).not.toBeInTheDocument();
     expect(screen.queryByTestId('attention-patient-p-assigned')).not.toBeInTheDocument();
     expect(screen.queryByTestId('attention-patient-p-closed')).not.toBeInTheDocument();
-    expect(within(screen.getByTestId('attention-patient-p-green')).getByText(/meldt for 30 min siden/)).toBeInTheDocument();
+    expect(within(screen.getByTestId('attention-patient-p-red-old')).getByText(/meldt for 20 min siden/)).toBeInTheDocument();
+    // The others are only mentioned, quietly.
+    expect(screen.getByTestId('attention-queue-other-unassigned')).toHaveTextContent('2 pasienter uten lag (gul/grønn)');
 
     const alert = screen.getByTestId('attention-alert-p-assigned');
     expect(within(alert).getByText('Har lag')).toBeInTheDocument();
@@ -89,7 +110,7 @@ describe('AttentionQueuePanel', () => {
     render(
       <AttentionQueuePanel
         teams={TEAMS}
-        patients={[patient({ id: 'p1', label: 'Uten lag' })]}
+        patients={[patient({ id: 'p1', label: 'Uten lag', triageStatus: 'red' })]}
         alerts={[]}
         onAssignTeam={onAssignTeam}
         onDismissAlert={vi.fn()}

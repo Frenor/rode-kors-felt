@@ -2,7 +2,8 @@
  * Button — the one way to make a control in RKF.
  *
  * Variants encode meaning, not decoration:
- *   primary      the single most important action in its container (brand red)
+ *   primary      the page's one call to action (brand red) — at most one per view
+ *   ink          a card's main next step: high contrast without another red
  *   danger       calls for help / irreversible (critical red, filled)
  *   danger-soft  same meaning, lower weight (critical text on tinted ground)
  *   secondary    everything else that saves or opens (neutral, bordered)
@@ -16,7 +17,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'danger-soft' | 'outline' | 'ghost' | 'tone';
+export type ButtonVariant = 'primary' | 'ink' | 'secondary' | 'danger' | 'danger-soft' | 'outline' | 'ghost' | 'tone';
 export type ButtonSize = 'xl' | 'lg' | 'md' | 'sm';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

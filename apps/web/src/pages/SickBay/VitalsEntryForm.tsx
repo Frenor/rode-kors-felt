@@ -144,7 +144,7 @@ export function VitalsEntryForm({ patientId, form, onChange, onSubmit }: VitalsE
         </div>
       )}
 
-      <Button variant="primary" size="lg" block icon="activity" onClick={onSubmit}>
+      <Button variant="ink" size="lg" block icon="activity" onClick={onSubmit}>
         Lagre vitale tegn
       </Button>
     </div>

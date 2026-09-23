@@ -58,7 +58,6 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
       style={{
         marginBottom: 'var(--space-4)',
         padding: 'var(--space-3)',
-        background: 'var(--color-status-critical-bg)',
       }}
     >
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -117,7 +116,7 @@ export function IncomingCriticalPanel({ items, onStartTreatment, onAssignPlaceme
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'stretch', flex: '0 1 220px' }}>
-                <Button variant="primary" size="lg" icon="play" onClick={() => onStartTreatment(item.patientId)}>
+                <Button variant="ink" size="lg" icon="play" onClick={() => onStartTreatment(item.patientId)}>
                   Start behandling
                 </Button>
 

@@ -449,7 +449,7 @@ export function PatientCard({
 
       {primaryNextStatus && (
         <Button
-          variant="primary"
+          variant="ink"
           size="lg"
           block
           icon="play"

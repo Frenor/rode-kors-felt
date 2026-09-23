@@ -504,10 +504,14 @@ export function SickBayDashboard() {
                   style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-2)',
                     paddingBottom: 'var(--space-2)',
-                    borderBottom: `2px solid ${(statusColors[group.status] ?? { color: 'var(--color-border-strong)' }).color}`,
+                    borderBottom: '1px solid var(--color-border)',
                   }}
                 >
-                  <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0, textWrap: 'balance' }}>
+                  <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0, textWrap: 'balance', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <span
+                      aria-hidden="true"
+                      style={{ width: 8, height: 8, borderRadius: '50%', background: (statusColors[group.status] ?? { color: 'var(--color-border-strong)' }).color, flexShrink: 0 }}
+                    />
                     {statusLabels[group.status] || group.status}
                   </h2>
                   <span

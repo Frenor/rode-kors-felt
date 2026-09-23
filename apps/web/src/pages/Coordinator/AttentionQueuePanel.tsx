@@ -1,14 +1,12 @@
 /**
  * AttentionQueuePanel — "Krever handling".
  *
- * One ordered list of everything that needs a coordinator decision right now,
- * with the decision inline:
- *   1. patrols that asked for assistance,
- *   2. open patients nobody is assigned to (worst triage first, then oldest),
- *   3. patients whose NEWS2 is rising fast.
- *
- * Before this the same items were spread over three panels and the patient
- * list, and assigning a team took four interactions in an edit form.
+ * One ordered list of what needs a coordinator decision right now, with the
+ * decision inline. Only two things put a row here (product decision,
+ * 2026-09-23): a patrol that asked for assistance, and a red patient — red
+ * triage without a team, or NEWS2 rising fast. Yellow and green patients
+ * without a team stay in the patient list with an "Ikke tildelt" badge; the
+ * panel only mentions how many there are.
  */
 import { useState } from 'react';
 import {
@@ -31,8 +29,6 @@ interface AttentionQueuePanelProps {
 }
 
 const CLOSED = new Set(['discharged', 'transferred']);
-/** Untriaged is ranked right after red: nobody has looked at it yet. */
-const TRIAGE_RANK: Record<string, number> = { red: 0, none: 1, yellow: 2, green: 3, black: 4 };
 
 function clock(iso?: string | null): string | null {
   if (!iso) return null;
@@ -67,14 +63,12 @@ export function AttentionQueuePanel({
     .filter((t) => t.operationalStatus === 'needs_assistance')
     .sort((a, b) => (a.statusUpdatedAt ?? '').localeCompare(b.statusUpdatedAt ?? ''));
 
-  const unassigned = patients
-    .filter((p) => !p.assignedTeamId && !CLOSED.has(p.status ?? ''))
-    .sort((a, b) => {
-      const ra = TRIAGE_RANK[a.triageStatus ?? 'none'] ?? 5;
-      const rb = TRIAGE_RANK[b.triageStatus ?? 'none'] ?? 5;
-      if (ra !== rb) return ra - rb;
-      return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
-    });
+  const openUnassigned = patients.filter((p) => !p.assignedTeamId && !CLOSED.has(p.status ?? ''));
+  // Only red patients belong in the banner; oldest first.
+  const unassigned = openUnassigned
+    .filter((p) => p.triageStatus === 'red')
+    .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
+  const otherUnassignedCount = openUnassigned.length - unassigned.length;
 
   const total = needsAssistance.length + unassigned.length + alerts.length;
   const teamName = (id: string | null | undefined) => teams.find((t) => t.id === id)?.name ?? null;
@@ -97,13 +91,8 @@ export function AttentionQueuePanel({
     <section
       aria-labelledby="attention-queue-title"
       data-testid="coordinator-attention-queue"
-      style={{
-        marginBottom: 'var(--space-4)',
-        border: `2px solid ${total > 0 ? 'var(--color-status-critical)' : 'var(--color-border)'}`,
-        borderRadius: 'var(--radius-md)',
-        background: total > 0 ? 'var(--color-status-critical-bg)' : 'var(--color-surface)',
-        overflow: 'hidden',
-      }}
+      className={`card${total > 0 ? ' card--critical' : ''}`}
+      style={{ marginBottom: 'var(--space-4)', overflow: 'hidden' }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-3) var(--space-4)' }}>
         <h2
@@ -118,8 +107,8 @@ export function AttentionQueuePanel({
           data-testid="attention-queue-count"
           aria-live="polite"
           tone={total > 0
-            ? { color: 'white', bg: 'var(--color-status-critical)' }
-            : { color: 'var(--color-status-ok)', bg: 'var(--color-status-ok-bg)' }}
+            ? { color: 'var(--color-status-critical)', bg: 'var(--color-status-critical-bg)' }
+            : { color: 'var(--color-text-muted)', bg: 'var(--color-surface-sunken)' }}
         >
           {total === 0 ? 'Ingen ventende' : <><span className="data">{total}</span>&nbsp;{total === 1 ? 'oppgave' : 'oppgaver'}</>}
         </Pill>
@@ -130,7 +119,10 @@ export function AttentionQueuePanel({
           data-testid="attention-queue-empty"
           style={{ margin: 0, padding: '0 var(--space-4) var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}
         >
-          Alle åpne pasienter har et lag, og ingen lag ber om bistand.
+          Ingen røde pasienter uten lag, og ingen lag ber om bistand.
+          {otherUnassignedCount > 0 && (
+            <> <span className="data">{otherUnassignedCount}</span> {otherUnassignedCount === 1 ? 'pasient' : 'pasienter'} uten lag (gul/grønn) står i pasientlisten.</>
+          )}
         </p>
       ) : (
         <div style={{ padding: '0 var(--space-3) var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -139,7 +131,7 @@ export function AttentionQueuePanel({
               <h3 className="section-label" style={groupHeadingStyle}>Lag som trenger bistand</h3>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
                 {needsAssistance.map((team) => (
-                  <li key={team.id} data-testid={`attention-team-${team.id}`} style={{ ...rowStyle, border: '1px solid var(--color-status-critical)' }}>
+                  <li key={team.id} data-testid={`attention-team-${team.id}`} style={{ ...rowStyle, borderLeft: '4px solid var(--color-status-critical)' }}>
                     <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', color: 'var(--color-status-critical)' }}>
                       {team.name}
                     </span>
@@ -161,14 +153,14 @@ export function AttentionQueuePanel({
 
           {unassigned.length > 0 && (
             <div>
-              <h3 className="section-label" style={groupHeadingStyle}>Pasienter uten lag</h3>
+              <h3 className="section-label" style={groupHeadingStyle}>Røde pasienter uten lag</h3>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
                 {unassigned.map((patient) => {
                   const triage = patient.triageStatus ? FIELD_TRIAGE_STYLE[patient.triageStatus as FieldTriageStatus] : null;
                   const where = patient.positionText
                     ?? (patient.lat != null && patient.lon != null ? `GPS ${patient.lat.toFixed(4)}, ${patient.lon.toFixed(4)}` : null);
                   return (
-                    <li key={patient.id} data-testid={`attention-patient-${patient.id}`} style={rowStyle}>
+                    <li key={patient.id} data-testid={`attention-patient-${patient.id}`} style={{ ...rowStyle, borderLeft: '4px solid var(--color-triage-red)' }}>
                       <Pill tone={triage ? { color: triage.text, bg: triage.bg } : undefined}>
                         {triage?.label ?? 'Ikke triagert'}
                       </Pill>
@@ -188,8 +180,8 @@ export function AttentionQueuePanel({
                           onChange={(e) => void assign(patient.id, e.target.value)}
                           style={{
                             width: 'auto', minWidth: 180, minHeight: 44, padding: '0 var(--space-2)',
-                            border: '2px solid var(--color-brand)', color: 'var(--color-brand)',
-                            fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
+                            border: '1px solid var(--color-border-strong)', color: 'var(--color-text)',
+                            fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
                           }}
                         >
                           <option value="">{assigning[patient.id] ? 'Tildeler…' : teams.length === 0 ? 'Ingen lag' : 'Tildel lag…'}</option>
@@ -207,6 +199,12 @@ export function AttentionQueuePanel({
             </div>
           )}
 
+          {otherUnassignedCount > 0 && (
+            <p data-testid="attention-queue-other-unassigned" style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+              <span className="data">{otherUnassignedCount}</span> {otherUnassignedCount === 1 ? 'pasient' : 'pasienter'} uten lag (gul/grønn) står i pasientlisten.
+            </p>
+          )}
+
           {alerts.length > 0 && (
             <div>
               <h3 className="section-label" style={groupHeadingStyle}>NEWS2 stiger raskt</h3>
@@ -216,7 +214,7 @@ export function AttentionQueuePanel({
                   const label = patient ? fieldPatientName(patient) : `Pasient ${alert.patientId.slice(0, 8)}`;
                   const team = teamName(patient?.assignedTeamId);
                   return (
-                    <li key={alert.patientId} data-testid={`attention-alert-${alert.patientId}`} style={{ ...rowStyle, border: '1px solid var(--color-status-critical)' }}>
+                    <li key={alert.patientId} data-testid={`attention-alert-${alert.patientId}`} style={{ ...rowStyle, borderLeft: '4px solid var(--color-status-critical)' }}>
                       <span style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{label}</span>
                       <span
                         className="data"

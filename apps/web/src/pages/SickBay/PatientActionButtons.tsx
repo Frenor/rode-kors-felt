@@ -29,7 +29,7 @@ export function PatientActionButtons({
 }: PatientActionButtonsProps) {
   return (
     <div className="patient-action-grid">
-      <Button variant="danger" size="sm" pill icon="phone" onClick={onOpenAmk} data-testid="patient-ring-113">
+      <Button variant="danger-soft" size="sm" pill icon="phone" onClick={onOpenAmk} data-testid="patient-ring-113">
         Ring 113
       </Button>
 
