@@ -11,18 +11,21 @@ import {
   FIELD_TRIAGE_STYLE,
   formatPatientAge,
   formatSickbayPlacement,
+  freeSickbayNumbers,
   GENDER_LABELS,
   GENDER_OPTIONS,
   news2Colors,
   STATUS_TRANSITIONS,
   statusColors,
   statusLabels,
+  TRANSPORT_NEED_LABELS,
   type FieldTriageStatus,
 } from '../../lib/constants';
 import { describeObservationDue, nextObservationDue } from '../../lib/observation';
 import { useNow } from '../../hooks/useNow';
 import type { SickBayPatient, MedicationRecord, Team, TeamPatientEngagement } from '../../lib/types';
 import { FieldEngagementLine, engagementDistanceLabel } from './FieldEngagementLine';
+import { TRANSPORT_LABELS } from '../FirstAider/TeamSettingsPanel';
 import { PatientVitalsDisplay } from './PatientVitalsDisplay';
 import { PatientActionButtons } from './PatientActionButtons';
 import { VitalsEntryForm, type VitalsFormShape } from './VitalsEntryForm';
@@ -63,8 +66,12 @@ interface PatientCardProps {
   medications: MedicationRecord[];
   /** Patrols currently with this patient (på vei / transporterer / overvåker). */
   fieldEngagements?: TeamPatientEngagement[];
-  /** Teams in this event — the hand-over line's team name and the "på vei" distance line. */
+  /** Teams in this event — the hand-over line's team name, the "på vei" distance line and the transport line. */
   teams?: Team[];
+  /** Other open patients in the event — feeds the placement editor's free-number quick picks (item 8.30). */
+  openPatients?: SickBayPatient[];
+  /** The latest vitals were recorded offline and are not yet synced (item 8.27). */
+  localVitalsPending?: boolean;
   onStatusChange: (status: string) => void;
   onSubmitVitals: (form: VitalsFormShape) => void;
   onSubmitNote: (text: string, author: string) => void;
@@ -83,6 +90,8 @@ export function PatientCard({
   medications,
   fieldEngagements = [],
   teams = [],
+  openPatients = [],
+  localVitalsPending = false,
   onStatusChange,
   onSubmitVitals,
   onSubmitNote,
@@ -173,6 +182,11 @@ export function PatientCard({
     : null;
   // "På vei" distance (gap A7) — only when a patrol is approaching and both positions are known.
   const distanceLabel = engagementDistanceLabel(fieldEngagements, teams, patient);
+  // Transport request (gap B3 / item 8.26) — a field team asked to move this patient.
+  const transportTeam = patient.transportTeamId ? teams.find((t) => t.id === patient.transportTeamId) ?? null : null;
+  const transportTeamModeLabel = transportTeam?.transport
+    ? (TRANSPORT_LABELS[transportTeam.transport as keyof typeof TRANSPORT_LABELS] ?? transportTeam.transport)
+    : null;
   const patientAgeLabel = formatPatientAge({
     birthDate: patient.birthDate ?? null,
     ageGroup: patient.ageGroup ?? null,
@@ -485,6 +499,24 @@ export function PatientCard({
         </div>
       )}
 
+      {/* Transport request (gap B3 / item 8.26) — what a field team has asked
+          to move this patient, and who is coming for them once assigned. */}
+      {patient.transportNeed && (
+        <div data-testid={`transport-line-${patient.id}`}>
+          {patient.transportTeamId ? (
+            <Pill tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)' }}>
+              Transport: {transportTeam?.name ?? 'Ukjent lag'}
+              {transportTeamModeLabel ? ` (${transportTeamModeLabel})` : ''} på vei
+            </Pill>
+          ) : (
+            <Pill tone={{ color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)' }}>
+              Transport: {TRANSPORT_NEED_LABELS[patient.transportNeed]}
+              {patient.transportRequestedAt ? ` · bedt om kl. ${formatClockTime(patient.transportRequestedAt)}` : ''}
+            </Pill>
+          )}
+        </div>
+      )}
+
       {/* When is this patient due for a new set of observations — the thing a
           busy clinician with six patients forgets first. */}
       {observationText && (
@@ -506,7 +538,17 @@ export function PatientCard({
       )}
 
       {patient.latestVitals && (
-        <PatientVitalsDisplay vitals={patient.latestVitals} />
+        <>
+          <PatientVitalsDisplay vitals={patient.latestVitals} />
+          {localVitalsPending && (
+            <span
+              data-testid={`local-vitals-marker-${patient.id}`}
+              style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-status-warning)' }}
+            >
+              Lagret lokalt — sendes når tilkoblingen er tilbake
+            </span>
+          )}
+        </>
       )}
 
       {primaryNextStatus && (
@@ -605,6 +647,20 @@ export function PatientCard({
         >
           Triage
         </Button>
+
+        {/* Printable journal (gap B7 / item 8.32) — a plain link, not a Button,
+            so a middle-click / right-click "open in new tab" works like any
+            other link; `target="_blank"` covers the ordinary click. */}
+        <a
+          href={`${import.meta.env.BASE_URL}sickbay/journal/${patient.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid={`journal-link-${patient.id}`}
+          className="btn btn--ghost btn--sm btn--pill"
+        >
+          <Icon name="document" />
+          Journal
+        </a>
       </div>
       )}
 
@@ -651,6 +707,31 @@ className="field"
             <Button variant="secondary" size="lg" onClick={handleSubmitPlacement}>
               Lagre
             </Button>
+
+            {/* Quick-pick the lowest free numbers for the chosen type (item 8.30) — never
+                invented, just the placements not already taken by another open patient. */}
+            {placementType && (
+              <div
+                data-testid={`placement-free-numbers-${patient.id}`}
+                style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}
+              >
+                {freeSickbayNumbers(
+                  placementType,
+                  openPatients.filter((p) => p.id !== patient.id),
+                ).map((n) => (
+                  <Button
+                    key={n}
+                    variant="ghost"
+                    size="sm"
+                    pill
+                    data-testid={`placement-free-${n}`}
+                    onClick={() => setPlacementNumber(String(n))}
+                  >
+                    <span className="data">{n}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -180,6 +180,23 @@ test('supports the demo login and role navigation flow', async ({ page }) => {
   await expect(page.getByTestId('status-btn-in_treatment').first()).toBeVisible();
   await expect(page.getByTestId('status-btn-observation').first()).toBeVisible();
 
+  // Occupancy strip (gap B6 / item 8.30): the demo's seeded settings (16
+  // chairs, 4 beds) are configured, so the strip shows an occupied count
+  // against them rather than "Kapasitet ikke satt".
+  await expect(page.getByTestId('sickbay-occupancy')).toContainText('Stoler');
+
+  // Printable journal (gap B7 / item 8.32): the "Journal" link sits in the
+  // card's "Rediger detaljer" row and opens the printable page in a new tab;
+  // demo-pat-1 (Lea Hansen, #1) has a seeded vitals history to check.
+  await page.getByTestId('edit-details-toggle-demo-pat-1').click();
+  await expect(page.getByTestId('journal-link-demo-pat-1')).toBeVisible();
+  await page.goto('./sickbay/journal/demo-pat-1');
+  const journalHeading = page.getByRole('heading', { level: 1 });
+  await expect(journalHeading).toContainText('#1');
+  await expect(page.getByTestId('journal-vitals-row').first()).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Sykestue' })).toBeVisible();
+
   // Coordinator flow: verify map presentation controls in demo preview.
   if (await logoutBtn.isVisible().catch(() => false)) {
     await logoutBtn.click();

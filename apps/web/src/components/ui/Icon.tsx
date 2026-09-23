@@ -38,6 +38,10 @@ const PATHS = {
   // Lane 8 batch 3 (field UI) — appended, not merged into the block above.
   truck: 'M1 3h15v13H1zM16 8h4l3 3v5h-7zM3 18.5a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0M16 18.5a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0',
   mic: 'M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8',
+  // Journal export (gap B7 / item 8.32) — printable journal page and its
+  // opener button on the sick bay card.
+  printer: 'M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z',
+  document: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13h6M9 17h6',
 } as const;
 
 export type IconName = keyof typeof PATHS;

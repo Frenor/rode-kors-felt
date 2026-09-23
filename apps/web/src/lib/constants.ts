@@ -4,7 +4,7 @@
  */
 
 import type { News2Result } from '@rkf/shared-types';
-import type { TeamOperationalStatus, TeamPatientStatus, TransportNeed } from './types';
+import type { SickBayPlacementType, TeamOperationalStatus, TeamPatientStatus, TransportNeed } from './types';
 
 export const ACVPU_OPTIONS: { value: string; label: string; short: string }[] = [
   { value: 'alert', label: 'Alert', short: 'A' },
@@ -302,3 +302,54 @@ export const QUICK_LOG_COMPLAINTS: Array<{ id: string; label: string }> = [
   { id: 'nausea', label: 'Kvalme' },
   { id: 'other', label: 'Annet' },
 ];
+export interface SickbayOccupancyCount {
+  occupied: number;
+  total: number;
+}
+
+export interface SickbayOccupancy {
+  chairs: SickbayOccupancyCount | null;
+  beds: SickbayOccupancyCount | null;
+}
+
+/**
+ * Occupancy strip math (gap B6 / item 8.30): counts open patients placed in
+ * each type against the event's configured capacity. A type with no
+ * configured capacity comes back `null` — the header shows "Kapasitet ikke
+ * satt" for it rather than inventing a denominator.
+ */
+export function computeSickbayOccupancy(
+  settings: { chairs?: number; beds?: number } | null | undefined,
+  openPatients: Array<{ placementType?: SickBayPlacementType | null; placementNumber?: string | null }>,
+): SickbayOccupancy {
+  const countOccupied = (type: SickBayPlacementType) =>
+    openPatients.filter((p) => p.placementType === type && p.placementNumber).length;
+  return {
+    chairs: typeof settings?.chairs === 'number' ? { occupied: countOccupied('chair'), total: settings.chairs } : null,
+    beds: typeof settings?.beds === 'number' ? { occupied: countOccupied('bed'), total: settings.beds } : null,
+  };
+}
+
+/**
+ * The lowest free placement numbers for a type, up to `limit` (item 8.30) —
+ * feeds the quick-pick chips in the placement editor and the intake modal.
+ * Ignores configured capacity on purpose: the sick bay still needs to place
+ * someone even before a coordinator has set chair/bed counts.
+ */
+export function freeSickbayNumbers(
+  placementType: SickBayPlacementType,
+  openPatients: Array<{ placementType?: SickBayPlacementType | null; placementNumber?: string | null }>,
+  limit = 6,
+): number[] {
+  const occupied = new Set(
+    openPatients
+      .filter((p) => p.placementType === placementType && p.placementNumber)
+      .map((p) => Number.parseInt(p.placementNumber as string, 10))
+      .filter((n) => Number.isFinite(n)),
+  );
+  const free: number[] = [];
+  for (let n = 1; free.length < limit && n <= 999; n++) {
+    if (!occupied.has(n)) free.push(n);
+  }
+  return free;
+}

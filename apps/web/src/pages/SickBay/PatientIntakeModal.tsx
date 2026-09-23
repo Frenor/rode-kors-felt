@@ -1,6 +1,7 @@
 import { FocusTrap } from '../../components/FocusTrap';
-import { calculateAgeYears, GENDER_OPTIONS } from '../../lib/constants';
+import { calculateAgeYears, freeSickbayNumbers, GENDER_OPTIONS } from '../../lib/constants';
 import { Button } from '../../components/ui';
+import type { SickBayPatient } from '../../lib/types';
 
 export interface IntakeFormShape {
   fullName: string;
@@ -18,6 +19,8 @@ interface PatientIntakeModalProps {
   onChange: (f: IntakeFormShape) => void;
   onSubmit: () => void;
   onClose: () => void;
+  /** Other open patients in the event — feeds the placement quick-pick chips (item 8.30). */
+  openPatients?: SickBayPatient[];
 }
 
 const inputStyle: React.CSSProperties = {
@@ -38,7 +41,7 @@ export function isIntakeFormValid(form: Pick<IntakeFormShape, 'fullName' | 'pres
   return form.fullName.trim().length > 0 || form.presentingComplaint.trim().length > 0;
 }
 
-export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: PatientIntakeModalProps) {
+export function PatientIntakeModal({ form, onChange, onSubmit, onClose, openPatients = [] }: PatientIntakeModalProps) {
   const previewAge = calculateAgeYears(form.birthDate);
   const valid = isIntakeFormValid(form);
   return (
@@ -133,6 +136,27 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
                 style={inputStyle} />
             </div>
           </div>
+
+          {/* Quick-pick the lowest free numbers for the chosen type (item 8.30). */}
+          {form.placementType && (
+            <div
+              data-testid="intake-placement-free-numbers"
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)', marginTop: 'calc(-1 * var(--space-2))', marginBottom: 'var(--space-3)' }}
+            >
+              {freeSickbayNumbers(form.placementType, openPatients).map((n) => (
+                <Button
+                  key={n}
+                  variant="ghost"
+                  size="sm"
+                  pill
+                  data-testid={`placement-free-${n}`}
+                  onClick={() => onChange({ ...form, placementNumber: String(n) })}
+                >
+                  <span className="data">{n}</span>
+                </Button>
+              ))}
+            </div>
+          )}
 
           {/* Problemstilling + Behandler */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>

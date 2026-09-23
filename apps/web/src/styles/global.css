@@ -247,3 +247,31 @@ body {
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+/* ═══════════════════════════════════════════════
+   PRINT — patient journal (item 8.32). Only the
+   journal's own content should reach paper: app
+   chrome, toasts and the demo banner/guide are
+   noise on a printed sheet a coordinator hands off.
+═══════════════════════════════════════════════ */
+@media print {
+  header[role='banner'],
+  [data-testid='connection-strip'],
+  [role='complementary'][aria-label='Demo-veiledning'],
+  [role='alert'][aria-live='assertive'][aria-atomic='true'],
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  main#main-content,
+  .journal-page {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}

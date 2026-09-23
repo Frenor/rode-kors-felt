@@ -54,6 +54,17 @@ vi.mock('../lib/api', () => ({
   },
 }));
 
+// Offline queue (item 8.27) — backs `SickBayHeader`'s live queue-count query;
+// mocked so this render test never touches real IndexedDB.
+vi.mock('../lib/offline-sickbay-queue', () => ({
+  offlineSickbayQueueDb: { queue: { toArray: vi.fn().mockResolvedValue([]) } },
+  enqueueSickbayAction: vi.fn().mockResolvedValue('queued-id'),
+  getRetryableSickbayActions: vi.fn().mockResolvedValue([]),
+  markSickbayActionSyncing: vi.fn(),
+  markSickbayActionFailed: vi.fn(),
+  removeSickbayAction: vi.fn(),
+}));
+
 import { api } from '../lib/api';
 
 function makePatient(overrides: Record<string, unknown> = {}) {
