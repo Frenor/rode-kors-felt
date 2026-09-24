@@ -88,13 +88,6 @@ export async function runMigrations(): Promise<void> {
         start_date        TIMESTAMPTZ NOT NULL,
         end_date          TIMESTAMPTZ NOT NULL,
         status            event_status NOT NULL DEFAULT 'draft',
-        mci_active        BOOLEAN NOT NULL DEFAULT FALSE,
-        mci_activated_at  TIMESTAMPTZ,
-        mci_activated_by  VARCHAR(255),
-        mci_sectors       TEXT[] NOT NULL DEFAULT '{}',
-        mci_summary_html  TEXT,
-        mci_summary_generated_at TIMESTAMPTZ,
-        mci_summary_generated_by VARCHAR(255),
         indoor_layout     JSONB,
         map_runtime_config JSONB,
         created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -221,13 +214,14 @@ export async function runMigrations(): Promise<void> {
 
     // ── Idempotent column additions for existing databases ────────
     await client.query(`
-      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_active       BOOLEAN NOT NULL DEFAULT FALSE;
-      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_activated_at TIMESTAMPTZ;
-      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_activated_by VARCHAR(255);
-      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_sectors      TEXT[] NOT NULL DEFAULT '{}';
-      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_html TEXT;
-      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_generated_at TIMESTAMPTZ;
-      ALTER TABLE events ADD COLUMN IF NOT EXISTS mci_summary_generated_by VARCHAR(255);
+      -- Mass casualty mode was removed (docs/FEATURES.md → Removed); drop its columns.
+      ALTER TABLE events DROP COLUMN IF EXISTS mci_active;
+      ALTER TABLE events DROP COLUMN IF EXISTS mci_activated_at;
+      ALTER TABLE events DROP COLUMN IF EXISTS mci_activated_by;
+      ALTER TABLE events DROP COLUMN IF EXISTS mci_sectors;
+      ALTER TABLE events DROP COLUMN IF EXISTS mci_summary_html;
+      ALTER TABLE events DROP COLUMN IF EXISTS mci_summary_generated_at;
+      ALTER TABLE events DROP COLUMN IF EXISTS mci_summary_generated_by;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS indoor_layout JSONB;
       ALTER TABLE events ADD COLUMN IF NOT EXISTS map_runtime_config JSONB;
 
@@ -248,6 +242,48 @@ export async function runMigrations(): Promise<void> {
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS lat REAL;
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS lon REAL;
       ALTER TABLE patients ADD COLUMN IF NOT EXISTS assigned_team_id UUID REFERENCES teams(id) ON DELETE SET NULL;
+
+      -- Hand-over model (gap A1)
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS handed_over_at TIMESTAMPTZ;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS handed_over_by_team_id UUID REFERENCES teams(id) ON DELETE SET NULL;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS field_outcome VARCHAR(32);
+
+      -- Shared patient number (gap A5)
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS seq INTEGER;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS patient_counter INTEGER NOT NULL DEFAULT 0;
+
+      -- AMK notified (gap B2 data half)
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS amk_notified_at TIMESTAMPTZ;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS amk_notified_by VARCHAR(100);
+    `);
+
+    // Backfill `seq` per event in created_at order (only rows that predate this
+    // migration — new inserts always allocate seq atomically), then bring each
+    // event's counter up to the max seq it now has. Both steps are no-ops once
+    // every patient already has a seq.
+    await client.query(`
+      WITH event_max AS (
+        SELECT event_id, COALESCE(MAX(seq), 0) AS max_seq FROM patients GROUP BY event_id
+      ),
+      numbered AS (
+        SELECT id, event_id, ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY created_at, id) AS rn
+        FROM patients
+        WHERE seq IS NULL
+      )
+      UPDATE patients p
+      SET seq = numbered.rn + COALESCE(event_max.max_seq, 0)
+      FROM numbered
+      LEFT JOIN event_max ON event_max.event_id = numbered.event_id
+      WHERE p.id = numbered.id;
+
+      UPDATE events e
+      SET patient_counter = sub.max_seq
+      FROM (SELECT event_id, MAX(seq) AS max_seq FROM patients GROUP BY event_id) sub
+      WHERE e.id = sub.event_id AND e.patient_counter < sub.max_seq;
+    `);
+
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS patients_event_id_seq_idx ON patients (event_id, seq);
     `);
 
     await client.query(`
@@ -256,6 +292,37 @@ export async function runMigrations(): Promise<void> {
 
       CREATE INDEX IF NOT EXISTS idx_action_events_event_action_created
       ON action_events (event_id, action_type, created_at DESC);
+    `);
+
+    // ── Lane 8 batch 3 (B): messages, settings, set-up ──
+    await client.query(`
+      ALTER TABLE teams ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS settings JSONB;
+
+      CREATE TABLE IF NOT EXISTS team_messages (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id      UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        from_team_id  UUID REFERENCES teams(id) ON DELETE SET NULL,
+        from_label    VARCHAR(100),
+        to_team_id    VARCHAR(64),
+        text          TEXT NOT NULL,
+        ack_of        UUID,
+        sent_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_team_messages_event_sent_at
+      ON team_messages (event_id, sent_at DESC);
+    `);
+    // ── Lane 8 batch 3 (A): transport, retention ──
+    await client.query(`
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_need VARCHAR(16);
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_pickup_text TEXT;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_requested_at TIMESTAMPTZ;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_requested_by VARCHAR(100);
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_team_id UUID REFERENCES teams(id) ON DELETE SET NULL;
+      ALTER TABLE patients ADD COLUMN IF NOT EXISTS transport_assigned_at TIMESTAMPTZ;
+
+      ALTER TABLE events ADD COLUMN IF NOT EXISTS anonymised_at TIMESTAMPTZ;
     `);
 
     await client.query('COMMIT');

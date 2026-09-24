@@ -20,7 +20,7 @@ operational efficiency**. Six 2-week sprints, each with a clear goal and definit
 | 1 | Persistent Database | Eliminate data-loss risk from server restart | All roles |
 | 2 | Real-time Reliability | Ensure coordinators never miss critical updates | Coordinator |
 | 3 | Clinical Intelligence | Detect patient deterioration earlier | Sick Bay, Coordinator |
-| 4 | Mass Casualty Mode | Handle multi-patient incidents safely | All roles |
+| 4 | ~~Mass Casualty Mode~~ | Removed 2026-09 — see `docs/FEATURES.md` | — |
 | 5 | Field Efficiency | Get first aiders to incidents faster | First Aider |
 | 6 | Reporting & Production | Enable learning + production deployment | Operations |
 
@@ -168,51 +168,10 @@ a medical emergency. Trend detection saves lives that threshold detection misses
 
 ---
 
-## Sprint 4 — Mass Casualty Incident (MCI) Mode
-**Goal:** Enable coordinators to activate MCI mode for multi-patient incidents, with
-START triage tagging and sector-based casualty management.
+## Sprint 4 — removed
 
-**Why:** A pile-up at a ski race or crowd crush can produce 10–50 patients in minutes.
-The current system has no triage tagging or MCI coordination workflow.
-
-### Tasks
-
-**4.1 — MCI mode activation**
-- File: `rkf/packages/shared-types/src/index.ts` — add `MciMode` schema to `Event`
-- Fields: `mciActive: boolean`, `mciActivatedAt`, `mciActivatedBy`, `mciSectors: string[]`
-- File: `rkf/apps/api/src/routes/events.ts` — `PATCH /events/:id/mci` (coordinator only)
-- WebSocket broadcast: `event.mci_activated` — all clients receive alert banner
-
-**4.2 — START triage tagging on incidents**
-- File: `rkf/packages/shared-types/src/index.ts` — add `TriageTag` enum:
-  `immediate` (red), `delayed` (yellow), `minor` (green), `expectant` (black)
-- Add `triageTag: TriageTag.optional()` to `Incident` schema
-- File: `rkf/apps/web/src/pages/IncidentForm.tsx` — 4-button triage selector
-  (color-coded, 56×56px min, visible in daylight, Norwegian labels)
-- File: `rkf/apps/api/src/routes/incidents.ts` — accept `triageTag` on create/update
-
-**4.3 — MCI overview for coordinator**
-- File: `rkf/apps/web/src/pages/CoordinatorDashboard.tsx`
-- MCI mode panel: triage tag counts (immediate N, delayed N, minor N, expectant N)
-- Map overlay: incidents colored by triage tag (not type)
-- Sector assignment: drag incident to sector on map
-
-**4.4 — Resource allocation board**
-- File: `rkf/apps/web/src/pages/CoordinatorDashboard.tsx` (new sub-panel)
-- Grid: teams × sectors — coordinator assigns teams to sectors
-- Visual: team avatar, transport icon, estimated distance to sector
-- Broadcast: `team.sector_assigned` via WebSocket → first aider sees assignment on their dashboard
-
-**4.5 — MCI deactivation + handover summary**
-- `PATCH /events/:id/mci` with `{ mciActive: false }` deactivates
-- Generates MCI summary: total by triage tag, time-to-first-response, team deployments
-- Summary stored as event attachment, downloadable (print CSS for field use)
-
-### Definition of Done
-- Coordinator can activate MCI mode → all clients show MCI banner within 1s
-- First aider can tag incident with START triage color in ≤ 3 taps
-- Map shows color-coded triage tags, counts update in real-time
-- MCI deactivation generates summary accessible from event details
+Mass casualty mode was removed and will not return. The record of what existed is in
+`docs/removed-features/HENDELSE_MCI.md`; the feature register is `docs/FEATURES.md`.
 
 ---
 
@@ -253,13 +212,6 @@ currently navigate by memory or generic maps.
 - Display: "ca. 4 min" next to team name in dispatch panel
 - Pure client-side calculation (no external API)
 
-**5.5 — MIST pre-fill from triage tags**
-- File: `rkf/apps/web/src/pages/IncidentForm.tsx`
-- In MCI mode: selecting triage tag pre-fills MIST "Signs" chip set
-  - Immediate: "Livstruende tilstand", "Kritisk ABC"
-  - Delayed: "Stabil, trenger behandling"
-  - Minor: "Gående, mindre skade"
-- Chips remain editable — pre-fill is a time-saving hint, not a lock
 
 ### Definition of Done
 - "Naviger hit" opens native maps in < 2 taps on iOS and Android
@@ -333,9 +285,9 @@ Production-grade infrastructure ensures the system can be trusted at real events
 | `rkf/apps/web/src/stores/ws.ts` | 2 | Reconnect logic + state |
 | `rkf/apps/web/src/components/AppShell.tsx` | 2 | Connection status banner |
 | `rkf/packages/shared-types/src/news2.ts` | 3 | Add trend calculation |
-| `rkf/packages/shared-types/src/index.ts` | 3, 4, 5 | Add schemas for medications, MCI, messages |
+| `rkf/packages/shared-types/src/index.ts` | 3, 5 | Add schemas for medications, messages |
 | `rkf/apps/web/src/pages/SickBayDashboard.tsx` | 3 | Deterioration alerts, SBAR, meds |
-| `rkf/apps/web/src/pages/CoordinatorDashboard.tsx` | 3, 4, 5, 6 | MCI, deterioration panel, ETA |
+| `rkf/apps/web/src/pages/CoordinatorDashboard.tsx` | 3, 5, 6 | deterioration panel, ETA |
 | `rkf/apps/web/src/pages/IncidentForm.tsx` | 4, 5 | Triage tag, voice input, MIST pre-fill |
 | `rkf/apps/web/src/pages/FirstAiderDashboard.tsx` | 5 | Navigation, messaging |
 | `rkf/infra/terraform/` | 6 | Complete production IaC |
@@ -360,6 +312,6 @@ Production-grade infrastructure ensures the system can be trusted at real events
 1. **Sprint 1**: `docker compose up -d && pnpm dev` → login, create incident, restart API, incident still present
 2. **Sprint 2**: Kill API → UI shows amber banner → restart API → banner clears, offline-created incidents sync
 3. **Sprint 3**: Enter rising vitals 3× → alert fires → SBAR required before patient transfer
-4. **Sprint 4**: Activate MCI → create incident with triage tag → coordinator map shows color-coded tags
+4. **Sprint 4**: removed
 5. **Sprint 5**: Dispatch incident to team → first aider taps "Naviger hit" → native maps opens at correct coords
 6. **Sprint 6**: `terraform apply` → zero-downtime deploy → load test passes

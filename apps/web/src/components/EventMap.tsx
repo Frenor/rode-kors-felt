@@ -21,8 +21,18 @@ interface PatientPin {
   triageStatus: string | null;
   lat: number;
   lon: number;
+  /** The real per-event patient number (gap A5) when known, else a 1-based fallback index. */
   seqNum: number;
   closed?: boolean;
+}
+
+/**
+ * The map marker's patient number (gap A5 / item 8.19): the real, server-
+ * allocated `seq` when it is known, falling back to the 1-based index among
+ * the pins on the map only when `seq` is missing (e.g. an older record).
+ */
+export function resolvePatientSeq(seq: number | null | undefined, index: number): number {
+  return typeof seq === 'number' && Number.isFinite(seq) ? seq : index + 1;
 }
 
 interface EventMapProps {
@@ -34,7 +44,7 @@ interface EventMapProps {
   /** Per-team per-member live positions: teamId → memberId → GeoPoint */
   memberPositions?: Record<string, Record<string, GeoPoint>>;
   /** Active patient pins to render on the map */
-  patients?: Array<{ id: string; label: string | null; triageStatus: string | null; lat: number | null; lon: number | null; status?: string | null }>;
+  patients?: Array<{ id: string; label: string | null; triageStatus: string | null; lat: number | null; lon: number | null; status?: string | null; seq?: number | null }>;
   /** When set, the map enters picking mode — clicking the map calls this handler */
   onMapClick?: ((lat: number, lng: number) => void) | null;
   /** Called when the user cancels picking mode */
@@ -158,7 +168,7 @@ const TRIAGE_MARKER_BG: Record<string, string> = {
 
 function makePatientIcon(seqNum: number, triageStatus: string | null): L.DivIcon {
   const bg = TRIAGE_MARKER_BG[triageStatus ?? ''] ?? '#64748b';
-  const label = `P${seqNum}`;
+  const label = `#${seqNum}`;
   return L.divIcon({
     html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">
       <div style="width:28px;height:22px;border-radius:4px;background:${bg};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:monospace">${label}</div>
@@ -264,7 +274,9 @@ function LeafletPatientMarkers({ patients }: { patients: PatientPin[] }) {
         >
           <Popup>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-              <div style={{ fontWeight: 700 }}>{p.label ?? `Pasient ${p.seqNum}`}</div>
+              <div style={{ fontWeight: 700 }}>
+                {p.label ? `#${p.seqNum} · ${p.label}` : `#${p.seqNum}`}
+              </div>
               {p.triageStatus && (
                 <div style={{ marginTop: 2, textTransform: 'capitalize' }}>{p.triageStatus}</div>
               )}
@@ -453,10 +465,11 @@ function MapLibreCanvas({
       const bg = TRIAGE_MARKER_BG[p.triageStatus ?? ''] ?? '#64748b';
       const el = document.createElement('div');
       el.style.cssText = 'display:flex;flex-direction:column;align-items:center;pointer-events:auto';
-      el.innerHTML = `<div style="width:28px;height:22px;border-radius:4px;background:${bg};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:monospace">P${p.seqNum}</div><div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${bg}"></div>`;
+      el.innerHTML = `<div style="width:28px;height:22px;border-radius:4px;background:${bg};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:monospace">#${p.seqNum}</div><div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${bg}"></div>`;
 
+      const popupTitle = p.label ? `#${p.seqNum} · ${p.label}` : `#${p.seqNum}`;
       const popup = new runtime.Popup({ offset: 20 }).setHTML(
-        `<div style="font-family:sans-serif;font-size:12px;font-weight:700">${esc(p.label ?? `Pasient ${p.seqNum}`)}</div>`,
+        `<div style="font-family:sans-serif;font-size:12px;font-weight:700">${esc(popupTitle)}</div>`,
       );
       const marker = new runtime.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([p.lon, p.lat])
@@ -608,7 +621,7 @@ export function EventMap({
       triageStatus: p.triageStatus,
       lat: p.lat!,
       lon: p.lon!,
-      seqNum: i + 1,
+      seqNum: resolvePatientSeq(p.seq, i),
     }));
   }, [patients]);
 
@@ -635,33 +648,38 @@ export function EventMap({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'space-between',
-          gap: 'var(--space-2)',
-          padding: 'var(--space-2) var(--space-3)',
-          borderBottom: '1px solid var(--color-border)',
-          background: 'var(--color-surface)',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-subtle)',
-        }}
-      >
-        <div>
-          Kartmotor: <strong>{requestedProvider === 'maplibre' ? 'MapLibre' : 'Leaflet'}</strong>
-          {layerCount > 0 && <> · Lag: <strong>{layerCount}</strong></>}
+      {/* The engine name lives in "Kartinnstillinger"; this strip only appears
+          when the map is not in its plain state (3D on, or a fallback in use). */}
+      {(presentation3d || (usingMapLibreFallback && mapLibreLoadAttempted)) && (
+        <div
+          data-testid="map-status-caption"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            borderBottom: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            color: 'var(--color-text-muted)',
+          }}
+        >
+          <div>
+            Kartmotor: <strong>{requestedProvider === 'maplibre' ? 'MapLibre' : 'Leaflet'}</strong>
+            {layerCount > 0 && <> · Lag: <strong className="data">{layerCount}</strong></>}
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            {presentation3d && <span style={{ color: 'var(--color-brand)' }}>3D-presentasjon aktiv</span>}
+            {usingMapLibreFallback && mapLibreLoadAttempted && (
+              <span style={{ color: 'var(--color-status-warning)' }}>
+                MapLibre-runtime ikke tilgjengelig, bruker Leaflet-fallback
+              </span>
+            )}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          {presentation3d && <span style={{ color: 'var(--color-brand)' }}>3D-presentasjon aktiv</span>}
-          {usingMapLibreFallback && mapLibreLoadAttempted && (
-            <span style={{ color: 'var(--color-status-warning)' }}>
-              MapLibre-runtime ikke tilgjengelig, bruker Leaflet-fallback
-            </span>
-          )}
-        </div>
-      </div>
+      )}
 
       {isPicking && (
         <div

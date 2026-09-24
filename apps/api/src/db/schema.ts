@@ -16,6 +16,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -75,6 +76,15 @@ export const events = pgTable('events', {
   }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Atomic counter for `patients.seq` — the shared, human-facing patient number. */
+  patientCounter: integer('patient_counter').notNull().default(0),
+  /** Capacity settings (gap B6): `{ sickbay?: { chairs?: number; beds?: number } }`. */
+  settings: jsonb('settings').$type<{
+    sickbay?: { chairs?: number; beds?: number };
+  }>(),
+
+  /** Retention (gap B8): set once PII has been scrubbed from this event's patients. */
+  anonymisedAt: timestamp('anonymised_at', { withTimezone: true }),
 });
 
 export const fieldTriageStatusEnum = pgEnum('field_triage_status', ['green', 'yellow', 'red', 'black']);
@@ -91,6 +101,8 @@ export const teams = pgTable('teams', {
   contactRadio: varchar('contact_radio', { length: 50 }),
   currentPosition: jsonb('current_position').$type<{ lat: number; lng: number }>(),
   lastPositionUpdate: timestamp('last_position_update', { withTimezone: true }),
+  /** Event set-up (gap B5): a stood-down team is hidden unless asked for explicitly. */
+  active: boolean('active').notNull().default(true),
 });
 
 export const users = pgTable('users', {
@@ -135,9 +147,27 @@ export const patients = pgTable('patients', {
   lat: real('lat'),
   lon: real('lon'),
   assignedTeamId: uuid('assigned_team_id').references(() => teams.id, { onDelete: 'set null' }),
+  /** Hand-over model (gap A1): set when the field team hands the patient off. */
+  handedOverAt: timestamp('handed_over_at', { withTimezone: true }),
+  handedOverByTeamId: uuid('handed_over_by_team_id').references(() => teams.id, { onDelete: 'set null' }),
+  fieldOutcome: varchar('field_outcome', { length: 32 }),
+  /** Shared patient number (gap A5): human-facing `#<seq>`, unique per event. */
+  seq: integer('seq'),
+  /** AMK notified (gap B2 data half). */
+  amkNotifiedAt: timestamp('amk_notified_at', { withTimezone: true }),
+  amkNotifiedBy: varchar('amk_notified_by', { length: 100 }),
+  /** Transport request (gap B3): what/if a field team needs to move this patient. */
+  transportNeed: varchar('transport_need', { length: 16 }),
+  transportPickupText: text('transport_pickup_text'),
+  transportRequestedAt: timestamp('transport_requested_at', { withTimezone: true }),
+  transportRequestedBy: varchar('transport_requested_by', { length: 100 }),
+  transportTeamId: uuid('transport_team_id').references(() => teams.id, { onDelete: 'set null' }),
+  transportAssignedAt: timestamp('transport_assigned_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex('patients_event_id_seq_idx').on(table.eventId, table.seq),
+]);
 
 export const medicationRecords = pgTable('medication_records', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -177,4 +207,22 @@ export const actionEvents = pgTable('action_events', {
   revertedBy: varchar('reverted_by', { length: 255 }),
   revertReason: text('revert_reason'),
   undoOfActionId: uuid('undo_of_action_id'),
+});
+
+// ── Lane 8 batch 3 (B): chat history (gap B9) ──────────────────────
+/**
+ * Persisted `team.message` relay history so a dashboard that joins late (or
+ * reloads) can fetch what it missed via `GET /events/:id/messages`.
+ * `toTeamId` is a team uuid, the literal `coordinator`, or null for everyone —
+ * not an FK, since it is not always a team.
+ */
+export const teamMessages = pgTable('team_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+  fromTeamId: uuid('from_team_id').references(() => teams.id, { onDelete: 'set null' }),
+  fromLabel: varchar('from_label', { length: 100 }),
+  toTeamId: varchar('to_team_id', { length: 64 }),
+  text: text('text').notNull(),
+  ackOf: uuid('ack_of'),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
 });

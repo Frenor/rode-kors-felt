@@ -1,15 +1,30 @@
 /**
- * StatsGrid — displays event statistics with trend indicators and filter on double-click.
+ * StatsGrid — event counters with a neutral change indicator.
+ *
+ * The arrow only says "this number moved since the last refresh"; it is
+ * deliberately not coloured green/red, because more patients is not good and
+ * fewer incoming is not bad.
  */
 
 import { useState, useEffect, useRef } from 'react';
+
+/** Minimal shape needed to compute sick bay occupancy — a subset of FieldPatient. */
+interface OccupancyPatient {
+  status?: string | null;
+  placementType?: 'chair' | 'bed' | null;
+}
 
 interface StatsGridProps {
   stats: Record<string, number> | null;
   lastUpdatedAt?: number;
   prevStats?: Record<string, number> | null;
-  onFilter?: (key: string) => void;
+  /** Capacity settings (gap B6 / item 8.30) — `event.settings.sickbay`, undefined/null when not set. */
+  sickbaySettings?: { chairs?: number; beds?: number } | null;
+  /** Open patients, to count how many chairs/beds are actually occupied. */
+  patients?: OccupancyPatient[];
 }
+
+const CLOSED_STATUSES = new Set(['discharged', 'transferred']);
 
 const STAT_ENTRIES: { key: string; label: string }[] = [
   { key: 'totalPatients',       label: 'Pasienter totalt' },
@@ -20,19 +35,7 @@ const STAT_ENTRIES: { key: string; label: string }[] = [
   { key: 'discharged',          label: 'Utskrevet' },
 ];
 
-function StatCard({
-  label,
-  value,
-  prevValue,
-  onFilter,
-  statKey,
-}: {
-  label: string;
-  value: number;
-  prevValue?: number;
-  onFilter?: (key: string) => void;
-  statKey: string;
-}) {
+function StatCard({ label, value, prevValue }: { label: string; value: number; prevValue?: number }) {
   const prevRef = useRef<number | undefined>(prevValue);
   const [pop, setPop] = useState(false);
 
@@ -52,47 +55,84 @@ function StatCard({
         ? '↑'
         : '↓'
       : null;
-  const trendColor =
-    trend === '↑'
-      ? 'var(--color-status-ok)'
-      : trend === '↓'
-      ? 'var(--color-status-critical)'
-      : undefined;
 
   return (
     <div
-      onDoubleClick={() => onFilter?.(statKey)}
-      title={onFilter ? 'Dobbeltklikk for å filtrere' : undefined}
       style={{
-        padding: 'var(--space-4)', borderRadius: 'var(--radius-md)',
+        padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
         border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-        cursor: onFilter ? 'pointer' : undefined,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-1)' }}>
         <div
-          className={pop ? 'animate-count-pop' : undefined}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3xl)', fontWeight: 700 }}
+          className={`data${pop ? ' animate-count-pop' : ''}`}
+          style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}
         >
           {value ?? 0}
         </div>
         {trend && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: trendColor, fontWeight: 700 }}>
+          <span
+            aria-label={trend === '↑' ? 'økt siden forrige oppdatering' : 'redusert siden forrige oppdatering'}
+            style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', fontWeight: 700 }}
+          >
             {trend}
           </span>
         )}
       </div>
-      <div style={{
-        fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-        color: 'var(--color-text-subtle)', textTransform: 'uppercase',
-      }}>
+      <div className="section-label">
         {label}
       </div>
     </div>
   );
 }
 
-export function StatsGrid({ stats, lastUpdatedAt, prevStats, onFilter }: StatsGridProps) {
+/**
+ * "Sykestue" tile (gap B6 / item 8.30) — chairs/beds occupied out of the
+ * event's configured capacity. Never invents a capacity: without settings it
+ * says so instead of showing a made-up number.
+ */
+function SickbayTile({ sickbaySettings, patients }: { sickbaySettings?: { chairs?: number; beds?: number } | null; patients: OccupancyPatient[] }) {
+  const chairsCapacity = sickbaySettings?.chairs;
+  const bedsCapacity = sickbaySettings?.beds;
+  const hasCapacity = chairsCapacity != null || bedsCapacity != null;
+
+  const open = patients.filter((p) => !CLOSED_STATUSES.has(p.status ?? ''));
+  const chairsOccupied = open.filter((p) => p.placementType === 'chair').length;
+  const bedsOccupied = open.filter((p) => p.placementType === 'bed').length;
+
+  return (
+    <div
+      data-testid="stats-sickbay-tile"
+      style={{
+        padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
+        border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+      }}
+    >
+      {hasCapacity ? (
+        <>
+          <div className="data" style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}>
+            {chairsOccupied}/{chairsCapacity ?? '—'}
+          </div>
+          <div className="section-label">Sykestue — stoler</div>
+          {bedsCapacity != null && (
+            <div className="data" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>
+              {bedsOccupied}/{bedsCapacity} senger
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-subtle)' }}>
+            Kapasitet ikke satt
+          </div>
+          <div className="section-label">Sykestue</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function StatsGrid({ stats, lastUpdatedAt, prevStats, sickbaySettings, patients = [] }: StatsGridProps) {
   const [secondsAgo, setSecondsAgo] = useState<number | null>(null);
 
   useEffect(() => {
@@ -106,28 +146,21 @@ export function StatsGrid({ stats, lastUpdatedAt, prevStats, onFilter }: StatsGr
   if (!stats) return null;
 
   return (
-    <div style={{ marginBottom: 'var(--space-6)' }}>
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-        gap: 'var(--space-3)',
-      }}>
+    <div style={{ marginBottom: 'var(--space-4)' }}>
+      <div className="stats-grid">
         {STAT_ENTRIES.map(({ key, label }) => (
           <StatCard
             key={key}
-            statKey={key}
             label={label}
             value={stats[key] ?? 0}
             prevValue={prevStats?.[key]}
-            onFilter={onFilter}
           />
         ))}
+        <SickbayTile sickbaySettings={sickbaySettings} patients={patients} />
       </div>
       {secondsAgo !== null && (
-        <p style={{
-          fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-subtle)', marginTop: 'var(--space-1)', marginBottom: 0,
-        }}>
-          Oppdatert {secondsAgo}s siden
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginTop: 'var(--space-1)', marginBottom: 0 }}>
+          Oppdatert <span className="data">{secondsAgo}</span> s siden
         </p>
       )}
     </div>

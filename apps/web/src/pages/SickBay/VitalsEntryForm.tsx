@@ -1,4 +1,7 @@
-import { ACVPU_OPTIONS } from '../../lib/constants';
+import { calculateNEWS2, news2MonitoringLabel, type News2Input } from '@rkf/shared-types';
+import { ACVPU_OPTIONS, news2Colors } from '../../lib/constants';
+import type { AcvpuLevel } from '../../lib/types';
+import { Button } from '../../components/ui';
 
 export interface VitalsFormShape {
   pulse: string;
@@ -30,7 +33,44 @@ const NUMERIC_FIELDS = [
 
 type NumericFieldKey = (typeof NUMERIC_FIELDS)[number]['key'];
 
+const NEWS2_LEVEL_LABELS = { routine: 'rutine', low: 'lav', medium: 'middels', high: 'høy' } as const;
+
+const NEWS2_PARAM_LABELS: Array<[keyof ReturnType<typeof calculateNEWS2>['scores'], string]> = [
+  ['respiratoryRate', 'RF'],
+  ['spo2', 'SpO₂'],
+  ['systolicBP', 'BT'],
+  ['pulse', 'Puls'],
+  ['consciousness', 'ACVPU'],
+  ['temperature', 'Temp'],
+];
+
+const num = (v: string): number | undefined => {
+  if (!v.trim()) return undefined;
+  const n = Number.parseFloat(v.replace(',', '.'));
+  return Number.isFinite(n) ? n : undefined;
+};
+
+/** Build the NEWS2 input from what has been typed so far. */
+export function vitalsFormToNews2Input(form: VitalsFormShape): News2Input {
+  return {
+    pulse: num(form.pulse),
+    spo2: num(form.spo2),
+    respiratoryRate: num(form.rr),
+    systolicBP: num(form.bp),
+    temperature: num(form.temp),
+    acvpu: (form.acvpu || undefined) as AcvpuLevel | undefined,
+  };
+}
+
 export function VitalsEntryForm({ patientId, form, onChange, onSubmit }: VitalsEntryFormProps) {
+  const input = vitalsFormToNews2Input(form);
+  const hasAnyNews2Param = Object.values(input).some((v) => v !== undefined);
+  const preview = hasAnyNews2Param ? calculateNEWS2(input) : null;
+  const previewColors = preview ? news2Colors[preview.alertLevel] : null;
+  const missing = preview
+    ? NEWS2_PARAM_LABELS.filter(([key]) => preview.scores[key] === null).map(([, label]) => label)
+    : [];
+
   return (
     <div style={{
       marginTop: 'var(--space-3)', padding: 'var(--space-3)',
@@ -39,66 +79,74 @@ export function VitalsEntryForm({ patientId, form, onChange, onSubmit }: VitalsE
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
         {NUMERIC_FIELDS.map((f) => (
           <div key={f.key}>
-            <label htmlFor={`v-${patientId}-${f.key}`} style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>
+            <label
+              htmlFor={`v-${patientId}-${f.key}`}
+              className="section-label"
+              style={{ display: 'block', marginBottom: 4 }}
+            >
               {f.label}
             </label>
             <input
               id={`v-${patientId}-${f.key}`}
               type="number"
               inputMode={f.inputMode}
+              className="field field--data"
               value={form[f.key as NumericFieldKey]}
               onChange={(e) => onChange((v) => ({ ...v, [f.key]: e.target.value }))}
               placeholder={f.placeholder}
-              style={{
-                width: '100%', height: 44, textAlign: 'center',
-                borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-base)', fontWeight: 600,
-              }}
             />
           </div>
         ))}
       </div>
 
       <fieldset style={{ border: 'none', padding: 0, marginBottom: 'var(--space-3)' }}>
-        <legend style={{ fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)' }}>
+        <legend className="section-label" style={{ marginBottom: 'var(--space-2)' }}>
           Bevissthet (ACVPU)
         </legend>
-        <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 'var(--space-1)' }}>
           {ACVPU_OPTIONS.map((opt) => (
-            <button
+            <Button
               key={opt.value}
-              type="button"
+              variant="secondary"
+              size="sm"
               role="radio"
               aria-checked={form.acvpu === opt.value}
+              aria-label={`${opt.short} — ${opt.label}`}
               onClick={() => onChange((v) => ({ ...v, acvpu: v.acvpu === opt.value ? '' : opt.value }))}
-              style={{
-                flex: '1 0 auto',
-                minHeight: 36,
-                padding: '0 var(--space-2)',
-                borderRadius: 'var(--radius-sm)',
-                border: `1px solid ${form.acvpu === opt.value ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                background: form.acvpu === opt.value ? 'var(--color-brand-dim)' : 'transparent',
-                color: 'var(--color-text)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
+              className="data"
+              style={{ padding: 0, fontSize: 'var(--text-base)' }}
             >
               {opt.short}
-            </button>
+            </Button>
           ))}
         </div>
       </fieldset>
 
-      <button onClick={onSubmit} className="touch-target" style={{
-        width: '100%', minHeight: 40, borderRadius: 'var(--radius-sm)',
-        border: 'none', background: 'var(--color-brand)', color: 'white',
-        fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
-      }}>
+      {/* Live NEWS2 preview — tells the user what the set they are typing means
+          before they save it, and which parameters are still missing. */}
+      {preview && previewColors && (
+        <div
+          data-testid={`news2-preview-${patientId}`}
+          role="status"
+          aria-live="polite"
+          style={{
+            display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-2)',
+            marginBottom: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)',
+            borderRadius: 'var(--radius-sm)', background: previewColors.bg, color: previewColors.color,
+            fontSize: 'var(--text-sm)', fontWeight: 700,
+          }}
+        >
+          <span>NEWS2 foreløpig: <span className="data">{preview.total}</span> · {NEWS2_LEVEL_LABELS[preview.alertLevel]}</span>
+          <span style={{ fontWeight: 500 }}>· {news2MonitoringLabel(preview)}</span>
+          {missing.length > 0 && (
+            <span style={{ fontWeight: 500, opacity: 0.85 }}>· mangler {missing.join(', ')}</span>
+          )}
+        </div>
+      )}
+
+      <Button variant="ink" size="lg" block icon="activity" onClick={onSubmit}>
         Lagre vitale tegn
-      </button>
+      </Button>
     </div>
   );
 }

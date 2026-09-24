@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   TeamActionRequest,
@@ -8,7 +8,7 @@ import {
   type TeamPatientStatus,
 } from '@rkf/shared-types';
 import { db } from '../db/index.js';
-import { actionEvents, patients, teams } from '../db/schema.js';
+import { actionEvents, patients, teams, vitalReadings } from '../db/schema.js';
 import { canAccessEvent, requireAuth, requireRole } from '../middleware/auth.js';
 import { mapAction } from './action-events.js';
 import { broadcast } from './ws.js';
@@ -110,6 +110,15 @@ const TeamProfileBody = z.object({
   contactRadio: z.string().max(50).nullable().optional(),
 });
 
+// ── Lane 8 batch 3 (B): event set-up (gap B5) ──────────────────────
+const TeamPatchBody = z.object({
+  name: z.string().min(1).max(100).optional(),
+  transport: z.enum(['foot', 'bike', 'vehicle', 'atv']).optional(),
+  contactPhone: z.string().max(50).nullable().optional(),
+  contactRadio: z.string().max(50).nullable().optional(),
+  active: z.boolean().optional(),
+});
+
 export async function teamRoutes(app: FastifyInstance) {
   app.get('/:teamId', { preHandler: requireAuth }, async (request, reply) => {
     const user = (request as any).user as AuthUser;
@@ -175,6 +184,41 @@ export async function teamRoutes(app: FastifyInstance) {
     });
 
     return { team: { id: updated!.id, gear: updated!.gear, contactPhone: updated!.contactPhone, contactRadio: updated!.contactRadio } };
+  });
+
+  // Event set-up (gap B5): rename, re-equip, stand down (active=false) or
+  // reinstate a team. Coordinator/admin only — a patrol changes its own
+  // transport/profile through the routes above instead.
+  app.patch('/:teamId', { preHandler: [requireAuth, requireRole(['coordinator', 'admin'])] }, async (request, reply) => {
+    const user = (request as any).user as AuthUser;
+    const { teamId } = request.params as { teamId: string };
+    const parsed = TeamPatchBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Ugyldig lagdata', details: parsed.error.flatten() });
+    }
+
+    const [team] = await db.select().from(teams).where(eq(teams.id, teamId)).limit(1);
+    if (!team) return reply.code(404).send({ error: 'Lag ikke funnet' });
+    if (!canAccessEvent(user, team.eventId)) return reply.code(403).send({ error: 'Ingen tilgang til dette arrangementet' });
+
+    const updates: Partial<typeof teams.$inferInsert> = {};
+    if (parsed.data.name !== undefined) updates.name = parsed.data.name.trim();
+    if (parsed.data.transport !== undefined) updates.transport = parsed.data.transport;
+    if (parsed.data.contactPhone !== undefined) updates.contactPhone = parsed.data.contactPhone;
+    if (parsed.data.contactRadio !== undefined) updates.contactRadio = parsed.data.contactRadio;
+    if (parsed.data.active !== undefined) updates.active = parsed.data.active;
+
+    const [updated] = await db.update(teams).set(updates).where(eq(teams.id, teamId)).returning();
+    const mapped = { ...updated!, lastPositionUpdate: updated!.lastPositionUpdate?.toISOString() ?? null };
+
+    broadcast({
+      type: 'team.updated',
+      eventId: team.eventId,
+      payload: { team: mapped },
+      timestamp: new Date().toISOString(),
+    });
+
+    return { team: mapped };
   });
 
   app.post('/:teamId/actions', { preHandler: [requireAuth, requireRole(['first_aider', 'coordinator', 'admin'])] }, async (request, reply) => {
@@ -376,8 +420,12 @@ export async function teamRoutes(app: FastifyInstance) {
 
     // Closed patients (discharged / transferred) are no longer the field team's
     // concern — they must drop out of every bucket, otherwise "Egne pasienter"
-    // and "Utildelte pasienter" keep growing for the whole event.
-    const patientRows = allPatientRows.filter((row) => ACTIVE_PATIENT_STATUSES.has(row.status));
+    // and "Utildelte pasienter" keep growing for the whole event. A patient with
+    // handedOverAt set has already left the field for the tent, so it drops out
+    // the same way even while its status is still open.
+    const patientRows = allPatientRows.filter(
+      (row) => ACTIVE_PATIENT_STATUSES.has(row.status) && !row.handedOverAt,
+    );
 
     // ── Assigned patients (directly assigned to this team) ────────────────────
     const assignedPatients = patientRows.filter((row) => row.assignedTeamId === team.id);
@@ -439,6 +487,22 @@ export async function teamRoutes(app: FastifyInstance) {
       (row) => !assignedSet.has(row.id) && !engagedSet.has(row.id),
     );
 
+    // ── Latest vitals for the patients this team is working with ──────────
+    // A patrol that has just saved a set must see it (and its NEWS2) on the
+    // card; unassigned patients only need label and position.
+    const ownPatientIds = [...assignedPatients, ...engagedPatients].map((row) => row.id);
+    const latestVitalsByPatient = new Map<string, ReturnType<typeof mapVitals>>();
+    if (ownPatientIds.length > 0) {
+      const vitalsRows = await db
+        .select()
+        .from(vitalReadings)
+        .where(inArray(vitalReadings.patientId, ownPatientIds))
+        .orderBy(desc(vitalReadings.timestamp));
+      for (const row of vitalsRows) {
+        if (!latestVitalsByPatient.has(row.patientId)) latestVitalsByPatient.set(row.patientId, mapVitals(row));
+      }
+    }
+
     const toWorkspacePatient = (row: typeof assignedPatients[number]) => ({
       id: row.id,
       status: row.status,
@@ -450,6 +514,20 @@ export async function teamRoutes(app: FastifyInstance) {
       lon: row.lon ?? null,
       positionText: row.positionText ?? null,
       teamPatientStatus: patientStatusMap.get(row.id) ?? null,
+      latestVitals: latestVitalsByPatient.get(row.id) ?? null,
+      amkNotifiedAt: row.amkNotifiedAt ? row.amkNotifiedAt.toISOString() : null,
+      amkNotifiedBy: row.amkNotifiedBy ?? null,
+      seq: row.seq ?? null,
+      handedOverAt: row.handedOverAt ? row.handedOverAt.toISOString() : null,
+      handedOverByTeamId: row.handedOverByTeamId ?? null,
+      fieldOutcome: row.fieldOutcome ?? null,
+      // Transport request (gap B3)
+      transportNeed: row.transportNeed ?? null,
+      transportPickupText: row.transportPickupText ?? null,
+      transportRequestedAt: row.transportRequestedAt ? row.transportRequestedAt.toISOString() : null,
+      transportRequestedBy: row.transportRequestedBy ?? null,
+      transportTeamId: row.transportTeamId ?? null,
+      transportAssignedAt: row.transportAssignedAt ? row.transportAssignedAt.toISOString() : null,
     });
 
     const response = TeamWorkspaceResponse.parse({
@@ -465,4 +543,19 @@ export async function teamRoutes(app: FastifyInstance) {
 
     return response;
   });
+}
+
+function mapVitals(row: typeof vitalReadings.$inferSelect) {
+  return {
+    id: row.id,
+    timestamp: row.timestamp.toISOString(),
+    pulse: row.pulse ?? undefined,
+    spo2: row.spo2 ?? undefined,
+    respiratoryRate: row.respiratoryRate ?? undefined,
+    painScore: row.painScore ?? undefined,
+    systolicBP: row.systolicBp ?? undefined,
+    temperature: row.temperature ?? undefined,
+    onSupplementalOxygen: row.onSupplementalOxygen ?? undefined,
+    acvpu: row.acvpu ?? undefined,
+  };
 }

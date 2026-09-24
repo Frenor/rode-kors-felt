@@ -13,16 +13,41 @@ import {
   markTeamActionSyncing,
   removeTeamAction,
   type QueuedTeamActionPayload,
+  type QueuedTeamEndpointPayload,
 } from '../lib/offline-firstaid-queue';
 import { api } from '../lib/api';
-import type { TeamOperationalStatus, TeamPatientStatus, TeamWorkspacePatient, TeamWorkspaceResponse } from '../lib/types';
+import type { TeamMessage, TeamOperationalStatus, TeamPatientStatus, TeamWorkspacePatient, TeamWorkspaceResponse, TransportNeed } from '../lib/types';
 import type { TeamTransport } from '../stores/auth';
 import { VitalsEntryForm, EMPTY_VITALS_FORM, type VitalsFormShape } from './SickBay/VitalsEntryForm';
 import { PatientLocationRow } from './FirstAider/PatientLocationRow';
 import { PatientEngagementPicker } from './FirstAider/PatientEngagementPicker';
 import { TeamSettingsPanel, TRANSPORT_LABELS } from './FirstAider/TeamSettingsPanel';
 import { TeamStatusPickerSheet } from './FirstAider/TeamStatusPickerSheet';
-import { TeamChatSection } from './FirstAider/TeamChatSection';
+import { TeamChatSection, type ChatMessage } from './FirstAider/TeamChatSection';
+import { LastVitalsLine, News2Pill } from './FirstAider/LastVitalsLine';
+import { AssignmentBanner } from './FirstAider/AssignmentBanner';
+import { TriageChips } from './FirstAider/TriageChips';
+import { describeAssistanceNote } from './FirstAider/AssistanceReasonStep';
+import { resolveCloseOutcome } from './FirstAider/close-outcome';
+// Lane 8 batch 3 (field UI) — transport request, quick log, voice note, chat history.
+import { TransportRequestSheet } from './FirstAider/TransportRequestSheet';
+import { describeTransportStatus } from './FirstAider/transport-status';
+import { QuickLogSheet, type QuickLogSubmitPayload } from './FirstAider/QuickLogSheet';
+import { VoiceNoteButton } from './FirstAider/VoiceNoteButton';
+import { mergeTeamMessageHistory } from './FirstAider/team-message-history';
+import { Button, Icon, Pill, PatientNumberPill } from '../components/ui';
+import { sortByDistance } from '../lib/geo';
+import { patientNumber } from '../lib/patient-number';
+import { addPendingAssignment, loadPendingAssignments, removePendingAssignment } from '../lib/pending-assignments';
+import {
+  FIELD_TRIAGE_ORDER,
+  FIELD_TRIAGE_STYLE,
+  PATIENT_CLOSE_REASONS,
+  TEAM_OPERATIONAL_STATUS_LABELS,
+  TEAM_OPERATIONAL_STATUS_STYLE,
+  TEAM_PATIENT_STATUS_STYLE,
+  type FieldTriageStatus,
+} from '../lib/constants';
 
 /** Patient statuses that still concern a field team. Closed patients drop out of every list. */
 const OPEN_PATIENT_STATUSES = new Set(['incoming', 'in_treatment', 'observation']);
@@ -57,9 +82,24 @@ export function FirstAiderDashboard() {
   const { position: gpsPosition, status: gpsStatus, accuracy: gpsAccuracy, updatedAt: gpsUpdatedAt } = useGeolocation();
   const wsSend = useWsStore((s) => s.send);
   const onMessage = useWsStore((s) => s.onMessage);
-  const [messages, setMessages] = useState<Array<{ id: string; text: string; fromTeamId?: string; fromSelf: boolean; sentAt: string }>>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageText, setMessageText] = useState('');
   const [showChat, setShowChat] = useState(false);
+  // Ref mirror of `assignedPatients` — the team.message/patient.updated WS
+  // handler below has stable deps (see its useEffect) so it must read the
+  // latest value through a ref, not the stale closure over the state.
+  const assignedPatientsRef = useRef<any[]>([]);
+  assignedPatientsRef.current = assignedPatients;
+  // "Koordinator har tildelt dere: …" banner (gap A4) — persisted per
+  // event+team so a reload does not lose an unanswered assignment.
+  const [pendingAssignmentIds, setPendingAssignmentIds] = useState<string[]>([]);
+  // The reason chosen behind "Trenger bistand" (gap A3), shown on the banner.
+  const [needsAssistanceNote, setNeedsAssistanceNote] = useState<string | null>(null);
+  // Messages that arrived while the chat was collapsed — shown as a badge and
+  // announced with a vibration so a coordinator instruction is not missed.
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const showChatRef = useRef(showChat);
+  showChatRef.current = showChat;
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [sectorAssignments, setSectorAssignments] = useState<Record<string, { sector: string; assignedAt: string }>>({});
   // Per-patient state — accordion expand, vitals forms, and injury notes
@@ -74,6 +114,9 @@ export function FirstAiderDashboard() {
   const [perPatientSummaryError, setPerPatientSummaryError] = useState<Record<string, string>>({});
   const [perPatientPosEdit, setPerPatientPosEdit] = useState<Record<string, string>>({});
   const [perPatientPosError, setPerPatientPosError] = useState<Record<string, string>>({});
+  // Secondary edits (summary text, position text) live behind a disclosure so
+  // the card leads with status, vitals and help — not four "Lagre" buttons.
+  const [perPatientDetailsOpen, setPerPatientDetailsOpen] = useState<Record<string, boolean>>({});
   const [geoLookupLoading, setGeoLookupLoading] = useState<Record<string, boolean>>({});
   // Patients assigned to other teams discovered via WS events (removed from unassigned list)
   const [wsRemovedPatientIds, setWsRemovedPatientIds] = useState<Set<string>>(new Set());
@@ -91,10 +134,21 @@ export function FirstAiderDashboard() {
   const [gpsAgeTick, setGpsAgeTick] = useState(0);
   // Close patient flow
   const [closingPatientId, setClosingPatientId] = useState<string | null>(null);
+  const [perPatientCloseReason, setPerPatientCloseReason] = useState<Record<string, string>>({});
   const [perPatientCloseNote, setPerPatientCloseNote] = useState<Record<string, string>>({});
   const [perPatientCloseError, setPerPatientCloseError] = useState<Record<string, string>>({});
-  const [closedPatients, setClosedPatients] = useState<Array<{ id: string; label: string; closedAt: string; note: string }>>([]);
+  const [closedPatients, setClosedPatients] = useState<Array<{ id: string; label: string; closedAt: string; outcomeLabel: string; extraNote: string | null; seq?: number | null }>>([]);
+  const [perPatientAmkError, setPerPatientAmkError] = useState<Record<string, string>>({});
+  const [perPatientTriageEdit, setPerPatientTriageEdit] = useState<Record<string, FieldTriageStatus>>({});
+  const [perPatientTriageError, setPerPatientTriageError] = useState<Record<string, string>>({});
   const [showClosedPatients, setShowClosedPatients] = useState(false);
+  // Transport request (gap B3 / 8.26)
+  const [transportSheetPatientId, setTransportSheetPatientId] = useState<string | null>(null);
+  const [perPatientTransportError, setPerPatientTransportError] = useState<Record<string, string>>({});
+  // Quick log — "Behandlet på stedet" (gap A8 / 8.28)
+  const [showQuickLog, setShowQuickLog] = useState(false);
+  const [quickLogSubmitting, setQuickLogSubmitting] = useState(false);
+  const [quickLogError, setQuickLogError] = useState('');
   // Broadcast GPS position every 30s when team is selected
   useTeamPositionBroadcast(selectedTeam);
 
@@ -117,6 +171,12 @@ export function FirstAiderDashboard() {
       setSelectedTeam(null);
     }
   }, [selectedTeam, teams, setSelectedTeam]);
+
+  // Restore any assignment banners the patrol has not yet answered (gap A4).
+  useEffect(() => {
+    if (!eventId || !selectedTeam) { setPendingAssignmentIds([]); return; }
+    setPendingAssignmentIds(loadPendingAssignments(eventId, selectedTeam));
+  }, [eventId, selectedTeam]);
 
   /**
    * Adopt the server's view of this team's per-patient engagement unless we
@@ -156,14 +216,26 @@ export function FirstAiderDashboard() {
     }
   }, [eventId, selectedTeam, clearPatientStatus, setPatientStatus]);
 
+  // Chat history (gap B9 / 8.29) — merges the persisted message history into
+  // the live `messages` list: everyone-addressed, directed to this team, or
+  // sent by this team (marked `fromSelf`); receipts are not chat and are
+  // skipped; de-duplicated by id against whatever the socket already added.
+  const seedTeamMessages = useCallback((teamId: string, fetched: TeamMessage[]) => {
+    setMessages((prev) => mergeTeamMessageHistory(teamId, fetched, prev));
+  }, []);
+
   const loadWorkspace = useCallback(async () => {
     if (!eventId || !selectedTeam) return;
     setWorkspaceLoading(true);
     try {
-      const [ws, patientsRes] = await Promise.all([
+      const [ws, patientsRes, messagesRes] = await Promise.all([
         api.getTeamWorkspace(selectedTeam),
         api.getPatients(eventId, { assignedTeamId: selectedTeam }).catch((err) => {
           console.error('[firstaid] Failed to load assigned patients', err);
+          return null;
+        }),
+        api.getTeamMessages(eventId).catch((err) => {
+          console.error('[firstaid] Failed to load team message history', err);
           return null;
         }),
       ]);
@@ -176,6 +248,7 @@ export function FirstAiderDashboard() {
           : ws.assignedPatients,
       );
       reconcilePatientStatuses(ws);
+      if (messagesRes) seedTeamMessages(selectedTeam, messagesRes.messages);
       const hasPendingTeamStatus = (queuedTeamActionsRef.current ?? []).some((i) => i.payload.type === 'team.status_set');
       if (!hasPendingTeamStatus) setTeamStatus(eventId, selectedTeam, ws.latestStatus);
     } catch (err) {
@@ -184,7 +257,7 @@ export function FirstAiderDashboard() {
     } finally {
       setWorkspaceLoading(false);
     }
-  }, [eventId, selectedTeam, reconcilePatientStatuses, setTeamStatus, addToast]);
+  }, [eventId, selectedTeam, reconcilePatientStatuses, setTeamStatus, addToast, seedTeamMessages]);
 
   // Load on team change, and re-sync whenever we regain connectivity or the
   // user returns to the app (phones suspend background tabs for long periods).
@@ -229,8 +302,20 @@ export function FirstAiderDashboard() {
             monitoredPatients: prev.monitoredPatients.filter((p) => p.id !== patientId),
             unassignedPatients: prev.unassignedPatients.filter((p) => p.id !== patientId),
           } : prev);
-          if (eventId && selectedTeam) clearPatientStatus(eventId, selectedTeam, patientId);
+          if (eventId && selectedTeam) {
+            clearPatientStatus(eventId, selectedTeam, patientId);
+            setPendingAssignmentIds(removePendingAssignment(eventId, selectedTeam, patientId));
+          }
           return;
+        }
+
+        // A fresh assignment to us — not a re-broadcast of one we already had
+        // — vibrates and raises the persistent banner (gap A4). Checked via a
+        // ref because this handler's own deps are intentionally stable.
+        const wasAssignedToUs = assignedPatientsRef.current.some((p) => p.id === patientId);
+        if (selectedTeam && patient.assignedTeamId === selectedTeam && !wasAssignedToUs) {
+          navigator.vibrate?.([200, 100, 200, 100, 200]);
+          if (eventId) setPendingAssignmentIds(addPendingAssignment(eventId, selectedTeam, patientId));
         }
 
         setAssignedPatients((prev) => {
@@ -341,18 +426,32 @@ export function FirstAiderDashboard() {
     const off = onMessage((msg) => {
       if (msg.type === 'team.message') {
         const payload = (msg.payload as any) ?? {};
+        // A receipt ("Mottatt") is not chat — it only flips the ack flag on
+        // the directed message it answers (gap B10).
+        if (payload.ackOf) {
+          const ackOf = payload.ackOf as string;
+          setMessages((prev) => prev.map((m) => (m.id === ackOf ? { ...m, acknowledged: true } : m)));
+          return;
+        }
         // Skip server echo of our own messages — they were added optimistically in sendMessage.
         if (payload.fromTeamId === selectedTeam) return;
+        // A message addressed to another patrol is not ours to read.
+        if (payload.toTeamId && payload.toTeamId !== selectedTeam) return;
         setMessages((prev) => [
           ...prev,
           {
             id: payload.id ?? crypto.randomUUID(),
             text: payload.text ?? '',
             fromTeamId: payload.fromTeamId,
+            toTeamId: payload.toTeamId ?? null,
             fromSelf: false,
             sentAt: payload.sentAt ?? new Date().toISOString(),
           },
         ]);
+        if (!showChatRef.current) {
+          setUnreadChatCount((count) => count + 1);
+          navigator.vibrate?.([120, 60, 120]);
+        }
         setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
       } else if (msg.type === 'team.status_changed' || msg.type === 'team.session_changed') {
         // Keep several phones in the same patrol (and server-derived
@@ -398,7 +497,7 @@ export function FirstAiderDashboard() {
     return off;
   }, [onMessage, selectedTeam, eventId, setTeamStatus, setPatientStatus, clearPatientStatus]);
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!messageText.trim() || !eventId) return;
     const text = messageText.trim();
     const delivered = wsSend({
@@ -408,8 +507,34 @@ export function FirstAiderDashboard() {
       timestamp: new Date().toISOString(),
     });
     if (!delivered) {
-      // Chat is realtime-only: never pretend a message went out while offline.
-      addToast({ level: 'urgent', message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.', autoDismissMs: 6_000 });
+      // Demo mode has no socket, so `wsSend` always returns false there —
+      // fall back to the demo store's in-memory list instead of only
+      // toasting, so the demo chat flow actually works. In real mode
+      // `api.sendTeamMessage` throws (it is demo-only) and the catch below
+      // shows the same "not connected" toast as before: chat is
+      // realtime-only there, never a pretend send.
+      try {
+        const { message } = await api.sendTeamMessage(eventId, {
+          fromTeamId: selectedTeam ?? null,
+          fromLabel: selectedTeamData?.name ?? null,
+          text,
+        });
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: message.id,
+            text: message.text,
+            fromTeamId: message.fromTeamId ?? undefined,
+            toTeamId: message.toTeamId ?? null,
+            fromSelf: true,
+            sentAt: message.sentAt,
+          },
+        ]);
+        setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+        setMessageText('');
+      } catch {
+        addToast({ level: 'urgent', message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.', autoDismissMs: 6_000 });
+      }
       return;
     }
     // Add optimistically so the sender sees the message immediately.
@@ -425,6 +550,23 @@ export function FirstAiderDashboard() {
     ]);
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     setMessageText('');
+  };
+
+  // "Mottatt" on a directed coordinator message — radio discipline expects a
+  // read-back (gap B10).
+  const handleAckMessage = (message: ChatMessage) => {
+    if (!eventId) return;
+    const delivered = wsSend({
+      type: 'team.message',
+      eventId,
+      payload: { fromTeamId: selectedTeam ?? undefined, toTeamId: 'coordinator', ackOf: message.id, text: 'Mottatt' },
+      timestamp: new Date().toISOString(),
+    });
+    if (!delivered) {
+      addToast({ level: 'urgent', message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.', autoDismissMs: 6_000 });
+      return;
+    }
+    setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, acknowledged: true } : m)));
   };
 
   const TRANSPORT_TRAVEL_MODE: Record<TeamTransport, string> = {
@@ -474,12 +616,11 @@ export function FirstAiderDashboard() {
     }
   };
 
-  const teamStatusLabels: Record<TeamOperationalStatus, string> = {
-    available: 'Ledig',
-    en_route: 'På vei',
-    on_scene: 'Fremme på stedet',
-    needs_assistance: 'Trenger bistand',
-    unavailable: 'Utilgjengelig',
+  const toggleChat = () => {
+    setShowChat((open) => {
+      if (!open) setUnreadChatCount(0);
+      return !open;
+    });
   };
 
   const workspaceKey = eventId && selectedTeam ? `${eventId}:${selectedTeam}` : null;
@@ -493,7 +634,7 @@ export function FirstAiderDashboard() {
     (p) => !assignedPatients.some((a) => a.id === p.id),
   );
 
-  const queueAndSyncTeamAction = async (teamId: string, payload: QueuedTeamActionPayload) => {
+  const queueAndSyncTeamAction = async (teamId: string, payload: QueuedTeamEndpointPayload) => {
     await enqueueTeamAction(teamId, payload);
     if (!navigator.onLine) return;
     try {
@@ -517,6 +658,7 @@ export function FirstAiderDashboard() {
       clientActionId: crypto.randomUUID(),
     };
     setTeamStatus(eventId, selectedTeam, status);
+    setNeedsAssistanceNote(status === 'needs_assistance' ? (note ?? null) : null);
     await queueAndSyncTeamAction(selectedTeam, payload);
   };
 
@@ -576,11 +718,24 @@ export function FirstAiderDashboard() {
       temperature: form.temp ? parseFloat(form.temp) : undefined,
       acvpu: form.acvpu || undefined,
     };
+    // No network: keep the set locally and say so. The team header counts it
+    // as "venter på sending" until the sync hook has replayed it.
+    if (!navigator.onLine && selectedTeam) {
+      await enqueueTeamAction(selectedTeam, {
+        type: 'patient.vitals_record', patientId, vitals: payload, clientActionId: crypto.randomUUID(),
+      });
+      setPerPatientVitalsForm((prev) => ({ ...prev, [patientId]: EMPTY_VITALS_FORM }));
+      setPerPatientVitalsError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'warning', message: 'Ingen nett — vitale tegn er lagret lokalt og sendes når tilkoblingen er tilbake', autoDismissMs: 6_000 });
+      return;
+    }
     try {
       await api.recordVitals(patientId, payload as Record<string, number | undefined>);
       setPerPatientVitalsForm((prev) => ({ ...prev, [patientId]: EMPTY_VITALS_FORM }));
       setPerPatientVitalsError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
       addToast({ level: 'info', message: 'Vitale tegn lagret', autoDismissMs: 2_500 });
+      // Show the set (and its NEWS2) on the card straight away.
+      void loadWorkspace();
     } catch {
       setPerPatientVitalsError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre vitals — prøv igjen.' }));
     }
@@ -590,6 +745,15 @@ export function FirstAiderDashboard() {
     const text = perPatientNoteText[patientId]?.trim();
     if (!text) return;
     const author = selectedTeamData?.name ?? 'Ukjent lag';
+    if (!navigator.onLine && selectedTeam) {
+      await enqueueTeamAction(selectedTeam, {
+        type: 'patient.note_add', patientId, text, author, clientActionId: crypto.randomUUID(),
+      });
+      setPerPatientNoteText((prev) => ({ ...prev, [patientId]: '' }));
+      setPerPatientNoteError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'warning', message: 'Ingen nett — notatet er lagret lokalt og sendes når tilkoblingen er tilbake', autoDismissMs: 6_000 });
+      return;
+    }
     try {
       await api.addPatientNote(patientId, text, author);
       setPerPatientNoteText((prev) => ({ ...prev, [patientId]: '' }));
@@ -645,18 +809,28 @@ export function FirstAiderDashboard() {
     }
   };
 
-  const handleClosePatient = async (patientId: string, patientLabel: string) => {
-    const note = (perPatientCloseNote[patientId] ?? '').trim();
-    if (!note) {
-      setPerPatientCloseError((prev) => ({ ...prev, [patientId]: 'Skriv inn årsak for avslutning.' }));
+  const handleClosePatient = async (patientId: string, patientLabel: string, patientSeq?: number | null) => {
+    const reason = PATIENT_CLOSE_REASONS.find((r) => r.id === perPatientCloseReason[patientId]);
+    if (!reason) {
+      setPerPatientCloseError((prev) => ({ ...prev, [patientId]: 'Velg årsak for avslutning.' }));
       return;
     }
+    const extra = perPatientCloseNote[patientId] ?? '';
     const author = selectedTeamData?.name ?? 'Ukjent lag';
+    // Hand-over ≠ finished (gap A1): only handed_to_ambulance/treated_on_scene/
+    // false_alarm/disappeared close the patient; handed_to_sickbay keeps it
+    // open — it is in the tent now, not done.
+    const outcome = resolveCloseOutcome({
+      reasonId: reason.id,
+      reasonLabel: reason.label,
+      teamId: selectedTeam,
+      teamName: author,
+      extraNote: extra,
+      nowIso: new Date().toISOString(),
+    });
     try {
-      await api.addPatientNote(patientId, `Avsluttet: ${note}`, author);
-      // Close on the server too — otherwise the coordinator and sick bay keep
-      // the patient as active and it reappears here after a reload.
-      await api.updatePatient(patientId, { status: 'discharged' });
+      await api.addPatientNote(patientId, outcome.noteText, author);
+      await api.updatePatient(patientId, outcome.updatePayload);
       setAssignedPatients((prev) => prev.filter((p) => p.id !== patientId));
       setWorkspace((prev) => prev ? {
         ...prev,
@@ -671,31 +845,166 @@ export function FirstAiderDashboard() {
         status: null,
         clientActionId: crypto.randomUUID(),
       });
+      if (eventId && selectedTeam) {
+        setPendingAssignmentIds(removePendingAssignment(eventId, selectedTeam, patientId));
+      }
       setClosedPatients((prev) => [
-        { id: patientId, label: patientLabel, closedAt: new Date().toISOString(), note },
+        {
+          id: patientId,
+          label: patientLabel,
+          closedAt: new Date().toISOString(),
+          outcomeLabel: outcome.outcomeLabel,
+          extraNote: extra.trim() || null,
+          seq: patientSeq ?? null,
+        },
         ...prev,
       ]);
       setClosingPatientId(null);
+      setPerPatientCloseReason((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
       setPerPatientCloseNote((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
       setPerPatientCloseError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
       if (expandedPatientId === patientId) setExpandedPatientId(null);
-      addToast({ level: 'info', message: 'Pasient avsluttet', autoDismissMs: 3_000 });
+      // Never "Pasient avsluttet" — a hand-over is not the same as finished.
+      const numberLabel = patientNumber({ seq: patientSeq });
+      addToast({
+        level: 'info',
+        message: numberLabel ? `${numberLabel} ${outcome.toastMessage}` : outcome.toastMessage,
+        autoDismissMs: 3_000,
+      });
     } catch {
       setPerPatientCloseError((prev) => ({ ...prev, [patientId]: 'Kunne ikke avslutte pasient — prøv igjen.' }));
     }
   };
 
-  const TRIAGE_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-    red:    { bg: '#fee2e2', text: '#b91c1c', label: 'Rød' },
-    yellow: { bg: '#fef9c3', text: '#854d0e', label: 'Gul' },
-    green:  { bg: '#dcfce7', text: '#166534', label: 'Grønn' },
-    black:  { bg: '#f1f5f9', text: '#1e293b', label: 'Svart' },
+  // "Ring 113 / AMK er varslet" on red/yellow own-patient cards (gap B2).
+  const handleAmkNotified = async (patientId: string) => {
+    setPerPatientAmkError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    try {
+      await api.executePatientAction(patientId, { type: 'amk.notified' });
+      await loadWorkspace();
+    } catch {
+      setPerPatientAmkError((prev) => ({ ...prev, [patientId]: 'Kunne ikke varsle AMK — prøv igjen.' }));
+    }
   };
 
-  const PATIENT_STATUS_STYLE: Record<string, { label: string; bg: string; color: string }> = {
-    en_route_to_patient: { label: 'På vei',       bg: '#fef3c7', color: '#92400e' },
-    transporting:        { label: 'Transporterer', bg: '#dbeafe', color: '#1e40af' },
-    monitoring:          { label: 'Overvåker',     bg: '#dcfce7', color: '#166534' },
+  const handleAmkCleared = async (patientId: string) => {
+    setPerPatientAmkError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    try {
+      await api.executePatientAction(patientId, { type: 'amk.cleared' });
+      await loadWorkspace();
+    } catch {
+      setPerPatientAmkError((prev) => ({ ...prev, [patientId]: 'Kunne ikke angre — prøv igjen.' }));
+    }
+  };
+
+  // Triage chips inside "Rediger sammendrag / posisjon" (gap A2).
+  const handleSaveTriage = async (patientId: string, currentTriage: FieldTriageStatus | null) => {
+    const next = perPatientTriageEdit[patientId];
+    if (!next || next === currentTriage) return;
+    const fromLabel = currentTriage ? FIELD_TRIAGE_STYLE[currentTriage].label.toLowerCase() : 'ukjent';
+    const toLabel = FIELD_TRIAGE_STYLE[next].label.toLowerCase();
+    const author = selectedTeamData?.name ?? 'Ukjent lag';
+    try {
+      await api.updatePatient(patientId, { triageStatus: next });
+      await api.addPatientNote(patientId, `Triage endret ${fromLabel} → ${toLabel}`, author);
+      setPerPatientTriageError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+      addToast({ level: 'info', message: 'Triage lagret', autoDismissMs: 2_500 });
+      void loadWorkspace();
+    } catch {
+      setPerPatientTriageError((prev) => ({ ...prev, [patientId]: 'Kunne ikke lagre triage — prøv igjen.' }));
+    }
+  };
+
+  // "Be om transport" (gap B3 / 8.26).
+  const handleRequestTransport = async (patientId: string, need: TransportNeed, pickupText: string) => {
+    setPerPatientTransportError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    try {
+      await api.executePatientAction(patientId, { type: 'transport.requested', need, pickupText: pickupText || undefined });
+      setTransportSheetPatientId(null);
+      await loadWorkspace();
+    } catch {
+      setPerPatientTransportError((prev) => ({ ...prev, [patientId]: 'Kunne ikke be om transport — prøv igjen.' }));
+    }
+  };
+
+  const handleClearTransport = async (patientId: string) => {
+    setPerPatientTransportError((prev) => { const n = { ...prev }; delete n[patientId]; return n; });
+    try {
+      await api.executePatientAction(patientId, { type: 'transport.cleared' });
+      await loadWorkspace();
+    } catch {
+      setPerPatientTransportError((prev) => ({ ...prev, [patientId]: 'Kunne ikke avbryte transport — prøv igjen.' }));
+    }
+  };
+
+  // Quick log — "Behandlet på stedet" (gap A8 / 8.28): registers and closes
+  // the patient in one submit instead of a full report + close round trip.
+  const handleQuickLogSubmit = async (payload: QuickLogSubmitPayload) => {
+    if (!eventId) return;
+    setQuickLogSubmitting(true);
+    setQuickLogError('');
+    try {
+      const res = await api.createFieldPatient(eventId, {
+        label: payload.label,
+        triageStatus: payload.triageStatus,
+        description: payload.description,
+        positionText: payload.positionText,
+        lat: payload.lat,
+        lon: payload.lon,
+        assignedTeamId: selectedTeam,
+        ageGroup: payload.ageGroup,
+        fieldOutcome: 'treated_on_scene',
+        status: 'discharged',
+      });
+      setShowQuickLog(false);
+      const numberLabel = patientNumber(res.patient);
+      setClosedPatients((prev) => [
+        {
+          id: res.patient.id,
+          label: payload.label,
+          closedAt: new Date().toISOString(),
+          outcomeLabel: 'Behandlet på stedet',
+          extraNote: payload.description,
+          seq: res.patient.seq ?? null,
+        },
+        ...prev,
+      ]);
+      addToast({
+        level: 'info',
+        message: numberLabel ? `Loggført ${numberLabel} — behandlet på stedet` : 'Loggført — behandlet på stedet',
+        autoDismissMs: 3_000,
+      });
+    } catch {
+      setQuickLogError('Kunne ikke loggføre — prøv igjen.');
+    } finally {
+      setQuickLogSubmitting(false);
+    }
+  };
+
+  // Assignment banner responses (gap A4).
+  const handleAcceptAssignment = async (patientId: string) => {
+    if (!eventId || !selectedTeam) return;
+    await handleSetPatientStatus(patientId, 'en_route_to_patient');
+    setPendingAssignmentIds(removePendingAssignment(eventId, selectedTeam, patientId));
+  };
+
+  const handleDeclineAssignment = (patientId: string) => {
+    if (!eventId || !selectedTeam) return;
+    const patient = combinedAssignedPatients.find((p) => p.id === patientId);
+    const label = patient ? ((patient as any).label || (patient as any).presentingComplaint || 'pasient') : 'pasient';
+    const number = patient ? patientNumber(patient as any) : null;
+    const teamName = selectedTeamData?.name ?? 'Laget';
+    const text = `${teamName} kan ikke ta ${number ? `${number} ` : ''}${label}`;
+    const delivered = wsSend({
+      type: 'team.message',
+      eventId,
+      payload: { fromTeamId: selectedTeam, toTeamId: 'coordinator', text },
+      timestamp: new Date().toISOString(),
+    });
+    if (!delivered) {
+      addToast({ level: 'urgent', message: 'Ikke tilkoblet — meldingen ble ikke sendt. Bruk samband.', autoDismissMs: 6_000 });
+    }
+    setPendingAssignmentIds(removePendingAssignment(eventId, selectedTeam, patientId));
   };
 
   const selectedTeamData = useMemo(() => teams.find((t) => t.id === selectedTeam) ?? null, [teams, selectedTeam]);
@@ -718,13 +1027,17 @@ export function FirstAiderDashboard() {
     ];
   }, [assignedPatients, monitoredPatients, patientStatusMap, eventId, selectedTeam, workspace?.unassignedPatients]);
 
+  // Sorted by distance from the phone's GPS (gap A10) — "Vi drar til denne"
+  // is a distance decision on a 40 km course; patients without a position
+  // sort last rather than scattering by update order.
   const filteredUnassigned = useMemo(() => {
     const assignedIds = new Set(combinedAssignedPatients.map((p) => p.id));
     const closedIds = new Set(closedPatients.map((p) => p.id));
-    return (workspace?.unassignedPatients ?? []).filter(
+    const filtered = (workspace?.unassignedPatients ?? []).filter(
       (p) => !wsRemovedPatientIds.has(p.id) && !assignedIds.has(p.id) && !closedIds.has(p.id),
     );
-  }, [workspace?.unassignedPatients, wsRemovedPatientIds, combinedAssignedPatients, closedPatients]);
+    return sortByDistance(filtered, gpsPosition);
+  }, [workspace?.unassignedPatients, wsRemovedPatientIds, combinedAssignedPatients, closedPatients, gpsPosition]);
 
   const INJURY_TYPES = [
     'Brudd / skade',
@@ -738,13 +1051,6 @@ export function FirstAiderDashboard() {
     'Forgiftning',
     'Hypotermi',
     'Andre',
-  ];
-
-  const REPORT_TRIAGE: Array<{ value: string; label: string; bg: string; color: string }> = [
-    { value: 'red',    label: 'Rød',    bg: '#fee2e2', color: '#b91c1c' },
-    { value: 'yellow', label: 'Gul',    bg: '#fef9c3', color: '#854d0e' },
-    { value: 'green',  label: 'Grønn',  bg: '#dcfce7', color: '#166534' },
-    { value: 'black',  label: 'Svart',  bg: '#f1f5f9', color: '#1e293b' },
   ];
 
   useEffect(() => {
@@ -783,7 +1089,14 @@ export function FirstAiderDashboard() {
       setReportDescription('');
       setReportPositionText('');
       setShowReportPatient(false);
-      addToast({ level: 'info', message: 'Pasient meldt til koordinator', autoDismissMs: 3_000 });
+      // Shared patient number (gap A5) — the same "#12" the coordinator and
+      // sick bay will use for this patient from now on.
+      const numberLabel = patientNumber(res.patient);
+      addToast({
+        level: 'info',
+        message: numberLabel ? `Pasient ${numberLabel} meldt til koordinator` : 'Pasient meldt til koordinator',
+        autoDismissMs: 3_000,
+      });
     } catch {
       setReportError('Kunne ikke registrere pasient — prøv igjen.');
     } finally {
@@ -807,102 +1120,138 @@ export function FirstAiderDashboard() {
     window.open(`https://maps.google.com/maps?daddr=${lat},${lon}&travelmode=${mode}`, '_blank', 'noopener');
   };
 
-  const teamStatusLabel = teamStatusLabels[selectedTeamStatus as TeamOperationalStatus];
+  const teamStatusLabel = TEAM_OPERATIONAL_STATUS_LABELS[selectedTeamStatus] ?? selectedTeamStatus;
+  const teamStatusStyle = TEAM_OPERATIONAL_STATUS_STYLE[selectedTeamStatus as TeamOperationalStatus]
+    ?? TEAM_OPERATIONAL_STATUS_STYLE.available;
   const isReportFormInvalid = !reportInjuryType && !reportDescription.trim();
+  const errorTextStyle = { fontSize: 'var(--text-sm)', color: 'var(--color-status-critical)', fontWeight: 600 };
 
   return (
     <div data-testid="firstaid-patient-workspace" className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: '6.25rem' }}>
       {/* Team selection */}
       {!selectedTeam && teams.length > 0 && (
         <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>
+          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-3)', textWrap: 'balance' }}>
             Velg patrulje
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             {teams.map((team) => (
-              <button
+              <Button
                 key={team.id}
+                variant="secondary"
+                size="xl"
+                block
+                iconEnd="chevronRight"
                 onClick={() => setSelectedTeam(team.id)}
-                className="touch-target"
-                style={{
-                  width: '100%',
-                  minHeight: 'var(--touch-min)',
-                  padding: 'var(--space-4)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                  color: 'var(--color-text)',
-                  fontSize: 'var(--text-base)',
-                  fontWeight: 600,
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
+                style={{ justifyContent: 'space-between', textAlign: 'left', fontSize: 'var(--text-lg)' }}
               >
-                <span>{team.name}</span>
+                <span style={{ flex: 1 }}>{team.name}</span>
                 {team.transport && (
-                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--color-text-subtle)', fontFamily: 'var(--font-mono)' }}>
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--color-text-muted)' }}>
                     {TRANSPORT_LABELS[team.transport as TeamTransport] ?? team.transport}
                   </span>
                 )}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Sticky team header */}
+      {/* Sticky team header — offset by the 56 px app header so it does not slide underneath it */}
       {selectedTeam && (
-        <header style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-          padding: 'var(--space-3) var(--space-4)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)',
-          background: 'var(--color-surface)',
-          position: 'sticky', top: 0, zIndex: 10,
-        }}>
-          <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', flex: 1 }}>
-            {selectedTeamData?.name ?? 'Ukjent lag'}
-          </span>
-          <span style={{
-            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-            color: pendingTeamActionCount > 0 ? 'var(--color-status-warning)' : failedTeamActionCount > 0 ? 'var(--color-status-critical)' : 'var(--color-text-subtle)',
-          }}>
-            {pendingTeamActionCount > 0 ? `↑${pendingTeamActionCount}` : failedTeamActionCount > 0 ? '!' : '✓'}
-          </span>
-          <button
+        <header
+          className={`card${selectedTeamStatus === 'needs_assistance' ? ' card--critical' : ''}`}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            position: 'sticky', top: 56, zIndex: 10,
+            boxShadow: 'var(--shadow-sm)',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selectedTeamData?.name ?? 'Ukjent lag'}
+            </span>
+            <span
+              aria-live="polite"
+              style={{
+                fontSize: 'var(--text-xs)', fontWeight: 600,
+                color: pendingTeamActionCount > 0 ? 'var(--color-status-warning)' : failedTeamActionCount > 0 ? 'var(--color-status-critical)' : 'var(--color-text-muted)',
+              }}
+            >
+              {pendingTeamActionCount > 0
+                ? <><span className="data">{pendingTeamActionCount}</span> venter på sending</>
+                : failedTeamActionCount > 0
+                  ? <><span className="data">{failedTeamActionCount}</span> ikke sendt</>
+                  : 'Alt sendt'}
+            </span>
+          </div>
+          <Button
+            variant="tone"
+            tone={{ color: teamStatusStyle.color, bg: teamStatusStyle.bg }}
+            pill
             onClick={() => setShowStatusPicker(true)}
             data-testid="firstaid-field-status-pill"
-            style={{
-              minHeight: 32, padding: '0 var(--space-3)',
-              borderRadius: 'var(--radius-full)',
-              border: `1px solid ${selectedTeamStatus === 'needs_assistance' ? 'var(--color-status-critical-border)' : 'var(--color-border)'}`,
-              background: selectedTeamStatus === 'needs_assistance' ? 'var(--color-status-critical-bg)' : 'var(--color-surface-sunken)',
-              color: selectedTeamStatus === 'needs_assistance' ? 'var(--color-status-critical)' : 'var(--color-text-subtle)',
-              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 600,
-              cursor: 'pointer',
-            }}
+            aria-label={`Lagstatus: ${teamStatusLabel}. Trykk for å endre`}
+            style={{ background: teamStatusStyle.bg, flexShrink: 0 }}
           >
+            <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: '50%', background: teamStatusStyle.color }} />
             {teamStatusLabel}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
+            iconOnly
+            icon="sliders"
+            selected={showSettings}
             onClick={() => setShowSettings((v) => !v)}
-            aria-label="Innstillinger"
+            aria-label="Innstillinger for patruljen"
             aria-expanded={showSettings}
-            style={{
-              minHeight: 32, minWidth: 32, padding: '0 var(--space-2)',
-              borderRadius: 'var(--radius-sm)',
-              border: `1px solid ${showSettings ? 'var(--color-brand)' : 'var(--color-border)'}`,
-              background: showSettings ? 'var(--color-brand-dim)' : 'transparent',
-              color: showSettings ? 'var(--color-brand)' : 'var(--color-text-subtle)',
-              fontSize: 'var(--text-base)', cursor: 'pointer',
-            }}
-          >
-            ⚙
-          </button>
+            style={{ flexShrink: 0 }}
+          />
         </header>
+      )}
+
+      {/* Assignment from the coordinator — un-missable and persisted until answered (gap A4) */}
+      {selectedTeam && pendingAssignmentIds.map((id) => {
+        const patient = combinedAssignedPatients.find((p) => p.id === id);
+        if (!patient) return null;
+        const label = (patient as any).label || (patient as any).presentingComplaint || `Pasient ${id.slice(0, 8)}`;
+        return (
+          <AssignmentBanner
+            key={id}
+            patient={{ id, label, seq: (patient as any).seq ?? null }}
+            onAccept={handleAcceptAssignment}
+            onDecline={handleDeclineAssignment}
+          />
+        );
+      })}
+
+      {/* Persistent banner while the patrol has asked for help — one tap to stand down */}
+      {selectedTeam && selectedTeamStatus === 'needs_assistance' && (
+        <section
+          role="alert"
+          data-testid="firstaid-needs-assistance-banner"
+          className="card card--critical"
+          style={{
+            padding: 'var(--space-3) var(--space-4)',
+            background: 'var(--color-status-critical-bg)',
+            color: 'var(--color-status-critical)',
+            display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 'var(--text-base)', display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
+            <Icon name="alert" size="lg" style={{ marginTop: 2 }} />
+            <span>Dere har meldt behov for bistand — koordinator og sykestue er varslet.</span>
+          </div>
+          {needsAssistanceNote && (
+            <div data-testid="firstaid-needs-assistance-reason" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+              {describeAssistanceNote(needsAssistanceNote) ?? needsAssistanceNote}
+            </div>
+          )}
+          <Button variant="secondary" size="lg" block icon="check" onClick={() => setTeamOperationalStatus('available')} style={{ color: 'var(--color-status-critical)', borderColor: 'var(--color-status-critical)' }}>
+            Avklart — vi er ledige igjen
+          </Button>
+        </section>
       )}
 
       {/* Status picker bottom sheet */}
@@ -913,6 +1262,19 @@ export function FirstAiderDashboard() {
           onClose={() => setShowStatusPicker(false)}
         />
       )}
+
+      {/* Transport request bottom sheet (gap B3 / 8.26) */}
+      {transportSheetPatientId && (() => {
+        const transportPatient = combinedAssignedPatients.find((p) => p.id === transportSheetPatientId);
+        const initialPickupText = transportPatient ? ((transportPatient as TeamWorkspacePatient).positionText ?? '') : '';
+        return (
+          <TransportRequestSheet
+            initialPickupText={initialPickupText}
+            onSend={(need, pickupText) => { void handleRequestTransport(transportSheetPatientId, need, pickupText); }}
+            onClose={() => setTransportSheetPatientId(null)}
+          />
+        );
+      })()}
 
       {/* Settings panel */}
       {selectedTeam && showSettings && (
@@ -939,42 +1301,210 @@ export function FirstAiderDashboard() {
       {selectedTeam && sectorAssignments[selectedTeam] && (
         <section
           aria-live="polite"
+          className="card"
           style={{
             padding: 'var(--space-3) var(--space-4)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-brand)',
+            borderColor: 'var(--color-brand)',
             background: 'var(--color-brand-dim)',
+            display: 'flex', gap: 'var(--space-3)', alignItems: 'center',
           }}
         >
-          <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--color-brand)' }}>
-            Tildelt sektor: {sectorAssignments[selectedTeam]!.sector}
-          </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-            Oppdatert {new Date(sectorAssignments[selectedTeam]!.assignedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+          <Icon name="map" size="lg" style={{ color: 'var(--color-brand)' }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 'var(--text-base)', color: 'var(--color-brand)' }}>
+              Tildelt sektor: {sectorAssignments[selectedTeam]!.sector}
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              Oppdatert <span className="data">{new Date(sectorAssignments[selectedTeam]!.assignedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
           </div>
         </section>
       )}
 
+      {/* Meld pasient — first thing under the header; a new callout must be one tap away */}
+      {selectedTeam && (
+        <div>
+          {!showReportPatient ? (
+            <Button variant="primary" size="xl" block icon="plus" onClick={() => setShowReportPatient(true)}>
+              Meld pasient
+            </Button>
+          ) : (
+            <div className="card" style={{ borderColor: 'var(--color-brand)', borderWidth: 2, overflow: 'hidden' }}>
+              <div style={{
+                padding: 'var(--space-2) var(--space-2) var(--space-2) var(--space-4)',
+                background: 'var(--color-brand)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <span style={{ color: 'white', fontWeight: 700, fontSize: 'var(--text-lg)' }}>Meld pasient</span>
+                <Button variant="ghost" iconOnly icon="x" onClick={handleCloseReportForm} aria-label="Lukk" style={{ color: 'white' }} />
+              </div>
+              <div style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                {/* Triage picker */}
+                <div>
+                  <div className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Triagefarge</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
+                    {FIELD_TRIAGE_ORDER.map((value) => {
+                      const style = FIELD_TRIAGE_STYLE[value];
+                      const active = reportTriage === value;
+                      return (
+                        <Button
+                          key={value}
+                          variant="tone"
+                          tone={{ color: style.text, bg: style.bg }}
+                          size="lg"
+                          aria-pressed={active}
+                          icon={active ? 'check' : undefined}
+                          onClick={() => setReportTriage((prev) => prev === value ? '' : value)}
+                          style={{ padding: 0 }}
+                        >
+                          {style.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Injury type quick picker */}
+                <div>
+                  <div className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Type skade</div>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                    {INJURY_TYPES.map((type) => (
+                      <Button
+                        key={type}
+                        variant="secondary"
+                        aria-pressed={reportInjuryType === type}
+                        onClick={() => setReportInjuryType((prev) => prev === type ? '' : type)}
+                        style={{ fontWeight: reportInjuryType === type ? 700 : 500 }}
+                      >
+                        {type}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Free-text description */}
+                <div>
+                  <label htmlFor="report-description" className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
+                    Tilleggsinformasjon
+                  </label>
+                  <textarea
+                    id="report-description"
+                    className="field"
+                    value={reportDescription}
+                    onChange={(e) => setReportDescription(e.target.value)}
+                    placeholder="Beskriv skaden, pasientens tilstand, ekstra opplysninger…"
+                    rows={3}
+                  />
+                </div>
+
+                {/* Where is the patient? Free text the coordinator can act on. */}
+                <div>
+                  <label htmlFor="report-position-text" className="section-label" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
+                    Hvor er pasienten?
+                  </label>
+                  <input
+                    id="report-position-text"
+                    className="field"
+                    value={reportPositionText}
+                    onChange={(e) => setReportPositionText(e.target.value)}
+                    placeholder="f.eks. Sektor B, ved drikkestasjon 3"
+                  />
+                </div>
+
+                <div
+                  data-testid="report-gps-status"
+                  style={{
+                    display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start',
+                    fontSize: 'var(--text-sm)',
+                    color: gpsPosition && !gpsIsStale ? 'var(--color-text-muted)' : 'var(--color-status-warning)',
+                  }}
+                >
+                  <Icon name={gpsPosition && !gpsIsStale ? 'pin' : 'alert'} style={{ marginTop: 2 }} />
+                  <span>
+                    {gpsPosition ? (
+                      <>
+                        GPS-posisjon legges ved automatisk
+                        {gpsAccuracy != null ? <> (±<span className="data">{gpsAccuracy}</span> m</> : ' ('}
+                        {gpsAgeMs != null ? <>{gpsAccuracy != null ? ', ' : ''}oppdatert for <span className="data">{Math.max(0, Math.round(gpsAgeMs / 1000))}</span> s siden)</> : ')'}
+                        {gpsIsStale && ' — posisjonen kan være utdatert, beskriv stedet over.'}
+                      </>
+                    ) : gpsStatus === 'denied' ? (
+                      'Posisjonstilgang er avslått — beskriv hvor pasienten er.'
+                    ) : gpsStatus === 'acquiring' ? (
+                      'Henter GPS-posisjon… beskriv gjerne stedet i tillegg.'
+                    ) : (
+                      'Ingen GPS-posisjon — beskriv hvor pasienten er.'
+                    )}
+                  </span>
+                </div>
+
+                {reportError && (
+                  <div role="alert" style={errorTextStyle}>
+                    {reportError}
+                  </div>
+                )}
+
+                <Button variant="primary" size="xl" block onClick={handleReportPatient} disabled={reportSubmitting || isReportFormInvalid}>
+                  {reportSubmitting ? 'Registrerer…' : 'Registrer pasient'}
+                </Button>
+                {isReportFormInvalid && (
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                    Velg type skade eller skriv en kort beskrivelse.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Behandlet på stedet — registers and closes in one step (gap A8 / 8.28) */}
+      {selectedTeam && (
+        <Button
+          variant="secondary"
+          size="lg"
+          block
+          icon="check"
+          data-testid="firstaid-quick-log"
+          onClick={() => setShowQuickLog(true)}
+        >
+          Behandlet på stedet
+        </Button>
+      )}
+
+      {showQuickLog && (
+        <QuickLogSheet
+          gps={{ position: gpsPosition, status: gpsStatus, accuracy: gpsAccuracy, updatedAt: gpsUpdatedAt }}
+          initialPositionText=""
+          submitting={quickLogSubmitting}
+          error={quickLogError}
+          onSubmit={handleQuickLogSubmit}
+          onClose={() => { setShowQuickLog(false); setQuickLogError(''); }}
+        />
+      )}
+
       {/* Patient list */}
       {selectedTeam && (
-        <section aria-labelledby="patient-list-heading" aria-live="polite">
-          <h2
-            id="patient-list-heading"
-            style={{
-              fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-              color: 'var(--color-text-muted)', textTransform: 'uppercase',
-              letterSpacing: 'var(--tracking-mono)', marginBottom: 'var(--space-3)',
-            }}
-          >
-            Egne pasienter ({combinedAssignedPatients.length})
+        <section aria-labelledby="patient-list-heading">
+          <h2 id="patient-list-heading" className="section-label" style={{ marginBottom: 'var(--space-3)' }}>
+            Egne pasienter (<span className="data">{combinedAssignedPatients.length}</span>)
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            {combinedAssignedPatients.length === 0 && !workspaceLoading && (
+              <div style={{
+                padding: 'var(--space-4)', textAlign: 'center',
+                color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)',
+                background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
+              }}>
+                Ingen egne pasienter. Meld en ny over, eller ta en fra listen under.
+              </div>
+            )}
             {combinedAssignedPatients.map((p) => {
               const isExpanded = expandedPatientId === p.id;
               const highlighted = highlightedFields.get(p.id);
               const isFlashing = highlighted && highlighted.size > 0;
               const triageStatus = (p as TeamWorkspacePatient).triageStatus ?? ((p as any).triageStatus as string | undefined);
-              const triage = triageStatus ? TRIAGE_STYLE[triageStatus] : null;
+              const triage = triageStatus ? FIELD_TRIAGE_STYLE[triageStatus as FieldTriageStatus] ?? null : null;
               const label = (p as TeamWorkspacePatient).label || (p as any).label || (p as TeamWorkspacePatient).presentingComplaint || `Pasient ${p.id.slice(0, 8)}`;
               const posText = (p as TeamWorkspacePatient).positionText;
               const lat = (p as TeamWorkspacePatient).lat;
@@ -983,223 +1513,79 @@ export function FirstAiderDashboard() {
               const patientLocalStatus = pKey ? (patientStatusMap[pKey] ?? null) : null;
               const patientServerStatus = (p as TeamWorkspacePatient).teamPatientStatus ?? null;
               const activePatientStatus = patientLocalStatus ?? patientServerStatus;
-              const statusStyle = activePatientStatus ? PATIENT_STATUS_STYLE[activePatientStatus] : null;
+              const statusStyle = activePatientStatus ? TEAM_PATIENT_STATUS_STYLE[activePatientStatus] : null;
               const hasPosition = posText || (lat != null && lon != null);
+              const detailsOpen = !!perPatientDetailsOpen[p.id];
+              const closeReason = perPatientCloseReason[p.id];
+              const seq = (p as TeamWorkspacePatient).seq ?? (p as any).seq ?? null;
+              const amkNotifiedAt = (p as TeamWorkspacePatient).amkNotifiedAt ?? (p as any).amkNotifiedAt ?? null;
+              const needs113 = triageStatus === 'red' || triageStatus === 'yellow';
+              // Transport request (gap B3 / 8.26)
+              const transportNeed = ((p as TeamWorkspacePatient).transportNeed ?? (p as any).transportNeed ?? null) as TransportNeed | null;
+              const transportRequestedAt = (p as TeamWorkspacePatient).transportRequestedAt ?? (p as any).transportRequestedAt ?? null;
+              const transportTeamId = (p as TeamWorkspacePatient).transportTeamId ?? (p as any).transportTeamId ?? null;
+              const transportTeam = transportTeamId ? teams.find((t) => t.id === transportTeamId) : null;
+              const transportStatus = describeTransportStatus({
+                transportNeed,
+                transportRequestedAt,
+                transportTeamId,
+                transportTeam: transportTeam ? { name: transportTeam.name, transport: transportTeam.transport } : null,
+              });
               return (
                 <div
                   key={p.id}
+                  data-testid={`firstaid-patient-${p.id}`}
+                  className="card card--stripe"
                   style={{
-                    borderRadius: 'var(--radius-md)',
-                    border: `1px solid ${isFlashing ? 'var(--color-status-warning)' : isExpanded ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                    background: isFlashing ? 'var(--color-status-warning-bg)' : 'var(--color-surface)',
+                    '--stripe': triage?.text ?? 'var(--color-border-strong)',
+                    borderColor: isFlashing ? 'var(--color-status-warning)' : isExpanded ? 'var(--color-border-strong)' : undefined,
+                    background: isFlashing ? 'var(--color-status-warning-bg)' : undefined,
                     overflow: 'hidden',
                     transition: 'border-color 0.3s ease',
-                  }}
+                  } as React.CSSProperties}
                 >
                   <button
+                    type="button"
                     onClick={() => togglePatientExpand(p.id)}
+                    aria-expanded={isExpanded}
                     style={{
                       width: '100%', minHeight: 'var(--touch-min)',
                       padding: 'var(--space-3)',
                       display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 'var(--space-1)',
                       background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                      color: 'var(--color-text)', font: 'inherit',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      {triage && (
-                        <span style={{
-                          flexShrink: 0, display: 'inline-block', padding: '2px 10px',
-                          borderRadius: 'var(--radius-full)',
-                          background: triage.bg, color: triage.text,
-                          fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                        }}>
-                          {triage.label}
-                        </span>
-                      )}
-                      {statusStyle && (
-                        <span style={{
-                          flexShrink: 0, display: 'inline-block', padding: '2px 10px',
-                          borderRadius: 'var(--radius-full)',
-                          background: statusStyle.bg, color: statusStyle.color,
-                          fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                        }}>
-                          {statusStyle.label}
-                        </span>
-                      )}
-                      <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', flex: 1, textAlign: 'left' }}>
+                      <PatientNumberPill seq={seq} data-testid={`patient-number-${p.id}`} />
+                      {triage && <Pill tone={{ color: triage.text, bg: triage.bg }}>{triage.label}</Pill>}
+                      {statusStyle && <Pill dot tone={{ color: statusStyle.color, bg: statusStyle.bg }}>{statusStyle.label}</Pill>}
+                      <span style={{ fontWeight: 700, fontSize: 'var(--text-base)', flex: 1, textAlign: 'left' }}>
                         {label}
                       </span>
+                      {p.latestVitals && <News2Pill vitals={p.latestVitals} />}
                       {isFlashing && (
                         <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-status-warning)', flexShrink: 0 }}>
                           Oppdatert
                         </span>
                       )}
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', flexShrink: 0 }}>
-                        {isExpanded ? '▲' : '▼'}
-                      </span>
+                      <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} style={{ color: 'var(--color-text-muted)' }} />
                     </div>
                     {hasPosition && (
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', textAlign: 'left' }}>
-                        {'📍 '}{posText ?? `${lat!.toFixed(4)}, ${lon!.toFixed(4)}`}
+                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', textAlign: 'left' }}>
+                        {posText ?? `${lat!.toFixed(4)}, ${lon!.toFixed(4)}`}
                       </span>
                     )}
                   </button>
 
-                  {/* Expanded content */}
+                  {/* Expanded content — ordered by how often a patrol needs it under pressure */}
                   {isExpanded && (
                     <div style={{
                       padding: 'var(--space-3)',
                       borderTop: '1px solid var(--color-border)',
-                      display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
+                      display: 'flex', flexDirection: 'column', gap: 'var(--space-4)',
                     }}>
-                      {/* Editable summary */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          Sammendrag
-                        </div>
-                        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-                          <input
-                            value={perPatientSummaryEdit[p.id] ?? label}
-                            onChange={(e) => setPerPatientSummaryEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                            placeholder="Sammendrag…"
-                            style={{
-                              flex: 1, padding: 'var(--space-2)',
-                              borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                              background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                              fontSize: 'var(--text-sm)', fontFamily: 'inherit',
-                            }}
-                          />
-                          <button
-                            onClick={() => handleSaveSummary(p.id, label)}
-                            className="touch-target"
-                            style={{
-                              minHeight: 44, padding: '0 var(--space-3)',
-                              borderRadius: 'var(--radius-sm)', border: 'none',
-                              background: 'var(--color-brand)', color: 'white',
-                              fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                            }}
-                          >
-                            Lagre
-                          </button>
-                        </div>
-                        {perPatientSummaryError[p.id] && (
-                          <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}>
-                            {perPatientSummaryError[p.id]}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Position + navigate + editable positionText */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                        <PatientLocationRow
-                          positionText={posText ?? null}
-                          lat={lat ?? null}
-                          lon={lon ?? null}
-                          gpsPosition={gpsPosition}
-                          onNavigate={openMapsNav}
-                        />
-                        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-                          <input
-                            value={perPatientPosEdit[p.id] ?? (posText ?? '')}
-                            onChange={(e) => setPerPatientPosEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                            placeholder="Tekstlig posisjon (f.eks. Sektor B, rad 5)…"
-                            style={{
-                              flex: 1, padding: 'var(--space-2)',
-                              borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                              background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                              fontSize: 'var(--text-sm)', fontFamily: 'inherit',
-                            }}
-                          />
-                          {lat != null && lon != null && (
-                            <button
-                              onClick={() => handleGeoLookup(p.id, lat!, lon!)}
-                              disabled={geoLookupLoading[p.id]}
-                              className="touch-target"
-                              style={{
-                                minHeight: 44, padding: '0 var(--space-3)',
-                                borderRadius: 'var(--radius-sm)',
-                                border: '1px solid var(--color-brand)',
-                                background: 'transparent', color: 'var(--color-brand)',
-                                fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                              }}
-                            >
-                              {geoLookupLoading[p.id] ? '…' : '📍 Slå opp'}
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleSavePosition(p.id)}
-                            className="touch-target"
-                            style={{
-                              minHeight: 44, padding: '0 var(--space-3)',
-                              borderRadius: 'var(--radius-sm)', border: 'none',
-                              background: 'var(--color-brand)', color: 'white',
-                              fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                            }}
-                          >
-                            Lagre
-                          </button>
-                        </div>
-                        {perPatientPosError[p.id] && (
-                          <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}>
-                            {perPatientPosError[p.id]}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Vitals entry */}
-                      <VitalsEntryForm
-                        patientId={p.id}
-                        form={getPatientVitalsForm(p.id)}
-                        onChange={(updater) => setPerPatientVitalsForm((prev) => ({
-                          ...prev,
-                          [p.id]: updater(prev[p.id] ?? EMPTY_VITALS_FORM),
-                        }))}
-                        onSubmit={() => handleSubmitVitals(p.id)}
-                      />
-                      {perPatientVitalsError[p.id] && (
-                        <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)', marginTop: 'calc(-1 * var(--space-2))' }}>
-                          {perPatientVitalsError[p.id]}
-                        </div>
-                      )}
-
-                      {/* Injury note */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
-                          <textarea
-                            value={perPatientNoteText[p.id] ?? ''}
-                            onChange={(e) => setPerPatientNoteText((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                            placeholder="Skadenotater…"
-                            rows={2}
-                            style={{
-                              flex: 1, padding: 'var(--space-2)',
-                              borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                              background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                              fontSize: 'var(--text-sm)', resize: 'none', fontFamily: 'inherit',
-                            }}
-                          />
-                          <button
-                            onClick={() => handleSubmitNote(p.id)}
-                            disabled={!perPatientNoteText[p.id]?.trim()}
-                            className="touch-target"
-                            style={{
-                              minHeight: 44, padding: '0 var(--space-3)',
-                              borderRadius: 'var(--radius-sm)', border: 'none',
-                              background: perPatientNoteText[p.id]?.trim() ? 'var(--color-brand)' : 'var(--color-border)',
-                              color: perPatientNoteText[p.id]?.trim() ? 'white' : 'var(--color-text-subtle)',
-                              fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                            }}
-                          >
-                            Lagre
-                          </button>
-                        </div>
-                        {perPatientNoteError[p.id] && (
-                          <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}>
-                            {perPatientNoteError[p.id]}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Patient status picker */}
+                      {/* 1. What are we doing with this patient */}
                       <PatientEngagementPicker
                         patientId={p.id}
                         localStatus={patientLocalStatus}
@@ -1207,88 +1593,302 @@ export function FirstAiderDashboard() {
                         onSetStatus={handleSetPatientStatus}
                       />
 
-                      {/* Trenger bistand */}
-                      <button
-                        onClick={async () => { await setTeamOperationalStatus('needs_assistance', label); setExpandedPatientId(null); }}
-                        className="touch-target"
-                        style={{
-                          minHeight: 'var(--touch-min)', width: '100%',
-                          borderRadius: 'var(--radius-sm)', border: 'none',
-                          background: 'var(--color-status-critical-bg)',
-                          color: 'var(--color-status-critical)',
-                          fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
-                        }}
-                      >
-                        ! Trenger bistand
-                      </button>
-
-                      {/* Avslutt pasient */}
-                      {closingPatientId !== p.id ? (
-                        <button
-                          onClick={() => setClosingPatientId(p.id)}
-                          className="touch-target"
-                          style={{
-                            minHeight: 'var(--touch-min)', width: '100%',
-                            borderRadius: 'var(--radius-sm)',
-                            border: '1px solid var(--color-border)',
-                            background: 'transparent',
-                            color: 'var(--color-text-subtle)',
-                            fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
-                          }}
-                        >
-                          Avslutt pasient
-                        </button>
+                      {/* 1a. Transport request (gap B3 / 8.26) */}
+                      {transportStatus ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                            <Pill
+                              data-testid={`firstaid-transport-status-${p.id}`}
+                              tone={transportStatus.tone === 'info'
+                                ? { color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)' }
+                                : { color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)' }}
+                            >
+                              {transportStatus.text}
+                            </Pill>
+                            <Button variant="ghost" size="sm" onClick={() => handleClearTransport(p.id)}>
+                              Avbryt transport
+                            </Button>
+                          </div>
+                          {perPatientTransportError[p.id] && (
+                            <div role="alert" style={errorTextStyle}>{perPatientTransportError[p.id]}</div>
+                          )}
+                        </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            Årsak for avslutning
+                          <Button
+                            variant="secondary"
+                            size="lg"
+                            block
+                            icon="truck"
+                            data-testid={`firstaid-transport-request-${p.id}`}
+                            onClick={() => setTransportSheetPatientId(p.id)}
+                          >
+                            Be om transport
+                          </Button>
+                          {perPatientTransportError[p.id] && (
+                            <div role="alert" style={errorTextStyle}>{perPatientTransportError[p.id]}</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 1b. 113 / AMK — only where it can matter (gap B2) */}
+                      {needs113 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                          <a
+                            href="tel:113"
+                            className="btn btn--danger-soft btn--lg btn--block"
+                            data-testid={`firstaid-ring-113-${p.id}`}
+                            style={{ textDecoration: 'none' }}
+                          >
+                            <Icon name="phone" /> Ring 113
+                          </a>
+                          {amkNotifiedAt ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                              <Pill tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)' }}>
+                                AMK varslet kl. {new Date(amkNotifiedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+                              </Pill>
+                              <Button variant="ghost" size="sm" onClick={() => handleAmkCleared(p.id)}>
+                                Angre
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="secondary"
+                              size="lg"
+                              block
+                              data-testid={`firstaid-amk-notified-${p.id}`}
+                              onClick={() => handleAmkNotified(p.id)}
+                            >
+                              AMK er varslet
+                            </Button>
+                          )}
+                          {perPatientAmkError[p.id] && (
+                            <div role="alert" style={errorTextStyle}>{perPatientAmkError[p.id]}</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 2. Where — with distance and navigation */}
+                      {hasPosition && (
+                        <PatientLocationRow
+                          positionText={posText ?? null}
+                          lat={lat ?? null}
+                          lon={lon ?? null}
+                          gpsPosition={gpsPosition}
+                          onNavigate={openMapsNav}
+                        />
+                      )}
+
+                      {/* 3. Vitals */}
+                      <div>
+                        <div className="section-label" style={{ marginBottom: 'var(--space-2)' }}>Vitale tegn</div>
+                        {p.latestVitals && <LastVitalsLine patientId={p.id} vitals={p.latestVitals} />}
+                        <VitalsEntryForm
+                          patientId={p.id}
+                          form={getPatientVitalsForm(p.id)}
+                          onChange={(updater) => setPerPatientVitalsForm((prev) => ({
+                            ...prev,
+                            [p.id]: updater(prev[p.id] ?? EMPTY_VITALS_FORM),
+                          }))}
+                          onSubmit={() => handleSubmitVitals(p.id)}
+                        />
+                        {perPatientVitalsError[p.id] && (
+                          <div role="alert" style={{ ...errorTextStyle, marginTop: 'var(--space-2)' }}>
+                            {perPatientVitalsError[p.id]}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 4. Injury note */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                        <label htmlFor={`note-${p.id}`} className="section-label">Skadenotat</label>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}>
+                          <textarea
+                            id={`note-${p.id}`}
+                            className="field"
+                            value={perPatientNoteText[p.id] ?? ''}
+                            onChange={(e) => setPerPatientNoteText((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            placeholder="Hva ser dere? Hva er gjort?"
+                            rows={2}
+                            style={{ flex: 1, resize: 'none' }}
+                          />
+                          <VoiceNoteButton
+                            testIdSuffix={p.id}
+                            onTranscript={(text) => setPerPatientNoteText((prev) => {
+                              const current = prev[p.id]?.trim();
+                              return { ...prev, [p.id]: current ? `${current} ${text}` : text };
+                            })}
+                          />
+                          <Button variant="secondary" onClick={() => handleSubmitNote(p.id)} disabled={!perPatientNoteText[p.id]?.trim()} style={{ flexShrink: 0 }}>
+                            Lagre
+                          </Button>
+                        </div>
+                        {perPatientNoteError[p.id] && (
+                          <div role="alert" style={errorTextStyle}>
+                            {perPatientNoteError[p.id]}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 5. Rarely used edits, behind one disclosure */}
+                      <div>
+                        <button
+                          type="button"
+                          className="disclosure"
+                          onClick={() => setPerPatientDetailsOpen((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                          aria-expanded={detailsOpen}
+                          data-testid={`firstaid-details-toggle-${p.id}`}
+                        >
+                          <span>Rediger sammendrag / posisjon</span>
+                          <Icon name={detailsOpen ? 'chevronUp' : 'chevronDown'} />
+                        </button>
+                        {detailsOpen && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
+                            {/* Triage — a moving judgement, not fixed at "Meld pasient" (gap A2) */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                              <div className="section-label">Triage</div>
+                              <TriageChips
+                                value={perPatientTriageEdit[p.id] ?? (triageStatus as FieldTriageStatus | null) ?? null}
+                                onChange={(val) => setPerPatientTriageEdit((prev) => ({ ...prev, [p.id]: val }))}
+                                idPrefix={`firstaid-triage-${p.id}`}
+                              />
+                              <Button
+                                variant="secondary"
+                                onClick={() => handleSaveTriage(p.id, (triageStatus as FieldTriageStatus | null) ?? null)}
+                                disabled={!perPatientTriageEdit[p.id] || perPatientTriageEdit[p.id] === triageStatus}
+                              >
+                                Lagre
+                              </Button>
+                              {perPatientTriageError[p.id] && (
+                                <div role="alert" style={errorTextStyle}>{perPatientTriageError[p.id]}</div>
+                              )}
+                            </div>
+
+                            {/* Editable summary */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                              <label htmlFor={`summary-${p.id}`} className="section-label">Sammendrag</label>
+                              <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                                <input
+                                  id={`summary-${p.id}`}
+                                  className="field"
+                                  value={perPatientSummaryEdit[p.id] ?? label}
+                                  onChange={(e) => setPerPatientSummaryEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                                  placeholder="Sammendrag…"
+                                  style={{ flex: 1 }}
+                                />
+                                <Button variant="secondary" onClick={() => handleSaveSummary(p.id, label)} style={{ flexShrink: 0 }}>
+                                  Lagre
+                                </Button>
+                              </div>
+                              {perPatientSummaryError[p.id] && (
+                                <div role="alert" style={errorTextStyle}>{perPatientSummaryError[p.id]}</div>
+                              )}
+                            </div>
+
+                            {/* Editable position text + reverse lookup */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                              <label htmlFor={`position-${p.id}`} className="section-label">Hvor er pasienten?</label>
+                              <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <input
+                                  id={`position-${p.id}`}
+                                  className="field"
+                                  value={perPatientPosEdit[p.id] ?? (posText ?? '')}
+                                  onChange={(e) => setPerPatientPosEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                                  placeholder="f.eks. Sektor B, rad 5"
+                                  style={{ flex: 1, minWidth: 160 }}
+                                />
+                                {lat != null && lon != null && (
+                                  <Button variant="outline" icon="pin" onClick={() => handleGeoLookup(p.id, lat!, lon!)} disabled={geoLookupLoading[p.id]}>
+                                    {geoLookupLoading[p.id] ? 'Slår opp…' : 'Slå opp adresse'}
+                                  </Button>
+                                )}
+                                <Button variant="secondary" onClick={() => handleSavePosition(p.id)}>
+                                  Lagre
+                                </Button>
+                              </div>
+                              {perPatientPosError[p.id] && (
+                                <div role="alert" style={errorTextStyle}>{perPatientPosError[p.id]}</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 6. Help */}
+                      <Button
+                        variant="danger-soft"
+                        size="lg"
+                        block
+                        icon="alert"
+                        onClick={async () => { await setTeamOperationalStatus('needs_assistance', label); setExpandedPatientId(null); }}
+                        data-testid={`firstaid-needs-assistance-${p.id}`}
+                      >
+                        Trenger bistand her
+                      </Button>
+
+                      {/* 7. Close */}
+                      {closingPatientId !== p.id ? (
+                        <Button variant="secondary" size="lg" block onClick={() => setClosingPatientId(p.id)} style={{ color: 'var(--color-text-muted)' }}>
+                          Avslutt pasient
+                        </Button>
+                      ) : (
+                        <div
+                          data-testid={`firstaid-close-form-${p.id}`}
+                          style={{
+                            display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
+                            padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
+                            background: 'var(--color-surface-sunken)',
+                          }}
+                        >
+                          <div className="section-label">Hvorfor avsluttes pasienten?</div>
+                          <div role="radiogroup" aria-label="Årsak for avslutning" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                            {PATIENT_CLOSE_REASONS.map((reason) => {
+                              const active = closeReason === reason.id;
+                              return (
+                                <Button
+                                  key={reason.id}
+                                  variant="secondary"
+                                  size="lg"
+                                  block
+                                  role="radio"
+                                  aria-checked={active}
+                                  icon={active ? 'check' : undefined}
+                                  onClick={() => {
+                                    setPerPatientCloseReason((prev) => ({ ...prev, [p.id]: reason.id }));
+                                    setPerPatientCloseError((prev) => { const n = { ...prev }; delete n[p.id]; return n; });
+                                  }}
+                                  style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                                >
+                                  {reason.label}
+                                </Button>
+                              );
+                            })}
                           </div>
                           <textarea
+                            className="field"
                             value={perPatientCloseNote[p.id] ?? ''}
                             onChange={(e) => setPerPatientCloseNote((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                            placeholder="Beskriv årsaken til at pasienten avsluttes…"
+                            placeholder="Tillegg (valgfritt)…"
+                            aria-label="Tilleggsinformasjon ved avslutning"
                             rows={2}
-                            style={{
-                              width: '100%', padding: 'var(--space-2)',
-                              borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                              background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                              fontSize: 'var(--text-sm)', resize: 'none', fontFamily: 'inherit',
-                              boxSizing: 'border-box',
-                            }}
+                            style={{ resize: 'none' }}
                           />
                           {perPatientCloseError[p.id] && (
-                            <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-status-critical)' }}>
+                            <div role="alert" style={errorTextStyle}>
                               {perPatientCloseError[p.id]}
                             </div>
                           )}
                           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                            <button
-                              onClick={() => handleClosePatient(p.id, label)}
-                              disabled={!(perPatientCloseNote[p.id] ?? '').trim()}
-                              className="touch-target"
-                              style={{
-                                flex: 1, minHeight: 44, padding: '0 var(--space-3)',
-                                borderRadius: 'var(--radius-sm)', border: 'none',
-                                background: (perPatientCloseNote[p.id] ?? '').trim() ? 'var(--color-status-critical)' : 'var(--color-border)',
-                                color: (perPatientCloseNote[p.id] ?? '').trim() ? 'white' : 'var(--color-text-subtle)',
-                                fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
-                              }}
-                            >
+                            <Button variant="danger" size="lg" onClick={() => handleClosePatient(p.id, label, seq)} disabled={!closeReason} style={{ flex: 1 }}>
                               Bekreft avslutning
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="lg"
                               onClick={() => { setClosingPatientId(null); setPerPatientCloseError((prev) => { const n = { ...prev }; delete n[p.id]; return n; }); }}
-                              className="touch-target"
-                              style={{
-                                minHeight: 44, padding: '0 var(--space-3)',
-                                borderRadius: 'var(--radius-sm)',
-                                border: '1px solid var(--color-border)',
-                                background: 'transparent', color: 'var(--color-text-subtle)',
-                                fontSize: 'var(--text-sm)', cursor: 'pointer',
-                              }}
                             >
                               Avbryt
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       )}
@@ -1299,183 +1899,133 @@ export function FirstAiderDashboard() {
             })}
 
             {/* Unassigned patients — always rendered so the section is always discoverable */}
-            <>
-              <h3
-                id="unassigned-patients-heading"
-                style={{
-                  margin: 'var(--space-2) 0 0',
-                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)',
-                  color: 'var(--color-text-muted)', textTransform: 'uppercase',
-                  letterSpacing: 'var(--tracking-mono)',
-                }}
-              >
-                Utildelte pasienter ({filteredUnassigned.length})
-              </h3>
-              {filteredUnassigned.length === 0 && !workspaceLoading && (
-                <div style={{
-                  padding: 'var(--space-4)', textAlign: 'center',
-                  color: 'var(--color-text-subtle)', fontSize: 'var(--text-sm)',
-                  background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
-                }}>
-                  Ingen utildelte pasienter
-                </div>
-              )}
-              {filteredUnassigned.map((patient) => {
-                return (
-                  <div
-                    key={patient.id}
-                    style={{
-                      padding: 'var(--space-3)',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-border)',
-                      background: 'var(--color-surface)',
-                      display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      {patient.triageStatus && TRIAGE_STYLE[patient.triageStatus] && (
-                        <span style={{
-                          flexShrink: 0, display: 'inline-block', padding: '2px 10px',
-                          borderRadius: 'var(--radius-full)',
-                          background: TRIAGE_STYLE[patient.triageStatus]!.bg, color: TRIAGE_STYLE[patient.triageStatus]!.text,
-                          fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                        }}>
-                          {TRIAGE_STYLE[patient.triageStatus]!.label}
-                        </span>
-                      )}
-                      <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                        {patient.label || patient.presentingComplaint || 'Ukjent pasient'}
-                      </div>
+            <h3 id="unassigned-patients-heading" className="section-label" style={{ margin: 'var(--space-2) 0 0' }}>
+              Utildelte pasienter (<span className="data">{filteredUnassigned.length}</span>)
+            </h3>
+            {filteredUnassigned.length === 0 && !workspaceLoading && (
+              <div style={{
+                padding: 'var(--space-4)', textAlign: 'center',
+                color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)',
+                background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)',
+              }}>
+                Ingen utildelte pasienter
+              </div>
+            )}
+            {filteredUnassigned.map((patient) => {
+              const triage = patient.triageStatus ? FIELD_TRIAGE_STYLE[patient.triageStatus] ?? null : null;
+              return (
+                <div
+                  key={patient.id}
+                  data-testid={`firstaid-unassigned-${patient.id}`}
+                  className={`card card--stripe${patient.triageStatus === 'red' ? ' card--critical' : ''}`}
+                  style={{
+                    '--stripe': triage?.text ?? 'var(--color-border-strong)',
+                    padding: 'var(--space-3)',
+                    display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
+                  } as React.CSSProperties}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <PatientNumberPill seq={patient.seq} data-testid={`patient-number-${patient.id}`} />
+                    {triage && <Pill tone={{ color: triage.text, bg: triage.bg }}>{triage.label}</Pill>}
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
+                      {patient.label || patient.presentingComplaint || 'Ukjent pasient'}
                     </div>
-                    <PatientLocationRow
-                      positionText={patient.positionText}
-                      lat={patient.lat}
-                      lon={patient.lon}
-                      gpsPosition={gpsPosition}
-                      onNavigate={openMapsNav}
-                    />
-                    <button
-                      onClick={() => handleSetPatientStatus(patient.id, 'en_route_to_patient')}
-                      className="touch-target"
-                      style={{
-                        minHeight: 32, padding: '0 var(--space-3)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-brand)',
-                        background: 'transparent',
-                        color: 'var(--color-brand)',
-                        fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
-                        alignSelf: 'flex-start',
-                      }}
-                    >
-                      På vei til pasient →
-                    </button>
                   </div>
-                );
-              })}
-
-              {/* Collapsed section for patients assigned to other teams */}
-              {(otherTeamAssignedPatients.length > 0 || combinedAssignedPatients.length > 0) && (
-                <div style={{ marginTop: 'var(--space-2)' }}>
-                  <button
-                    onClick={() => setShowOtherAssigned((v) => !v)}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: 'var(--space-2) var(--space-3)',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--color-border)',
-                      background: 'var(--color-surface-sunken)',
-                      color: 'var(--color-text-muted)',
-                      fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
-                      textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)',
-                      cursor: 'pointer',
-                    }}
+                  <PatientLocationRow
+                    positionText={patient.positionText}
+                    lat={patient.lat}
+                    lon={patient.lon}
+                    gpsPosition={gpsPosition}
+                    onNavigate={openMapsNav}
+                  />
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    block
+                    iconEnd="arrowRight"
+                    onClick={() => handleSetPatientStatus(patient.id, 'en_route_to_patient')}
+                    data-testid={`firstaid-claim-${patient.id}`}
                   >
-                    <span>
-                      Tildelte pasienter ({new Set([...combinedAssignedPatients.map((p) => p.id), ...otherTeamAssignedPatients.map((p) => p.id)]).size})
-                    </span>
-                    <span>{showOtherAssigned ? '▲' : '▼'}</span>
-                  </button>
-                  {showOtherAssigned && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
-                      {combinedAssignedPatients.map((p) => {
-                        const wp = p as TeamWorkspacePatient;
-                        return (
-                          <div key={p.id} style={{
-                            padding: 'var(--space-2) var(--space-3)',
-                            borderRadius: 'var(--radius-sm)',
-                            border: '1px solid var(--color-brand)',
-                            background: 'var(--color-brand-dim)',
-                            fontSize: 'var(--text-xs)',
-                          }}>
-                            <span style={{ fontWeight: 600 }}>
-                              {wp.label || wp.presentingComplaint || `Pasient ${wp.id.slice(0, 8)}`}
-                            </span>
-                            <span style={{ color: 'var(--color-brand)', marginLeft: 'var(--space-2)' }}>
-                              (ditt lag)
-                            </span>
-                          </div>
-                        );
-                      })}
-                      {otherTeamAssignedPatients.map((p) => (
-                        <div key={p.id} style={{
+                    Vi drar til denne pasienten
+                  </Button>
+                </div>
+              );
+            })}
+
+            {/* Patients other patrols are handling — read-only context */}
+            {otherTeamAssignedPatients.length > 0 && (
+              <div style={{ marginTop: 'var(--space-2)' }}>
+                <button
+                  type="button"
+                  className="disclosure"
+                  onClick={() => setShowOtherAssigned((v) => !v)}
+                  aria-expanded={showOtherAssigned}
+                >
+                  <span>Andre lags pasienter (<span className="data">{otherTeamAssignedPatients.length}</span>)</span>
+                  <Icon name={showOtherAssigned ? 'chevronUp' : 'chevronDown'} />
+                </button>
+                {showOtherAssigned && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                    {otherTeamAssignedPatients.map((p) => {
+                      const teamName = teams.find((t) => t.id === (p as any).assignedTeamId)?.name;
+                      return (
+                        <div key={p.id} className="card" style={{
                           padding: 'var(--space-2) var(--space-3)',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--color-border)',
-                          background: 'var(--color-surface)',
-                          fontSize: 'var(--text-xs)',
+                          fontSize: 'var(--text-sm)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)',
                         }}>
-                          <span style={{ fontWeight: 600 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600 }}>
+                            <PatientNumberPill seq={p.seq} data-testid={`patient-number-${p.id}`} />
                             {p.label || p.presentingComplaint || `Pasient ${p.id.slice(0, 8)}`}
                           </span>
-                          <span style={{ color: 'var(--color-text-subtle)', marginLeft: 'var(--space-2)' }}>
-                            (annet lag)
+                          <span style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                            {teamName ?? 'annet lag'}
                           </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Avsluttede pasienter */}
             {closedPatients.length > 0 && (
               <div style={{ marginTop: 'var(--space-2)' }}>
                 <button
+                  type="button"
+                  className="disclosure"
                   onClick={() => setShowClosedPatients((v) => !v)}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: 'var(--space-2) var(--space-3)',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--color-border)',
-                    background: 'var(--color-surface-sunken)',
-                    color: 'var(--color-text-muted)',
-                    fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
-                    textTransform: 'uppercase', letterSpacing: 'var(--tracking-mono)',
-                    cursor: 'pointer',
-                  }}
+                  aria-expanded={showClosedPatients}
                 >
-                  <span>Avsluttede pasienter ({closedPatients.length})</span>
-                  <span>{showClosedPatients ? '▲' : '▼'}</span>
+                  <span>Avsluttede pasienter (<span className="data">{closedPatients.length}</span>)</span>
+                  <Icon name={showClosedPatients ? 'chevronUp' : 'chevronDown'} />
                 </button>
                 {showClosedPatients && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
                     {closedPatients.map((cp) => (
-                      <div key={cp.id} style={{
+                      <div key={cp.id} className="card" style={{
                         padding: 'var(--space-2) var(--space-3)',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--color-border)',
                         background: 'var(--color-surface-sunken)',
-                        fontSize: 'var(--text-xs)',
+                        fontSize: 'var(--text-sm)',
                         display: 'flex', flexDirection: 'column', gap: 'var(--space-1)',
                       }}>
-                        <div style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                          {cp.label}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <PatientNumberPill seq={cp.seq} data-testid={`patient-number-${cp.id}`} />
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                            {cp.label}
+                          </span>
                         </div>
-                        <div style={{ color: 'var(--color-text-subtle)' }}>
-                          {cp.note}
+                        {/* The outcome, not "avsluttet" — a hand-over is not the same as finished. */}
+                        <div style={{ fontWeight: 700, color: 'var(--color-text)' }}>
+                          {cp.outcomeLabel}
                         </div>
-                        <div style={{ color: 'var(--color-text-subtle)', fontFamily: 'var(--font-mono)' }}>
+                        {cp.extraNote && (
+                          <div style={{ color: 'var(--color-text-subtle)' }}>
+                            {cp.extraNote}
+                          </div>
+                        )}
+                        <div className="data" style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)' }}>
                           {new Date(cp.closedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
@@ -1486,210 +2036,12 @@ export function FirstAiderDashboard() {
             )}
 
             {workspaceLoading && (
-              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
+              <p role="status" style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-subtle)' }}>
                 Laster pasienter…
               </p>
             )}
           </div>
         </section>
-      )}
-
-      {/* Meld pasient */}
-      {selectedTeam && (
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          {!showReportPatient ? (
-            <button
-              onClick={() => setShowReportPatient(true)}
-              className="touch-target"
-              style={{
-                width: '100%',
-                minHeight: 80,
-                padding: 'var(--space-5)',
-                borderRadius: 'var(--radius-lg)',
-                border: 'none',
-                background: 'var(--color-brand)',
-                color: 'white',
-                fontSize: 'var(--text-xl)',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 'var(--space-3)',
-              }}
-            >
-              <span style={{ fontSize: '1.5em' }} aria-hidden="true">+</span>
-              Meld pasient
-            </button>
-          ) : (
-            <div style={{
-              borderRadius: 'var(--radius-lg)',
-              border: '2px solid var(--color-brand)',
-              background: 'var(--color-surface)',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                padding: 'var(--space-3) var(--space-4)',
-                background: 'var(--color-brand)',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              }}>
-                <span style={{ color: 'white', fontWeight: 700, fontSize: 'var(--text-base)' }}>Meld pasient</span>
-                <button
-                  onClick={handleCloseReportForm}
-                  style={{
-                    background: 'transparent', border: 'none', color: 'white',
-                    fontSize: 'var(--text-lg)', cursor: 'pointer', lineHeight: 1,
-                  }}
-                  aria-label="Lukk"
-                >
-                  ✕
-                </button>
-              </div>
-              <div style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                {/* Triage picker */}
-                <div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
-                    Triagefarge
-                  </div>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                    {REPORT_TRIAGE.map(({ value, label, bg, color }) => (
-                      <button
-                        key={value}
-                        onClick={() => setReportTriage((prev) => prev === value ? '' : value)}
-                        className="touch-target"
-                        style={{
-                          padding: '4px 14px', minHeight: 36,
-                          borderRadius: 'var(--radius-sm)',
-                          border: `2px solid ${color}`,
-                          background: reportTriage === value ? bg : 'transparent',
-                          color,
-                          fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
-                          fontFamily: 'inherit',
-                        }}
-                      >
-                        {label}{reportTriage === value ? ' ✓' : ''}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Injury type quick picker */}
-                <div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
-                    Type skade
-                  </div>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                    {INJURY_TYPES.map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => setReportInjuryType((prev) => prev === type ? '' : type)}
-                        className="touch-target"
-                        style={{
-                          padding: '4px 12px', minHeight: 36,
-                          borderRadius: 'var(--radius-sm)',
-                          border: `1.5px solid ${reportInjuryType === type ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                          background: reportInjuryType === type ? 'var(--color-brand-dim)' : 'transparent',
-                          color: reportInjuryType === type ? 'var(--color-brand)' : 'var(--color-text)',
-                          fontSize: 'var(--text-sm)', fontWeight: reportInjuryType === type ? 700 : 400, cursor: 'pointer',
-                          fontFamily: 'inherit',
-                        }}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Free-text description */}
-                <div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
-                    Tilleggsinformasjon
-                  </div>
-                  <textarea
-                    value={reportDescription}
-                    onChange={(e) => setReportDescription(e.target.value)}
-                    placeholder="Beskriv skaden, pasientens tilstand, ekstra opplysninger…"
-                    rows={3}
-                    style={{
-                      width: '100%', padding: 'var(--space-2)',
-                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                      background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                      fontSize: 'var(--text-sm)', resize: 'vertical', fontFamily: 'inherit',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-
-                {/* Where is the patient? Free text the coordinator can act on. */}
-                <div>
-                  <label
-                    htmlFor="report-position-text"
-                    style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}
-                  >
-                    Hvor er pasienten?
-                  </label>
-                  <input
-                    id="report-position-text"
-                    value={reportPositionText}
-                    onChange={(e) => setReportPositionText(e.target.value)}
-                    placeholder="f.eks. Sektor B, ved drikkestasjon 3"
-                    style={{
-                      width: '100%', height: 44, padding: '0 var(--space-3)',
-                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)',
-                      background: 'var(--color-input-bg)', color: 'var(--color-text)',
-                      fontSize: 'var(--text-sm)', fontFamily: 'inherit', boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-
-                <div
-                  data-testid="report-gps-status"
-                  style={{
-                    fontSize: 'var(--text-xs)',
-                    color: gpsPosition && !gpsIsStale ? 'var(--color-text-subtle)' : 'var(--color-status-warning)',
-                  }}
-                >
-                  {gpsPosition ? (
-                    <>
-                      📍 GPS-posisjon legges ved automatisk
-                      {gpsAccuracy != null ? ` (±${gpsAccuracy} m` : ' ('}
-                      {gpsAgeMs != null ? `${gpsAccuracy != null ? ', ' : ''}oppdatert for ${Math.max(0, Math.round(gpsAgeMs / 1000))} s siden)` : ')'}
-                      {gpsIsStale && ' — posisjonen kan være utdatert, beskriv stedet over.'}
-                    </>
-                  ) : gpsStatus === 'denied' ? (
-                    '⚠ Posisjonstilgang er avslått — beskriv hvor pasienten er.'
-                  ) : gpsStatus === 'acquiring' ? (
-                    '⏳ Henter GPS-posisjon… beskriv gjerne stedet i tillegg.'
-                  ) : (
-                    '⚠ Ingen GPS-posisjon — beskriv hvor pasienten er.'
-                  )}
-                </div>
-
-                {reportError && (
-                  <div role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-status-critical)', fontWeight: 600 }}>
-                    {reportError}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleReportPatient}
-                  disabled={reportSubmitting || isReportFormInvalid}
-                  className="touch-target"
-                  style={{
-                    minHeight: 'var(--touch-min)', width: '100%',
-                    borderRadius: 'var(--radius-md)', border: 'none',
-                    background: isReportFormInvalid || reportSubmitting ? 'var(--color-border)' : 'var(--color-brand)',
-                    color: isReportFormInvalid || reportSubmitting ? 'var(--color-text-subtle)' : 'white',
-                    fontSize: 'var(--text-base)', fontWeight: 700,
-                    cursor: reportSubmitting || isReportFormInvalid ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {reportSubmitting ? 'Registrerer…' : 'Registrer pasient'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       )}
 
       {/* Queued (offline) team actions section handled by useOfflineTeamSync */}
@@ -1699,11 +2051,13 @@ export function FirstAiderDashboard() {
         messages={messages}
         teams={teams}
         showChat={showChat}
-        onToggleChat={() => setShowChat((v) => !v)}
+        onToggleChat={toggleChat}
         messageText={messageText}
         onMessageTextChange={setMessageText}
         onSend={sendMessage}
         chatEndRef={chatEndRef}
+        unreadCount={unreadChatCount}
+        onAck={handleAckMessage}
       />
     </div>
   );

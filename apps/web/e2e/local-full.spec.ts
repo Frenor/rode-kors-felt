@@ -60,7 +60,7 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
   // The field report is visible to the sick bay under its label, with location text.
   await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
 
-  await page.getByRole('button', { name: /\+ Ny pasient/i }).click();
+  await page.getByRole('button', { name: /^Ny pasient/i }).click();
   await page.getByRole('textbox', { name: 'Problemstilling', exact: true }).fill('Brystsmerter under aktivitet');
   await page.getByRole('textbox', { name: 'Behandler', exact: true }).fill('Testkliniker');
   await page.getByRole('button', { name: 'Registrer' }).click();
@@ -89,12 +89,26 @@ test('covers the full first aider → sickbay → coordinator flow', async ({ pa
 
   await loginAsCoordinator(page);
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
+  await expect(page.getByTestId('coordinator-attention-queue')).toBeVisible();
+  // Map engine / 3D are behind "Kartinnstillinger".
+  await page.getByTestId('map-settings-toggle').click();
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /MapLibre/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /3D-presentasjon/i })).toBeVisible();
   // Coordinator sees the field report with its location and the team status overview.
   await expect(page.getByText(fieldLabel).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('Sektor B, ved scenen').first()).toBeVisible();
+  // Every reported patient carries the shared per-event number (gap A5).
+  await expect(page.getByTestId(/^patient-number-/).first()).toBeVisible();
   await expect(page.getByTestId('coordinator-team-status')).toBeVisible();
-  await expect(page.getByText('Patrulje Alpha').first()).toBeVisible();
+  // Scoped to the team panel: the attention queue's assign select also lists
+  // every team name as an <option>.
+  await expect(page.getByTestId('coordinator-team-status').getByText('Patrulje Alpha')).toBeVisible();
+  // Messages can be composed from the dashboard, to everyone or to one patrol.
+  await expect(page.getByTestId('coordinator-message-compose')).toBeVisible();
+  await expect(page.getByTestId('coordinator-message-to').locator('option', { hasText: 'Patrulje Alpha' })).toHaveCount(1);
+  // Event set-up (gap B5 / item 8.31) — the link to the Arrangement page is
+  // reachable from the coordinator header (kept robust: not navigating away,
+  // since this suite already covers the full flow end to end).
+  await expect(page.getByTestId('coordinator-event-setup-link')).toBeVisible();
 });

@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import { ToastContainer } from './ToastContainer';
 import { DemoBanner } from './DemoBanner';
 import { DemoWalkthrough } from './DemoWalkthrough';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { offlineFirstAiderQueueDb } from '../lib/offline-firstaid-queue';
+import { applyTheme, nextTheme, persistTheme, readStoredTheme, THEME_LABELS, type ThemeChoice } from '../lib/theme';
+import { Button } from './ui';
 
 const IS_DEMO =
   import.meta.env.VITE_DEMO_MODE === 'true' ||
@@ -24,31 +24,12 @@ export function AppShell({ children }: AppShellProps) {
   const { connect, disconnect, status: wsStatus } = useWsStore();
   const navigate = useNavigate();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [theme, setTheme] = useState<'auto' | 'light' | 'dark'>('auto');
+  // Remembered across PWA restarts — a patrol that picked dark mode at dusk
+  // must not get a white screen back after the phone killed the app.
+  const [theme, setTheme] = useState<ThemeChoice>(readStoredTheme);
 
   // Offline sync for first aiders
   useOfflineTeamSync();
-
-  // Pending queue count for banner
-  const firstAidQueueCounts = useLiveQuery(
-    async () => {
-      const [pending, syncing, failed] = await Promise.all([
-        offlineFirstAiderQueueDb.queue.where('status').equals('pending').count(),
-        offlineFirstAiderQueueDb.queue.where('status').equals('syncing').count(),
-        offlineFirstAiderQueueDb.queue.where('status').equals('failed').count(),
-      ]);
-      return { pending, syncing, failed };
-    },
-    [],
-    { pending: 0, syncing: 0, failed: 0 },
-  );
-  const firstAidSyncLabel = !isOnline
-    ? 'Laget lokalt'
-    : (firstAidQueueCounts.pending + firstAidQueueCounts.syncing) > 0
-      ? 'Synkroniserer'
-      : firstAidQueueCounts.failed > 0
-        ? 'Ikke synkronisert'
-        : 'Synkronisert';
 
   // Connect WebSocket for all authenticated roles. Demo mode is served from
   // the in-memory demo store and must never dial a real backend: a dev API on
@@ -72,14 +53,40 @@ export function AppShell({ children }: AppShellProps) {
   }, []);
 
   useEffect(() => {
-    if (theme === 'auto') {
-      document.documentElement.removeAttribute('data-theme');
-    } else {
-      document.documentElement.setAttribute('data-theme', theme);
-    }
+    applyTheme(theme);
+    persistTheme(theme);
   }, [theme]);
 
+  // Archive flow (gap B8 / item 8.33) — a device that logs out must not keep
+  // another role's offline queue or pending-assignment banners around for
+  // whoever logs in next. Deleted by name (not by importing the queue
+  // modules) so this works regardless of which roles' queues actually exist
+  // on this device, and each failure is logged rather than silently eaten.
+  const clearOfflineState = () => {
+    try {
+      indexedDB.deleteDatabase('rkf-firstaid-queue');
+    } catch (err) {
+      console.warn('[AppShell] Failed to clear first aider offline queue on logout', err);
+    }
+    try {
+      indexedDB.deleteDatabase('rkf-sickbay-queue');
+    } catch (err) {
+      console.warn('[AppShell] Failed to clear sick bay offline queue on logout', err);
+    }
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('rkf-pending-assignments:')) keys.push(key);
+      }
+      keys.forEach((key) => localStorage.removeItem(key));
+    } catch (err) {
+      console.warn('[AppShell] Failed to clear pending-assignment banners on logout', err);
+    }
+  };
+
   const handleLogout = () => {
+    clearOfflineState();
     logout();
     navigate('/');
   };
@@ -100,11 +107,11 @@ export function AppShell({ children }: AppShellProps) {
         style={{
           background: 'var(--color-surface)',
           borderBottom: '1px solid var(--color-border)',
-          padding: '0 var(--space-4)',
+          padding: '0 var(--space-3)',
           height: '56px',
           display: 'flex',
           alignItems: 'center',
-          gap: 'var(--space-4)',
+          gap: 'var(--space-2)',
           position: 'sticky',
           top: 0,
           zIndex: 'var(--z-sticky)',
@@ -141,8 +148,8 @@ export function AppShell({ children }: AppShellProps) {
               RKF
             </div>
             <div style={{
-              fontFamily: 'var(--font-mono)',
               fontSize: 'var(--text-xs)',
+              fontWeight: 600,
               color: 'var(--color-text-muted)',
             }}>
               {roleLabels[role || ''] || role}
@@ -152,8 +159,7 @@ export function AppShell({ children }: AppShellProps) {
 
         {/* Event name */}
         {eventName && (
-          <span style={{
-            fontFamily: 'var(--font-mono)',
+          <span className="app-header-event" style={{
             fontSize: 'var(--text-xs)',
             color: 'var(--color-text-subtle)',
             marginLeft: 'var(--space-2)',
@@ -186,6 +192,8 @@ export function AppShell({ children }: AppShellProps) {
               : reconnecting
                 ? 'Kobler til…'
                 : 'Frakoblet';
+          // The full label needs room; a phone header gets the short form.
+          const visibleLabel = IS_DEMO ? 'Demo' : label;
           return (
             <div
               role="status"
@@ -195,92 +203,59 @@ export function AppShell({ children }: AppShellProps) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--space-2)',
-                fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--text-xs)',
+                fontWeight: 600,
                 color,
                 flexShrink: 0,
               }}
             >
               <div style={{
-                width: 8, height: 8,
+                width: 10, height: 10,
                 borderRadius: 'var(--radius-full)',
                 background: color,
+                flexShrink: 0,
               }} />
-              {label}
+              <span className="app-header-conn-label" title={label} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{visibleLabel}</span>
             </div>
           );
         })()}
 
-        {/* Theme toggle — single cycling button */}
-        <button
-          onClick={() => setTheme(theme === 'light' ? 'auto' : theme === 'auto' ? 'dark' : 'light')}
-          aria-label={`Tema: ${theme === 'light' ? 'Lys' : theme === 'dark' ? 'Mørk' : 'Auto'} — klikk for å bytte`}
-          title={`Tema: ${theme === 'light' ? 'Lys' : theme === 'dark' ? 'Mørk' : 'Auto'}`}
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            padding: '4px 8px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-border)',
-            background: 'var(--color-surface-raised)',
-            color: 'var(--color-text)',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
+        {/* Theme toggle — cycles Auto → Mørk → Lys, remembered across restarts */}
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={theme === 'dark' ? 'moon' : theme === 'light' ? 'sun' : 'autoTheme'}
+          onClick={() => setTheme((current) => nextTheme(current))}
+          aria-label={`Tema: ${THEME_LABELS[theme]} — trykk for å bytte`}
+          title={`Tema: ${THEME_LABELS[theme]}`}
+          data-testid="theme-toggle"
+          style={{ flexShrink: 0 }}
         >
-          {theme === 'light' ? '☀' : theme === 'dark' ? '☾' : 'Auto'}
-        </button>
+          <span className="app-header-btn-label">{THEME_LABELS[theme]}</span>
+        </Button>
 
-        {/* Logout */}
-        <button
-          onClick={handleLogout}
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-xs)',
-            padding: '6px 12px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-border)',
-            background: 'transparent',
-            color: 'var(--color-text-muted)',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
-          Logg ut
-        </button>
+        {/* Logout — icon only on a phone, the label returns from tablet width */}
+        <Button size="sm" variant="ghost" icon="logout" aria-label="Logg ut" onClick={handleLogout} style={{ flexShrink: 0 }}>
+          <span className="app-header-btn-label">Logg ut</span>
+        </Button>
       </header>
 
-      {/* Network offline banner */}
-      {!isOnline && (
+      {/* One status strip, only while something is degraded. Offline wins over a
+          dropped realtime socket; the header dot and the team card carry the
+          nominal state, so nothing sits between the header and the content
+          when all is well (review X6). */}
+      {(!isOnline || (!IS_DEMO && wsStatus === 'reconnecting')) && (
         <div
-          role="alert"
-          aria-live="assertive"
+          role={!isOnline ? 'alert' : 'status'}
+          aria-live={!isOnline ? 'assertive' : 'polite'}
+          data-testid="connection-strip"
           style={{
             background: 'var(--color-status-warning-bg)',
             borderBottom: '1px solid var(--color-status-warning-border)',
             padding: 'var(--space-2) var(--space-4)',
             textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
             fontSize: 'var(--text-sm)',
-            color: 'var(--color-status-warning)',
-          }}
-        >
-          Frakoblet — hendelser lagres lokalt og synkroniseres når tilkoblingen er tilbake
-        </div>
-      )}
-
-      {/* WebSocket reconnecting banner (shown when online but WS dropped) */}
-      {!IS_DEMO && isOnline && wsStatus === 'reconnecting' && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            background: 'var(--color-status-warning-bg)',
-            borderBottom: '1px solid var(--color-status-warning-border)',
-            padding: 'var(--space-2) var(--space-4)',
-            textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
             color: 'var(--color-status-warning)',
             display: 'flex',
             alignItems: 'center',
@@ -288,40 +263,21 @@ export function AppShell({ children }: AppShellProps) {
             gap: 'var(--space-2)',
           }}
         >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 8, height: 8,
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--color-status-warning)',
-              animation: 'pulse 1.5s ease-in-out infinite',
-              flexShrink: 0,
-            }}
-          />
-          Gjenoppretter sanntidsforbindelsen — siste data kan mangle
-        </div>
-      )}
-
-      {/* Always-visible first aider sync banner */}
-      {role === 'first_aider' && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            background: 'var(--color-surface-sunken)',
-            borderBottom: '1px solid var(--color-border)',
-            padding: 'var(--space-2) var(--space-4)',
-            textAlign: 'center',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--text-sm)',
-            color: firstAidSyncLabel === 'Ikke synkronisert'
-              ? 'var(--color-status-critical)'
-              : firstAidSyncLabel === 'Synkroniserer' || firstAidSyncLabel === 'Laget lokalt'
-                ? 'var(--color-status-warning)'
-                : 'var(--color-status-ok)',
-          }}
-        >
-          {firstAidSyncLabel}
+          {isOnline && (
+            <span
+              aria-hidden="true"
+              style={{
+                width: 8, height: 8,
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--color-status-warning)',
+                animation: 'pulse 1.5s ease-in-out infinite',
+                flexShrink: 0,
+              }}
+            />
+          )}
+          {!isOnline
+            ? 'Frakoblet — hendelser lagres lokalt og synkroniseres når tilkoblingen er tilbake'
+            : 'Gjenoppretter sanntidsforbindelsen — siste data kan mangle'}
         </div>
       )}
 

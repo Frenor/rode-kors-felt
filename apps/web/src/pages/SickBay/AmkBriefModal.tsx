@@ -186,6 +186,9 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
     setSavingCallLog(true);
     setError(null);
     setSuccess(null);
+    // Captured before the form resets below — the clinician logging the call
+    // is who AMK was told is following up.
+    const clinicianName = form.followUpOwner.trim() || patient.assignedClinician?.trim() || undefined;
     try {
       await api.createAmkCallLog(patient.id, {
         summaryGiven: form.summaryGiven.trim(),
@@ -195,13 +198,27 @@ export function AmkBriefModal({ patient, medications, onClose, onSaved }: AmkBri
         eta: form.eta.trim() || undefined,
         calledAt: form.calledAt ? new Date(form.calledAt).toISOString() : undefined,
       });
-      setSuccess('AMK-samtale er logget.');
       setForm(EMPTY_FORM());
       onSaved();
       const refreshed = await api.getAmkCallLogs(patient.id);
       setCallLogs(refreshed.callLogs ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Klarte ikke å lagre AMK-logg.');
+      setSavingCallLog(false);
+      return;
+    }
+
+    // AMK notified (gap B2) — logging the call is the signal that 113 now
+    // knows about this patient; surface a visible line if this half fails,
+    // never a silent gap between "logged" and "AMK notified".
+    try {
+      await api.executePatientAction(patient.id, { type: 'amk.notified', by: clinicianName });
+      setSuccess('AMK-samtale er logget, og AMK er markert som varslet.');
+      onSaved();
+    } catch (err) {
+      setError(
+        `AMK-samtalen er logget, men klarte ikke å markere AMK som varslet: ${err instanceof Error ? err.message : 'ukjent feil'}`,
+      );
     } finally {
       setSavingCallLog(false);
     }

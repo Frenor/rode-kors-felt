@@ -22,7 +22,9 @@ test('coordinator can log in and see dashboard', async ({ page }) => {
   // Verify "Koordinator" heading is visible
   await expect(page.getByRole('heading', { name: 'Koordinator' })).toBeVisible();
 
-  // Verify core coordinator UI is visible (patient panel + map controls)
+  // Verify core coordinator UI is visible (attention queue + map settings disclosure)
+  await expect(page.getByTestId('coordinator-attention-queue')).toBeVisible();
+  await page.getByTestId('map-settings-toggle').click();
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /MapLibre/i })).toBeVisible();
 });
@@ -30,10 +32,13 @@ test('coordinator can log in and see dashboard', async ({ page }) => {
 test('coordinator can see patient management panel and map', async ({ page }) => {
   await loginAsCoordinator(page);
 
-  // Patient management panel heading should be visible
-  await expect(page.getByRole('heading', { name: /Pasienter/i })).toBeVisible();
+  // Patient management panel heading should be visible ("Pasienter (n)"; the
+  // attention queue has its own "Pasienter uten lag" heading).
+  await expect(page.getByRole('heading', { name: /^Pasienter \(\d+\)/ })).toBeVisible();
 
-  // Map engine toggle buttons should be visible
+  // Map engine toggle buttons live behind "Kartinnstillinger"
+  await expect(page.getByRole('button', { name: /Leaflet/i })).toBeHidden();
+  await page.getByTestId('map-settings-toggle').click();
   await expect(page.getByRole('button', { name: /Leaflet/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /MapLibre/i })).toBeVisible();
 });

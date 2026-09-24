@@ -8,6 +8,9 @@ import type {
   TeamWorkspaceResponse,
 } from './types';
 import { calculateAgeYears, normalizeAmkCriticality } from './constants';
+// Lane 8 batch 3 (B): appended rather than merged into the import above, so
+// this change never collides with edits to it elsewhere.
+import type { AccessCode, EventSettings, TeamMessage } from './types';
 
 /**
  * Demo mode — in-memory store
@@ -93,6 +96,7 @@ let patients: any[] = [
   {
     id: 'demo-pat-1',
     eventId: 'demo-event',
+    seq: 1,
     label: null,
     triageStatus: 'yellow',
     assignedTeamId: 'team-bravo',
@@ -172,6 +176,7 @@ let patients: any[] = [
   {
     id: 'demo-pat-2',
     eventId: 'demo-event',
+    seq: 2,
     label: null,
     triageStatus: 'green',
     assignedTeamId: null,
@@ -237,6 +242,7 @@ let patients: any[] = [
   {
     id: 'demo-pat-3',
     eventId: 'demo-event',
+    seq: 3,
     label: null,
     triageStatus: 'green',
     assignedTeamId: null,
@@ -291,9 +297,10 @@ let patients: any[] = [
   {
     id: 'demo-pat-4',
     eventId: 'demo-event',
+    seq: 4,
     label: null,
     triageStatus: 'yellow',
-    assignedTeamId: 'team-delta',
+    assignedTeamId: 'team-alpha',
     fullName: 'Sofia Nilsen',
     gender: 'female',
     birthDate: '1988-11-05',
@@ -316,6 +323,7 @@ let patients: any[] = [
   {
     id: 'demo-pat-5',
     eventId: 'demo-event',
+    seq: 5,
     label: 'Bevisstløs person ved løypebok',
     triageStatus: 'red',
     assignedTeamId: null,
@@ -339,6 +347,10 @@ let patients: any[] = [
     updatedAt: minsAgo(1),
   },
 ];
+
+// Shared patient number (gap A5): mirrors events.patient_counter — seeded
+// patients hold 1..5, so the next created patient gets 6.
+let patientCounter = 5;
 
 const medications: Record<string, any[]> = {
   'demo-pat-1': [
@@ -372,12 +384,12 @@ const medications: Record<string, any[]> = {
 };
 
 const DEMO_TEAMS = [
-  { id: 'team-alpha',   name: 'Alpha',   transport: 'foot',    currentPosition: { lat: 59.9645, lng: 10.6660 } },
-  { id: 'team-bravo',   name: 'Bravo',   transport: 'bike',    currentPosition: { lat: 59.9655, lng: 10.6682 } },
-  { id: 'team-charlie', name: 'Charlie', transport: 'foot',    currentPosition: { lat: 59.9622, lng: 10.6702 } },
-  { id: 'team-delta',   name: 'Delta',   transport: 'atv',     currentPosition: { lat: 59.9608, lng: 10.6720 } },
-  { id: 'team-echo',    name: 'Echo',    transport: 'vehicle', currentPosition: { lat: 59.9672, lng: 10.6638 } },
-  { id: 'team-foxtrot', name: 'Foxtrot', transport: 'foot',    currentPosition: null },
+  { id: 'team-alpha',   name: 'Alpha',   transport: 'foot',    currentPosition: { lat: 59.9645, lng: 10.6660 }, active: true },
+  { id: 'team-bravo',   name: 'Bravo',   transport: 'bike',    currentPosition: { lat: 59.9655, lng: 10.6682 }, active: true },
+  { id: 'team-charlie', name: 'Charlie', transport: 'foot',    currentPosition: { lat: 59.9622, lng: 10.6702 }, active: true },
+  { id: 'team-delta',   name: 'Delta',   transport: 'atv',     currentPosition: { lat: 59.9608, lng: 10.6720 }, active: true },
+  { id: 'team-echo',    name: 'Echo',    transport: 'vehicle', currentPosition: { lat: 59.9672, lng: 10.6638 }, active: true },
+  { id: 'team-foxtrot', name: 'Foxtrot', transport: 'foot',    currentPosition: null,                           active: true },
 ];
 
 const teamWorkspaceState: Record<string, {
@@ -392,16 +404,39 @@ const teamWorkspaceState: Record<string, {
   ]),
 );
 
+// Alpha has Sofia (demo-pat-4) and is on its way to her — the sick bay and the
+// coordinator both see who is bringing her in.
+teamWorkspaceState['team-alpha']!.patientStatusMap.set('demo-pat-4', 'en_route_to_patient');
+teamWorkspaceState['team-alpha']!.latestStatus = 'en_route';
+
 let demoEvent: any = {
   id: 'demo-event',
   name: 'Holmenkollen Skimaraton 2026',
-  mciActive: false,
-  mciActivatedBy: null,
-  mciSummaryHtml: null as string | null,
   createdAt: minsAgo(120),
+  // Event set-up (gap B5 / 8.31) — the demo event is a live, ongoing event.
+  startDate: minsAgo(120),
+  endDate: new Date(Date.now() + 4 * 3_600_000).toISOString(),
+  status: 'active',
+  anonymisedAt: null,
+  // Capacity settings (gap B6 / 8.30) — demo default matches the spec.
+  settings: { sickbay: { chairs: 16, beds: 4 } },
 };
 
 let actionEvents: any[] = [];
+
+// ── Lane 8 batch 3 (B): chat history (gap B9 / 8.29) ────────────────────────
+// The demo has no socket, so `sendTeamMessage` appends here directly instead
+// of going through a WebSocket relay.
+let demoTeamMessages: TeamMessage[] = [];
+
+// ── Lane 8 batch 3 (B): access codes (gap B5 / 8.31) ────────────────────────
+let demoAccessCodes: AccessCode[] = [];
+
+// ── Lane 8 batch 3 (B): event set-up (gap B5 / 8.31) ────────────────────────
+// A plain counter, not Date.now() alone — two teams (or codes) created within
+// the same millisecond (e.g. back-to-back in a test) must never collide on id.
+let demoTeamIdCounter = 0;
+let demoCodeIdCounter = 0;
 
 const createAction = (params: {
   eventId: string;
@@ -466,12 +501,36 @@ const mapWorkspacePatient = (patient: any, teamPatientStatus: TeamPatientStatus 
   lon: patient.lon ?? null,
   positionText: patient.positionText ?? null,
   teamPatientStatus,
+  latestVitals: patient.latestVitals ?? null,
+  seq: patient.seq ?? null,
+  handedOverAt: patient.handedOverAt ?? null,
+  handedOverByTeamId: patient.handedOverByTeamId ?? null,
+  fieldOutcome: patient.fieldOutcome ?? null,
+  amkNotifiedAt: patient.amkNotifiedAt ?? null,
+  amkNotifiedBy: patient.amkNotifiedBy ?? null,
+  // Transport request (gap B3)
+  transportNeed: patient.transportNeed ?? null,
+  transportPickupText: patient.transportPickupText ?? null,
+  transportRequestedAt: patient.transportRequestedAt ?? null,
+  transportRequestedBy: patient.transportRequestedBy ?? null,
+  transportTeamId: patient.transportTeamId ?? null,
+  transportAssignedAt: patient.transportAssignedAt ?? null,
 });
 
 const mapWithHistory = (entityType: 'incident' | 'patient', entity: any) => ({
   ...entity,
   actionHistory: actionEvents.filter((a) => a.entityType === entityType && a.entityId === entity.id),
 });
+
+// Quick log (gap A8): mirrors the API's Norwegian label for the note written
+// when a patient is registered already closed.
+const FIELD_OUTCOME_LABELS: Record<string, string> = {
+  treated_on_scene: 'Behandlet på stedet',
+  handed_to_sickbay: 'Overlevert sykestue',
+  handed_to_ambulance: 'Overlevert ambulanse',
+  false_alarm: 'Falsk alarm',
+  disappeared: 'Forsvunnet',
+};
 
 const mapCriticality = (score: number): AmkCriticality => {
   if (score >= 7) return 'critical';
@@ -515,6 +574,20 @@ const getLatestVitalsSummary = (patient: any) => {
     criticality: mapCriticality(news.total),
   };
 };
+
+// Journal export (gap B7): same shape as the API's buildPatientJournal.
+const buildDemoJournal = (patient: any) => ({
+  patient: mapWithHistory('patient', patient),
+  vitalsHistory: patient.vitalsHistory ?? [],
+  notes: patient.notes ?? [],
+  medications: medications[patient.id] ?? [],
+  amkCallLogs: actionEvents
+    .filter((a) => a.entityType === 'patient' && a.entityId === patient.id && a.actionType === 'patient.amk_call_logged')
+    .map((a) => (a.payload as { callLog?: AmkCallLog }).callLog)
+    .filter((callLog): callLog is AmkCallLog => Boolean(callLog)),
+  actionHistory: actionEvents.filter((a) => a.entityType === 'patient' && a.entityId === patient.id),
+  teams: DEMO_TEAMS.map((t) => ({ id: t.id, name: t.name })),
+});
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
@@ -568,8 +641,12 @@ export const demoStore = {
 
   getTeamWorkspace: (teamId: string): TeamWorkspaceResponse => {
     const teamState = ensureTeamState(teamId);
-    // Mirrors the API: closed patients (discharged/transferred) leave every bucket.
-    const openPatients = patients.filter((patient) => patient.status !== 'discharged' && patient.status !== 'transferred');
+    // Mirrors the API: closed patients (discharged/transferred) leave every
+    // bucket, and so does a patient already handed over to the tent — it is
+    // no longer this field team's concern even while its status stays open.
+    const openPatients = patients.filter(
+      (patient) => patient.status !== 'discharged' && patient.status !== 'transferred' && !patient.handedOverAt,
+    );
     const assignedPatients = openPatients.filter((patient) => patient.assignedTeamId === teamId);
     const assignedSet = new Set(assignedPatients.map((patient) => patient.id));
     const engagedPatients = openPatients.filter(
@@ -629,6 +706,19 @@ export const demoStore = {
           latestVitals,
           news2: news2 ? { total: news2.total, alertLevel: news2.alertLevel } : null,
           updatedAt: patient.updatedAt,
+          seq: patient.seq ?? null,
+          handedOverAt: patient.handedOverAt ?? null,
+          handedOverByTeamId: patient.handedOverByTeamId ?? null,
+          fieldOutcome: patient.fieldOutcome ?? null,
+          amkNotifiedAt: patient.amkNotifiedAt ?? null,
+          amkNotifiedBy: patient.amkNotifiedBy ?? null,
+          // Transport request (gap B3)
+          transportNeed: patient.transportNeed ?? null,
+          transportPickupText: patient.transportPickupText ?? null,
+          transportRequestedAt: patient.transportRequestedAt ?? null,
+          transportRequestedBy: patient.transportRequestedBy ?? null,
+          transportTeamId: patient.transportTeamId ?? null,
+          transportAssignedAt: patient.transportAssignedAt ?? null,
         };
       })
       .filter((item) => item.critical)
@@ -648,8 +738,12 @@ export const demoStore = {
     return { incident };
   },
 
-  getPatients: (_eventId: string) => ({
-    patients: patients.map((p) => mapWithHistory('patient', p)),
+  // Mirrors the API: a patrol asking for its own patients gets only those
+  // assigned to it, not every patient in the event.
+  getPatients: (_eventId: string, opts?: { assignedTeamId?: string }) => ({
+    patients: patients
+      .filter((p) => !opts?.assignedTeamId || p.assignedTeamId === opts.assignedTeamId)
+      .map((p) => mapWithHistory('patient', p)),
   }),
 
   createPatient: (data: Record<string, unknown>) => {
@@ -663,6 +757,25 @@ export const demoStore = {
     const gender = data.gender === 'male' || data.gender === 'female' || data.gender === 'other'
       ? data.gender
       : undefined;
+    patientCounter += 1;
+    const createdAt = new Date().toISOString();
+
+    // Quick log (gap A8): registered already closed — write the one-line
+    // note the same way the API does, mirroring `POST /events/:id/patients`.
+    let quickLogNotes: Array<{ id: string; text: string; author: string; createdAt: string }> = [];
+    if (data.status === 'discharged' && data.fieldOutcome) {
+      const assignedTeamId = data.assignedTeamId as string | undefined;
+      const teamName = assignedTeamId ? DEMO_TEAMS.find((t) => t.id === assignedTeamId)?.name : undefined;
+      const outcomeLabel = FIELD_OUTCOME_LABELS[data.fieldOutcome as string] ?? (data.fieldOutcome as string);
+      const author = teamName ?? 'ukjent';
+      quickLogNotes = [{
+        id: `demo-note-${Date.now()}`,
+        text: `${outcomeLabel} av ${author}`,
+        author,
+        createdAt,
+      }];
+    }
+
     const patient = {
       id: `demo-pat-${Date.now()}`,
       status: 'incoming',
@@ -672,11 +785,14 @@ export const demoStore = {
       gender,
       vitalsHistory: [],
       latestVitals: null,
-      notes: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      notes: quickLogNotes,
+      createdAt,
+      updatedAt: createdAt,
       ...data,
+      // Shared patient number (gap A5): always server-allocated, never client input.
+      seq: patientCounter,
     };
+
     patients = [patient, ...patients];
     return { patient };
   },
@@ -776,20 +892,149 @@ export const demoStore = {
     return { escalation, action };
   },
 
-  executePatientAction: (patientId: string, data: { type: 'status.set'; status: string }) => {
+  executePatientAction: (
+    patientId: string,
+    data:
+      | { type: 'status.set'; status: string }
+      | { type: 'amk.notified'; by?: string }
+      | { type: 'amk.cleared' }
+      // Transport request (gap B3)
+      | { type: 'transport.requested'; need: string; pickupText?: string }
+      | { type: 'transport.assigned'; teamId: string }
+      | { type: 'transport.cleared' },
+  ) => {
     const patient = patients.find((p) => p.id === patientId);
     if (!patient) throw new Error('Pasient ikke funnet');
-    const previousStatus = patient.status;
+
+    if (data.type === 'status.set') {
+      const previousStatus = patient.status;
+      patients = patients.map((p) =>
+        p.id === patientId ? { ...p, status: data.status, updatedAt: new Date().toISOString() } : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'patient.status_set',
+        payload: { previousStatus, nextStatus: data.status },
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    if (data.type === 'amk.notified') {
+      // Idempotent: a repeat call keeps the first time — mirrors the API.
+      if (patient.amkNotifiedAt) {
+        return { patient: mapWithHistory('patient', patient), action: null };
+      }
+      const amkNotifiedBy = data.by?.trim() || 'demo-user';
+      const amkNotifiedAt = new Date().toISOString();
+      patients = patients.map((p) =>
+        p.id === patientId ? { ...p, amkNotifiedAt, amkNotifiedBy, updatedAt: amkNotifiedAt } : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'amk.notified',
+        payload: { amkNotifiedAt, amkNotifiedBy },
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    if (data.type === 'transport.requested') {
+      const requestedAt = new Date().toISOString();
+      let requestedBy = 'demo-user';
+      if (patient.assignedTeamId) {
+        const team = DEMO_TEAMS.find((t) => t.id === patient.assignedTeamId);
+        if (team) requestedBy = team.name;
+      }
+      patients = patients.map((p) =>
+        p.id === patientId
+          ? {
+              ...p,
+              transportNeed: data.need,
+              transportPickupText: data.pickupText?.trim() || null,
+              transportRequestedAt: requestedAt,
+              transportRequestedBy: requestedBy,
+              transportTeamId: null,
+              transportAssignedAt: null,
+              updatedAt: requestedAt,
+            }
+          : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'transport.requested',
+        payload: { need: data.need, pickupText: data.pickupText, requestedBy },
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    if (data.type === 'transport.assigned') {
+      const team = DEMO_TEAMS.find((t) => t.id === data.teamId);
+      if (!team) throw new Error('Ukjent lag for transport');
+      const assignedAt = new Date().toISOString();
+      patients = patients.map((p) =>
+        p.id === patientId
+          ? { ...p, transportTeamId: team.id, transportAssignedAt: assignedAt, updatedAt: assignedAt }
+          : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'transport.assigned',
+        payload: { teamId: team.id },
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    if (data.type === 'transport.cleared') {
+      const clearedAt = new Date().toISOString();
+      patients = patients.map((p) =>
+        p.id === patientId
+          ? {
+              ...p,
+              transportNeed: null,
+              transportPickupText: null,
+              transportRequestedAt: null,
+              transportRequestedBy: null,
+              transportTeamId: null,
+              transportAssignedAt: null,
+              updatedAt: clearedAt,
+            }
+          : p,
+      );
+      const updated = patients.find((p) => p.id === patientId)!;
+      const action = createAction({
+        eventId: updated.eventId,
+        entityType: 'patient',
+        entityId: updated.id,
+        actionType: 'transport.cleared',
+        payload: {},
+      });
+      return { patient: mapWithHistory('patient', updated), action };
+    }
+
+    // amk.cleared
     patients = patients.map((p) =>
-      p.id === patientId ? { ...p, status: data.status, updatedAt: new Date().toISOString() } : p,
+      p.id === patientId
+        ? { ...p, amkNotifiedAt: null, amkNotifiedBy: null, updatedAt: new Date().toISOString() }
+        : p,
     );
     const updated = patients.find((p) => p.id === patientId)!;
     const action = createAction({
       eventId: updated.eventId,
       entityType: 'patient',
       entityId: updated.id,
-      actionType: 'patient.status_set',
-      payload: { previousStatus, nextStatus: data.status },
+      actionType: 'amk.cleared',
+      payload: {},
     });
     return { patient: mapWithHistory('patient', updated), action };
   },
@@ -989,9 +1234,12 @@ export const demoStore = {
     discharged: patients.filter((p) => p.status === 'discharged').length,
   }),
 
-  getEvent: (_id: string) => ({
+  getEvent: (_id: string, opts?: { includeInactive?: boolean }) => ({
     event: { ...demoEvent },
-    teams: DEMO_TEAMS.map((team) => ({
+    // Event set-up (gap B5 / 8.31): mirrors the API default (excludes
+    // inactive teams unless the caller asks for `includeInactive`, same as
+    // `?includeInactive=1` on the real endpoint).
+    teams: DEMO_TEAMS.filter((team) => opts?.includeInactive || team.active !== false).map((team) => ({
       ...team,
       operationalStatus: teamWorkspaceState[team.id]?.latestStatus ?? 'available',
       statusNote: null,
@@ -1003,31 +1251,154 @@ export const demoStore = {
     events: [{ id: demoEvent.id, name: demoEvent.name, active: demoEvent.active, createdAt: demoEvent.createdAt }],
   }),
 
-  toggleMci: (eventId: string, mciActive: boolean, mciSectors?: string[]) => {
-    if (!mciActive) {
-      const triage = incidents.reduce(
-        (acc, incident) => {
-          const key = incident.triageTag ?? 'untagged';
-          acc[key] = (acc[key] ?? 0) + 1;
-          return acc;
-        },
-        { immediate: 0, delayed: 0, minor: 0, expectant: 0, untagged: 0 } as Record<string, number>,
-      );
+  // ── Lane 8 batch 3 (B): chat history (gap B9 / 8.29) ───────────────────────
+  getTeamMessages: (_eventId: string) => ({ messages: demoTeamMessages }),
 
-      demoEvent.mciSummaryHtml = `<!doctype html><html lang="nb"><head><meta charset="utf-8"><title>MCI-overlevering</title><style>body{font-family:Arial,sans-serif;margin:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}</style></head><body><h1>MCI-overlevering (demo)</h1><p>Arrangement: ${demoEvent.name}</p><p>Generert: ${new Date().toLocaleString('nb-NO')}</p><table><thead><tr><th>Triage</th><th>Antall</th></tr></thead><tbody><tr><td>Umiddelbar</td><td>${triage.immediate}</td></tr><tr><td>Utsatt</td><td>${triage.delayed}</td></tr><tr><td>Mindre</td><td>${triage.minor}</td></tr><tr><td>Forventet</td><td>${triage.expectant}</td></tr><tr><td>Uklassifisert</td><td>${triage.untagged}</td></tr></tbody></table></body></html>`;
-    }
+  sendTeamMessage: (
+    _eventId: string,
+    payload: { fromTeamId?: string | null; fromLabel?: string | null; toTeamId?: string | null; text: string; ackOf?: string | null },
+  ) => {
+    const message: TeamMessage = {
+      id: `demo-msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      fromTeamId: payload.fromTeamId ?? null,
+      fromLabel: payload.fromLabel ?? null,
+      toTeamId: payload.toTeamId ?? null,
+      text: payload.text,
+      ackOf: payload.ackOf ?? null,
+      sentAt: new Date().toISOString(),
+    };
+    demoTeamMessages = [...demoTeamMessages, message];
+    return { message };
+  },
+
+  // ── Lane 8 batch 3 (B): capacity settings (gap B6 / 8.30) ──────────────────
+  updateEventSettings: (_eventId: string, settings: EventSettings) => {
+    const currentSickbay = (demoEvent.settings as EventSettings | undefined)?.sickbay;
     demoEvent = {
       ...demoEvent,
-      id: eventId,
-      mciActive,
-      mciSectors: mciSectors ?? demoEvent.mciSectors,
-      mciActivatedBy: mciActive ? 'Koordinator' : null,
+      settings: {
+        ...demoEvent.settings,
+        sickbay: settings.sickbay === undefined ? currentSickbay : { ...currentSickbay, ...settings.sickbay },
+      },
     };
+    return { settings: demoEvent.settings };
+  },
+
+  // ── Lane 8 batch 3 (B): event set-up (gap B5 / 8.31) ────────────────────────
+  updateEvent: (_eventId: string, data: Record<string, unknown>) => {
+    demoEvent = { ...demoEvent, ...data };
     return { event: { ...demoEvent } };
   },
 
-  downloadMciSummary: (_eventId: string): Blob => {
-    const html = demoEvent.mciSummaryHtml ?? '<html><body><h1>Ingen MCI-overlevering ennå</h1></body></html>';
-    return new Blob([html], { type: 'text/html' });
+  createTeam: (
+    _eventId: string,
+    data: { name: string; transport?: string; contactPhone?: string | null; contactRadio?: string | null },
+  ) => {
+    demoTeamIdCounter += 1;
+    const team = {
+      id: `demo-team-${Date.now()}-${demoTeamIdCounter}`,
+      name: data.name,
+      transport: data.transport ?? 'foot',
+      contactPhone: data.contactPhone ?? null,
+      contactRadio: data.contactRadio ?? null,
+      currentPosition: null,
+      active: true,
+    };
+    DEMO_TEAMS.push(team);
+    teamWorkspaceState[team.id] = {
+      latestStatus: 'available',
+      monitoredPatientIds: [],
+      activePatientId: null,
+      patientStatusMap: new Map<string, TeamPatientStatus>(),
+    };
+    return { team };
   },
+
+  updateTeam: (
+    teamId: string,
+    data: Partial<{ name: string; transport: string; contactPhone: string | null; contactRadio: string | null; active: boolean }>,
+  ) => {
+    const idx = DEMO_TEAMS.findIndex((t) => t.id === teamId);
+    if (idx === -1) throw new Error('Lag ikke funnet');
+    DEMO_TEAMS[idx] = { ...DEMO_TEAMS[idx], ...data } as (typeof DEMO_TEAMS)[number];
+    return { team: DEMO_TEAMS[idx] };
+  },
+
+  getAccessCodes: (_eventId: string) => ({ codes: demoAccessCodes }),
+
+  createAccessCode: (_eventId: string, data: { role: string; hours?: number }) => {
+    const hours = data.hours ?? 24;
+    demoCodeIdCounter += 1;
+    const code: AccessCode = {
+      id: `demo-code-${Date.now()}-${demoCodeIdCounter}`,
+      role: data.role as AccessCode['role'],
+      code: String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0'),
+      expiresAt: new Date(Date.now() + hours * 3_600_000).toISOString(),
+      revokedAt: null,
+    };
+    demoAccessCodes = [...demoAccessCodes, code];
+    return { code };
+  },
+
+  revokeAccessCode: (codeId: string) => {
+    const existing = demoAccessCodes.find((c) => c.id === codeId);
+    if (!existing) throw new Error('Kode ikke funnet');
+    const revokedAt = existing.revokedAt ?? new Date().toISOString();
+    demoAccessCodes = demoAccessCodes.map((c) => (c.id === codeId ? { ...c, revokedAt } : c));
+    return { code: demoAccessCodes.find((c) => c.id === codeId)! };
+  },
+  // Journal export (gap B7)
+  getPatientJournal: (patientId: string) => {
+    const patient = patients.find((p) => p.id === patientId);
+    if (!patient) throw new Error('Pasient ikke funnet');
+    return buildDemoJournal(patient);
+  },
+
+  getEventJournals: (eventId: string) => ({
+    journals: patients.filter((p) => p.eventId === eventId).map((p) => buildDemoJournal(p)),
+  }),
+
+  // Retention (gap B8) — demo events have no lifecycle state today, so the
+  // active-event gate only fires once a later batch sets `demoEvent.status`;
+  // until then anonymising always succeeds, same as archiving a real event first.
+  anonymiseEvent: (eventId: string) => {
+    if (demoEvent.anonymisedAt) {
+      return { anonymisedAt: demoEvent.anonymisedAt as string, alreadyAnonymised: true, patientsAnonymised: 0 };
+    }
+    if (demoEvent.status === 'active') {
+      throw new Error('Arrangementet er fortsatt aktivt');
+    }
+
+    const eventPatientIds = new Set(patients.filter((p) => p.eventId === eventId).map((p) => p.id));
+    const now = new Date().toISOString();
+
+    patients = patients.map((p) =>
+      eventPatientIds.has(p.id)
+        ? {
+            ...p,
+            fullName: null,
+            birthDate: null,
+            gender: null,
+            description: null,
+            positionText: null,
+            notes: (p.notes ?? []).map((n: any) => ({ ...n, text: '[anonymisert]' })),
+            updatedAt: now,
+          }
+        : p,
+    );
+
+    actionEvents = actionEvents.map((a) => {
+      if (a.actionType !== 'patient.amk_call_logged' || !eventPatientIds.has(a.entityId)) return a;
+      const callLog = (a.payload as { callLog?: AmkCallLog }).callLog;
+      if (!callLog) return a;
+      return {
+        ...a,
+        payload: { ...a.payload, callLog: { ...callLog, summaryGiven: '[anonymisert]', amkGuidance: '[anonymisert]' } },
+      };
+    });
+
+    demoEvent = { ...demoEvent, anonymisedAt: now };
+    return { anonymisedAt: now, alreadyAnonymised: false, patientsAnonymised: eventPatientIds.size };
+  },
+
 };

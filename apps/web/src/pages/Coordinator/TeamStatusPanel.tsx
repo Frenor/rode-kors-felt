@@ -7,22 +7,27 @@
  * entirely. Teams needing assistance are pinned to the top in red.
  */
 
-import { TEAM_OPERATIONAL_STATUS_LABELS } from '../../lib/constants';
+import { useState, type FormEvent } from 'react';
+import { TEAM_OPERATIONAL_STATUS_LABELS, TEAM_OPERATIONAL_STATUS_STYLE, TEAM_TRANSPORT_LABELS } from '../../lib/constants';
 import type { Team, TeamOperationalStatus } from '../../lib/types';
+import { Button, Pill } from '../../components/ui';
+import { TeamAssistanceActions } from './TeamAssistanceActions';
 
 interface TeamStatusPanelProps {
   teams: Team[];
   /** Optional: how many devices are broadcasting per team (from live positions). */
   memberCounts?: Record<string, number>;
+  /** Stand a patrol down after its call for help is resolved (confirmed inline). */
+  onClearAssistance?: (teamId: string) => Promise<void> | void;
+  /** Open the message compose addressed to this patrol. */
+  onMessageTeam?: (teamId: string) => void;
+  /** Last sector/place dispatched to each team (gap B4 / item 8.23). */
+  sectors?: Record<string, { sector: string; assignedAt: string }>;
+  /** Dispatch a team to a sector or place — distinct from assigning a patient. */
+  onDispatchTeam?: (teamId: string, sector: string) => Promise<void> | void;
 }
 
-const STATUS_STYLE: Record<TeamOperationalStatus, { color: string; bg: string; border: string }> = {
-  available:        { color: 'var(--color-status-ok)',       bg: 'var(--color-status-ok-bg)',       border: 'var(--color-status-ok-border)' },
-  en_route:         { color: 'var(--color-status-info)',     bg: 'var(--color-status-info-bg)',     border: 'var(--color-status-info-border)' },
-  on_scene:         { color: 'var(--color-status-warning)',  bg: 'var(--color-status-warning-bg)',  border: 'var(--color-status-warning-border)' },
-  needs_assistance: { color: 'var(--color-status-critical)', bg: 'var(--color-status-critical-bg)', border: 'var(--color-status-critical-border)' },
-  unavailable:      { color: 'var(--color-text-subtle)',     bg: 'var(--color-surface-sunken)',     border: 'var(--color-border)' },
-};
+const STATUS_STYLE = TEAM_OPERATIONAL_STATUS_STYLE;
 
 const STATUS_PRIORITY: Record<TeamOperationalStatus, number> = {
   needs_assistance: 0,
@@ -32,13 +37,6 @@ const STATUS_PRIORITY: Record<TeamOperationalStatus, number> = {
   unavailable: 4,
 };
 
-const TRANSPORT_LABELS: Record<string, string> = {
-  foot: 'Til fots',
-  bike: 'Sykkel',
-  vehicle: 'Kjøretøy',
-  atv: 'ATV',
-};
-
 function formatClock(iso?: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -46,7 +44,87 @@ function formatClock(iso?: string | null): string | null {
   return d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function TeamStatusPanel({ teams, memberCounts = {} }: TeamStatusPanelProps) {
+/**
+ * "Send til" (gap B4 / item 8.23) — a coordinator control for the sector-
+ * assignment relay that already existed on the wire and in the field, but
+ * had no sender. An inline text field beats a picker here: sectors are named
+ * things ("Sektor B", "km 12"), not a fixed list.
+ */
+function TeamDispatchForm({
+  team,
+  sector,
+  onDispatch,
+}: {
+  team: Team;
+  sector?: { sector: string; assignedAt: string };
+  onDispatch?: (teamId: string, sector: string) => Promise<void> | void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const [sending, setSending] = useState(false);
+
+  if (!onDispatch) return null;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = value.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    try {
+      await onDispatch(team.id, trimmed);
+      setValue('');
+      setOpen(false);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+      {sector?.sector && (
+        <span data-testid={`team-status-sector-${team.id}`} className="data" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+          → {sector.sector}
+        </span>
+      )}
+      {open ? (
+        <form onSubmit={(e) => void submit(e)} style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center' }}>
+          <label className="sr-only" htmlFor={`team-status-dispatch-input-${team.id}`}>
+            Sektor eller sted for {team.name}
+          </label>
+          <input
+            id={`team-status-dispatch-input-${team.id}`}
+            data-testid={`team-status-dispatch-input-${team.id}`}
+            className="field"
+            type="text"
+            placeholder="Sektor eller sted"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoFocus
+            style={{ minHeight: 44, fontSize: 'var(--text-sm)', width: 150 }}
+          />
+          <Button type="submit" variant="secondary" size="sm" icon="send" disabled={!value.trim() || sending}>
+            {sending ? 'Sender…' : 'Send'}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            Avbryt
+          </Button>
+        </form>
+      ) : (
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="navigate"
+          data-testid={`team-status-dispatch-${team.id}`}
+          onClick={() => setOpen(true)}
+        >
+          Send til
+        </Button>
+      )}
+    </span>
+  );
+}
+
+export function TeamStatusPanel({ teams, memberCounts = {}, onClearAssistance, onMessageTeam, sectors = {}, onDispatchTeam }: TeamStatusPanelProps) {
   const rows = [...teams].sort((a, b) => {
     const pa = STATUS_PRIORITY[(a.operationalStatus ?? 'available') as TeamOperationalStatus] ?? 9;
     const pb = STATUS_PRIORITY[(b.operationalStatus ?? 'available') as TeamOperationalStatus] ?? 9;
@@ -68,25 +146,18 @@ export function TeamStatusPanel({ teams, memberCounts = {} }: TeamStatusPanelPro
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
-        <h2
-          id="team-status-panel-title"
-          style={{ margin: 0, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', letterSpacing: 'var(--tracking-mono)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}
-        >
-          Lag ({teams.length})
+        <h2 id="team-status-panel-title" className="section-label" style={{ margin: 0 }}>
+          Lag (<span className="data">{teams.length}</span>)
         </h2>
         {needsAssistanceCount > 0 && (
-          <span
+          <Pill
             role="status"
             aria-live="assertive"
             data-testid="team-status-needs-assistance-count"
-            style={{
-              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
-              padding: '2px 10px', borderRadius: 'var(--radius-full)',
-              background: 'var(--color-status-critical)', color: 'white',
-            }}
+            tone={{ color: 'white', bg: 'var(--color-status-critical)' }}
           >
             {needsAssistanceCount} trenger bistand
-          </span>
+          </Pill>
         )}
       </div>
 
@@ -118,26 +189,24 @@ export function TeamStatusPanel({ teams, memberCounts = {} }: TeamStatusPanelPro
                 <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', minWidth: 96 }}>
                   {team.name}
                 </span>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fontWeight: 700,
-                    padding: '2px 10px', borderRadius: 'var(--radius-full)',
-                    background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-                  }}
-                >
+                <Pill dot tone={{ color: style.color, bg: style.bg, border: style.border }}>
                   {TEAM_OPERATIONAL_STATUS_LABELS[status] ?? status}
-                </span>
+                </Pill>
                 {isCritical && team.statusNote && (
                   <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-status-critical)', fontWeight: 600 }}>
                     {team.statusNote}
                   </span>
                 )}
                 <span style={{ flex: 1 }} />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', display: 'flex', gap: 'var(--space-2)' }}>
-                  {team.transport && <span>{TRANSPORT_LABELS[team.transport] ?? team.transport}</span>}
-                  {members ? <span>{members} enhet{members === 1 ? '' : 'er'}</span> : null}
-                  {updated && <span>kl. {updated}</span>}
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', display: 'flex', gap: 'var(--space-2)' }}>
+                  {team.transport && <span>{TEAM_TRANSPORT_LABELS[team.transport] ?? team.transport}</span>}
+                  {members ? <span><span className="data">{members}</span> enhet{members === 1 ? '' : 'er'}</span> : null}
+                  {updated && <span>kl. <span className="data">{updated}</span></span>}
                 </span>
+                <TeamDispatchForm team={team} sector={sectors[team.id]} onDispatch={onDispatchTeam} />
+                {isCritical && (
+                  <TeamAssistanceActions team={team} onClear={onClearAssistance} onMessage={onMessageTeam} testIdPrefix="team-status" />
+                )}
               </li>
             );
           })}

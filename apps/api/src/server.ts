@@ -14,6 +14,9 @@ import { patientRoutes } from './routes/patients.js';
 import { actionRoutes } from './routes/action-events.js';
 import { wsHandler } from './routes/ws.js';
 import { teamRoutes } from './routes/teams.js';
+import { messageRoutes } from './routes/messages.js';
+
+import { anonymiseExpiredEvents } from './lib/retention.js';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -110,6 +113,7 @@ async function buildServer() {
   await app.register(patientRoutes, { prefix: '/api/patients' });
   await app.register(teamRoutes, { prefix: '/api/teams' });
   await app.register(actionRoutes, { prefix: '/api/actions' });
+  await app.register(messageRoutes, { prefix: '/api' });
   await app.register(wsHandler, { prefix: '/ws' });
 
   return app;
@@ -127,6 +131,26 @@ async function start() {
     if (process.env.NODE_ENV !== 'production') {
       await seedDatabase();
     }
+
+    // ── Lane 8 batch 3 (A): retention sweep (gap B8) ──────────────────
+    // Runs once at startup and then every 24h. Errors are logged, never
+    // thrown — a bad sweep must never crash the process (CLAUDE.md: fail
+    // loud, never fake — but never break other work either).
+    try {
+      const { anonymisedEventIds } = await anonymiseExpiredEvents();
+      app.log.info(`Retention: anonymiserte ${anonymisedEventIds.length} utgåtte arrangement ved oppstart`);
+    } catch (err) {
+      app.log.error(err, 'Retention: anonymiseringskjøring ved oppstart feilet');
+    }
+    setInterval(() => {
+      anonymiseExpiredEvents()
+        .then(({ anonymisedEventIds }) => {
+          app.log.info(`Retention: anonymiserte ${anonymisedEventIds.length} utgåtte arrangement`);
+        })
+        .catch((err) => {
+          app.log.error(err, 'Retention: periodisk anonymisering feilet');
+        });
+    }, 24 * 60 * 60 * 1000);
 
     await app.listen({ port: PORT, host: HOST });
     app.log.info(`RKF API running on ${HOST}:${PORT}`);

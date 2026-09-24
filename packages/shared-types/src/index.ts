@@ -30,8 +30,22 @@ export type PatientStatus = z.infer<typeof PatientStatus>;
 export const FieldTriageStatus = z.enum(['green', 'yellow', 'red', 'black']);
 export type FieldTriageStatus = z.infer<typeof FieldTriageStatus>;
 
+/** How a field patient's engagement ended (gap A1 — hand-over model). */
+export const FieldOutcome = z.enum([
+  'handed_to_sickbay',
+  'handed_to_ambulance',
+  'treated_on_scene',
+  'false_alarm',
+  'disappeared',
+]);
+export type FieldOutcome = z.infer<typeof FieldOutcome>;
+
 export const TeamTransport = z.enum(['foot', 'bike', 'vehicle', 'atv']);
 export type TeamTransport = z.infer<typeof TeamTransport>;
+
+/** What a field team needs to move a patient (gap B3 — transport request). */
+export const TransportNeed = z.enum(['stretcher', 'atv', 'ambulance']);
+export type TransportNeed = z.infer<typeof TransportNeed>;
 
 export const SickBayPlacementType = z.enum(['chair', 'bed']);
 export type SickBayPlacementType = z.infer<typeof SickBayPlacementType>;
@@ -171,6 +185,22 @@ export const Patient = z.object({
   lat: z.number().nullable().optional(),
   lon: z.number().nullable().optional(),
   assignedTeamId: z.string().uuid().nullable().optional(),
+  // Hand-over model (gap A1)
+  handedOverAt: z.string().datetime().nullable().optional(),
+  handedOverByTeamId: z.string().uuid().nullable().optional(),
+  fieldOutcome: FieldOutcome.nullable().optional(),
+  // Shared patient number (gap A5)
+  seq: z.number().int().nullable().optional(),
+  // AMK notified (gap B2 data half)
+  amkNotifiedAt: z.string().datetime().nullable().optional(),
+  amkNotifiedBy: z.string().max(100).nullable().optional(),
+  // Transport request (gap B3)
+  transportNeed: TransportNeed.nullable().optional(),
+  transportPickupText: z.string().max(500).nullable().optional(),
+  transportRequestedAt: z.string().datetime().nullable().optional(),
+  transportRequestedBy: z.string().max(100).nullable().optional(),
+  transportTeamId: z.string().uuid().nullable().optional(),
+  transportAssignedAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -277,6 +307,21 @@ export const TeamWorkspacePatient = z.object({
   lon: z.number().nullable(),
   positionText: z.string().nullable(),
   teamPatientStatus: TeamPatientStatus.nullable().optional(),
+  /** Newest reading, so a patrol sees what it last recorded and the NEWS2 it implies. */
+  latestVitals: VitalReading.partial().nullable().optional(),
+  seq: z.number().int().nullable().optional(),
+  handedOverAt: z.string().datetime().nullable().optional(),
+  handedOverByTeamId: z.string().uuid().nullable().optional(),
+  fieldOutcome: FieldOutcome.nullable().optional(),
+  amkNotifiedAt: z.string().datetime().nullable().optional(),
+  amkNotifiedBy: z.string().max(100).nullable().optional(),
+  // Transport request (gap B3)
+  transportNeed: TransportNeed.nullable().optional(),
+  transportPickupText: z.string().max(500).nullable().optional(),
+  transportRequestedAt: z.string().datetime().nullable().optional(),
+  transportRequestedBy: z.string().max(100).nullable().optional(),
+  transportTeamId: z.string().uuid().nullable().optional(),
+  transportAssignedAt: z.string().datetime().nullable().optional(),
 });
 export type TeamWorkspacePatient = z.infer<typeof TeamWorkspacePatient>;
 
@@ -327,6 +372,17 @@ export const SickbayIncomingItem = z.object({
     alertLevel: z.enum(['routine', 'low', 'medium', 'high']),
   }).nullable().optional(),
   updatedAt: z.string().datetime(),
+  seq: z.number().int().nullable().optional(),
+  handedOverAt: z.string().datetime().nullable().optional(),
+  handedOverByTeamId: z.string().uuid().nullable().optional(),
+  fieldOutcome: FieldOutcome.nullable().optional(),
+  // Transport request (gap B3)
+  transportNeed: TransportNeed.nullable().optional(),
+  transportPickupText: z.string().max(500).nullable().optional(),
+  transportRequestedAt: z.string().datetime().nullable().optional(),
+  transportRequestedBy: z.string().max(100).nullable().optional(),
+  transportTeamId: z.string().uuid().nullable().optional(),
+  transportAssignedAt: z.string().datetime().nullable().optional(),
 });
 export type SickbayIncomingItem = z.infer<typeof SickbayIncomingItem>;
 
@@ -362,12 +418,18 @@ export const WsEventType = z.enum([
   'patient.deterioration_alert',
 ]);
 
+/**
+ * Chat history (gap B9). `toTeamId` is a team uuid, the literal `coordinator`,
+ * or null/undefined for everyone — not always a uuid, so it is a bounded
+ * string rather than `.uuid()`.
+ */
 export const TeamMessage = z.object({
   id: z.string().uuid(),
-  eventId: z.string().uuid(),
-  fromTeamId: z.string().uuid().optional(),
-  toTeamId: z.string().uuid().optional(), // null = broadcast to all
-  text: z.string().min(1).max(500),
+  fromTeamId: z.string().uuid().nullable().optional(),
+  fromLabel: z.string().max(100).nullable().optional(),
+  toTeamId: z.string().max(64).nullable().optional(),
+  text: z.string().min(1).max(1000),
+  ackOf: z.string().uuid().nullable().optional(),
   sentAt: z.string().datetime(),
 });
 export type TeamMessage = z.infer<typeof TeamMessage>;

@@ -4,7 +4,9 @@ import { LoginPage } from './pages/LoginPage';
 import { CodeEntryPage } from './pages/CodeEntryPage';
 import { FirstAiderDashboard } from './pages/FirstAiderDashboard';
 import { SickBayDashboard } from './pages/SickBayDashboard';
+import { PatientJournalPage } from './pages/PatientJournalPage';
 import { CoordinatorDashboard } from './pages/CoordinatorDashboard';
+import { EventSetupPage } from './pages/Coordinator/EventSetupPage';
 import { AppShell } from './components/AppShell';
 import './styles/global.css';
 
@@ -62,12 +64,20 @@ export default function App() {
             </AppShell>
           </ProtectedRoute>
         } />
+        <Route path="/sickbay/journal/:patientId" element={<ProtectedRoute allowedRoles={['sickbay', 'coordinator']}><AppShell><PatientJournalPage /></AppShell></ProtectedRoute>} />
 
         {/* Coordinator routes */}
         <Route path="/coordinator" element={
           <ProtectedRoute allowedRoles={['coordinator']}>
             <AppShell>
               <CoordinatorDashboard />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        <Route path="/coordinator/event" element={
+          <ProtectedRoute allowedRoles={['coordinator']}>
+            <AppShell>
+              <EventSetupPage />
             </AppShell>
           </ProtectedRoute>
         } />

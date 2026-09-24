@@ -540,3 +540,64 @@ describe('GET /api/teams/:teamId/workspace — closed patients', () => {
     expect(allIds).not.toContain(unassignedClosedId);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Lane 8 batch 3 (B) — PATCH /api/teams/:teamId (8.31)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('PATCH /api/teams/:teamId', () => {
+  it('updates name, transport, contact fields and active for coordinator/admin', async () => {
+    const token = getCoordinatorToken();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/teams/${teamId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        name: 'Patrulje Alpha (omdøpt)',
+        transport: 'vehicle',
+        contactPhone: '12345678',
+        contactRadio: 'ISSI-1',
+        active: false,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const team = res.json().team;
+    expect(team.name).toBe('Patrulje Alpha (omdøpt)');
+    expect(team.transport).toBe('vehicle');
+    expect(team.contactPhone).toBe('12345678');
+    expect(team.contactRadio).toBe('ISSI-1');
+    expect(team.active).toBe(false);
+
+    // Restore so later tests / suites are not affected by a deactivated team.
+    const restore = await app.inject({
+      method: 'PATCH',
+      url: `/api/teams/${teamId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Patrulje Alpha', transport: 'foot', active: true },
+    });
+    expect(restore.statusCode).toBe(200);
+    expect(restore.json().team.active).toBe(true);
+  });
+
+  it('rejects a first_aider token', async () => {
+    const token = getFirstAiderToken(eventId);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/teams/${teamId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Skal ikke gå' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('returns 404 for an unknown team', async () => {
+    const token = getCoordinatorToken();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/teams/${randomUUID()}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'Uansett' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});

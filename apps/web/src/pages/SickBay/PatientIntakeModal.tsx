@@ -1,5 +1,7 @@
 import { FocusTrap } from '../../components/FocusTrap';
-import { calculateAgeYears, GENDER_OPTIONS } from '../../lib/constants';
+import { calculateAgeYears, freeSickbayNumbers, GENDER_OPTIONS } from '../../lib/constants';
+import { Button } from '../../components/ui';
+import type { SickBayPatient } from '../../lib/types';
 
 export interface IntakeFormShape {
   fullName: string;
@@ -17,6 +19,8 @@ interface PatientIntakeModalProps {
   onChange: (f: IntakeFormShape) => void;
   onSubmit: () => void;
   onClose: () => void;
+  /** Other open patients in the event — feeds the placement quick-pick chips (item 8.30). */
+  openPatients?: SickBayPatient[];
 }
 
 const inputStyle: React.CSSProperties = {
@@ -32,8 +36,14 @@ const labelStyle: React.CSSProperties = {
 
 const fieldStyle: React.CSSProperties = { marginBottom: 'var(--space-3)' };
 
-export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: PatientIntakeModalProps) {
+/** A patient needs at least something to be found by later: a name or what is wrong. */
+export function isIntakeFormValid(form: Pick<IntakeFormShape, 'fullName' | 'presentingComplaint'>): boolean {
+  return form.fullName.trim().length > 0 || form.presentingComplaint.trim().length > 0;
+}
+
+export function PatientIntakeModal({ form, onChange, onSubmit, onClose, openPatients = [] }: PatientIntakeModalProps) {
   const previewAge = calculateAgeYears(form.birthDate);
+  const valid = isIntakeFormValid(form);
   return (
     <div
       role="dialog"
@@ -51,9 +61,12 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
           padding: 'var(--space-5)', maxWidth: 680, width: '100%',
           maxHeight: 'calc(100dvh - var(--space-8))', overflowY: 'auto',
         }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
+          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, marginBottom: 'var(--space-1)' }}>
             Ny pasient
           </h2>
+          <p style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+            Fyll inn navn eller problemstilling nå — resten kan legges til på kortet etterpå.
+          </p>
 
           {/* Fullt navn — full width */}
           <div style={fieldStyle}>
@@ -124,6 +137,27 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
             </div>
           </div>
 
+          {/* Quick-pick the lowest free numbers for the chosen type (item 8.30). */}
+          {form.placementType && (
+            <div
+              data-testid="intake-placement-free-numbers"
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)', marginTop: 'calc(-1 * var(--space-2))', marginBottom: 'var(--space-3)' }}
+            >
+              {freeSickbayNumbers(form.placementType, openPatients).map((n) => (
+                <Button
+                  key={n}
+                  variant="ghost"
+                  size="sm"
+                  pill
+                  data-testid={`placement-free-${n}`}
+                  onClick={() => onChange({ ...form, placementNumber: String(n) })}
+                >
+                  <span className="data">{n}</span>
+                </Button>
+              ))}
+            </div>
+          )}
+
           {/* Problemstilling + Behandler */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
             <div>
@@ -142,21 +176,21 @@ export function PatientIntakeModal({ form, onChange, onSubmit, onClose }: Patien
             </div>
           </div>
 
+          {!valid && (
+            <p
+              data-testid="intake-validation-hint"
+              style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--color-status-warning)', fontWeight: 600 }}
+            >
+              Skriv inn navn eller problemstilling for å registrere.
+            </p>
+          )}
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button onClick={onClose} className="touch-target" style={{
-              flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text)',
-              cursor: 'pointer',
-            }}>
+            <Button variant="ghost" size="lg" onClick={onClose} style={{ flex: 1 }}>
               Avbryt
-            </button>
-            <button onClick={onSubmit} className="touch-target" style={{
-              flex: 1, minHeight: 'var(--touch-min)', borderRadius: 'var(--radius-md)',
-              border: 'none', background: 'var(--color-brand)', color: 'white', fontWeight: 600,
-              cursor: 'pointer',
-            }}>
+            </Button>
+            <Button variant="primary" size="lg" onClick={onSubmit} disabled={!valid} style={{ flex: 1 }}>
               Registrer
-            </button>
+            </Button>
           </div>
         </div>
       </FocusTrap>

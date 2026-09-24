@@ -73,6 +73,24 @@
   --color-focus-ring: #2563eb;
   --color-input-bg: #ffffff;
   --color-input-border: #d1d5db;
+
+  /* Field triage (START/SIEVE colours) — pill text + background */
+  --color-triage-red: #b91c1c;
+  --color-triage-red-bg: #fee2e2;
+  --color-triage-yellow: #854d0e;
+  --color-triage-yellow-bg: #fef9c3;
+  --color-triage-green: #166534;
+  --color-triage-green-bg: #dcfce7;
+  --color-triage-black: #1e293b;
+  --color-triage-black-bg: #e2e8f0;
+
+  /* Team ↔ patient engagement (På vei / Transporterer / Overvåker) */
+  --color-engagement-en-route: #92400e;
+  --color-engagement-en-route-bg: #fef3c7;
+  --color-engagement-transporting: #1e40af;
+  --color-engagement-transporting-bg: #dbeafe;
+  --color-engagement-monitoring: #166534;
+  --color-engagement-monitoring-bg: #dcfce7;
 }
 
 /* ═══════════════════════════════════════════════
@@ -130,6 +148,22 @@
     --color-focus-ring: #58a6ff;
     --color-input-bg: #0d1117;
     --color-input-border: #5f6b7b;
+
+    --color-triage-red: #ff7f7f;
+    --color-triage-red-bg: rgba(248, 113, 113, 0.18);
+    --color-triage-yellow: #fbbf24;
+    --color-triage-yellow-bg: rgba(251, 191, 36, 0.18);
+    --color-triage-green: #4ade80;
+    --color-triage-green-bg: rgba(74, 222, 128, 0.18);
+    --color-triage-black: #cbd5e1;
+    --color-triage-black-bg: rgba(148, 163, 184, 0.22);
+
+    --color-engagement-en-route: #fbbf24;
+    --color-engagement-en-route-bg: rgba(251, 191, 36, 0.15);
+    --color-engagement-transporting: #6aaeff;
+    --color-engagement-transporting-bg: rgba(96, 165, 250, 0.15);
+    --color-engagement-monitoring: #4ade80;
+    --color-engagement-monitoring-bg: rgba(74, 222, 128, 0.15);
   }
 }
 
@@ -183,6 +217,22 @@
   --color-focus-ring: #58a6ff;
   --color-input-bg: #0d1117;
   --color-input-border: #5f6b7b;
+
+  --color-triage-red: #ff7f7f;
+  --color-triage-red-bg: rgba(248, 113, 113, 0.18);
+  --color-triage-yellow: #fbbf24;
+  --color-triage-yellow-bg: rgba(251, 191, 36, 0.18);
+  --color-triage-green: #4ade80;
+  --color-triage-green-bg: rgba(74, 222, 128, 0.18);
+  --color-triage-black: #cbd5e1;
+  --color-triage-black-bg: rgba(148, 163, 184, 0.22);
+
+  --color-engagement-en-route: #fbbf24;
+  --color-engagement-en-route-bg: rgba(251, 191, 36, 0.15);
+  --color-engagement-transporting: #6aaeff;
+  --color-engagement-transporting-bg: rgba(96, 165, 250, 0.15);
+  --color-engagement-monitoring: #4ade80;
+  --color-engagement-monitoring-bg: rgba(74, 222, 128, 0.15);
 }
 
 /* ═══════════════════════════════════════════════
@@ -192,9 +242,12 @@
   --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
 
-  /* Type scale — modular (1.25 ratio) */
-  --text-xs: 0.64rem;    /* 10.24px — mono labels */
-  --text-sm: 0.8rem;     /* 12.8px  — captions */
+  /* Type scale.
+     Floor raised in the 2026-09 UX review: 10 px mono labels were unreadable on
+     a phone at night. 12 px is the smallest size used anywhere; 14 px for
+     captions/buttons; 16 px body. Headings keep the 1.25 modular ratio. */
+  --text-xs: 0.75rem;    /* 12px    — mono labels, never smaller */
+  --text-sm: 0.875rem;   /* 14px    — captions, secondary buttons */
   --text-base: 1rem;     /* 16px    — body */
   --text-lg: 1.25rem;    /* 20px    — subheadings */
   --text-xl: 1.563rem;   /* 25px    — headings */

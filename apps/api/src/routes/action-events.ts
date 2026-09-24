@@ -1,7 +1,8 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { and, desc, eq, inArray } from 'drizzle-orm';
+import { TransportNeed } from '@rkf/shared-types';
 import { db } from '../db/index.js';
-import { actionEvents, patients } from '../db/schema.js';
+import { actionEvents, patients, teams } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 
 type AuthUser = {
@@ -12,8 +13,14 @@ type AuthUser = {
   eventId?: string;
 };
 
-type PatientActionBody =
-  | { type: 'status.set'; status: string };
+export type PatientActionBody =
+  | { type: 'status.set'; status: string }
+  | { type: 'amk.notified'; by?: string }
+  | { type: 'amk.cleared' }
+  // Transport request (gap B3)
+  | { type: 'transport.requested'; need: string; pickupText?: string }
+  | { type: 'transport.assigned'; teamId: string }
+  | { type: 'transport.cleared' };
 
 type ActionMeta = {
   actionType?: string;
@@ -89,6 +96,23 @@ export async function getActionHistoryByEntityIds(params: {
   return grouped;
 }
 
+const AMK_NOTIFIED_BY_MAX_LENGTH = 100;
+
+/** Mirrors patients.ts's mapPatient date handling for the subset returned by patient actions. */
+function mapActionPatient(row: typeof patients.$inferSelect) {
+  return {
+    ...row,
+    arrivalTime: row.arrivalTime.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    handedOverAt: row.handedOverAt ? row.handedOverAt.toISOString() : null,
+    amkNotifiedAt: row.amkNotifiedAt ? row.amkNotifiedAt.toISOString() : null,
+    // Transport request (gap B3)
+    transportRequestedAt: row.transportRequestedAt ? row.transportRequestedAt.toISOString() : null,
+    transportAssignedAt: row.transportAssignedAt ? row.transportAssignedAt.toISOString() : null,
+  };
+}
+
 export async function applyPatientAction(params: {
   patientId: string;
   user: AuthUser;
@@ -100,43 +124,197 @@ export async function applyPatientAction(params: {
     return { error: { code: 404, message: 'Pasient ikke funnet' } };
   }
 
-  if (params.body.type !== 'status.set') {
-    return { error: { code: 400, message: 'Ugyldig handling' } };
+  if (params.body.type === 'status.set') {
+    const previousStatus = patient.status;
+    const [updated] = await db
+      .update(patients)
+      .set({
+        status: params.body.status as typeof patients.$inferInsert['status'],
+        updatedAt: new Date(),
+      })
+      .where(eq(patients.id, patient.id))
+      .returning();
+
+    const action = await logAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patient.id,
+      actionType: params.meta?.actionType ?? 'patient.status_set',
+      payload: {
+        previousStatus,
+        nextStatus: params.body.status,
+        reason: params.meta?.reason,
+      },
+      createdBy: getActor(params.user),
+      undoOfActionId: params.meta?.undoOfActionId,
+    });
+
+    return { patient: mapActionPatient(updated!), action };
   }
 
-  const previousStatus = patient.status;
-  const [updated] = await db
-    .update(patients)
-    .set({
-      status: params.body.status as typeof patients.$inferInsert['status'],
-      updatedAt: new Date(),
-    })
-    .where(eq(patients.id, patient.id))
-    .returning();
+  if (params.body.type === 'amk.notified') {
+    const by = params.body.by?.trim();
+    if (by !== undefined && by.length > AMK_NOTIFIED_BY_MAX_LENGTH) {
+      return { error: { code: 400, message: `Varslingskilde er for lang (maks ${AMK_NOTIFIED_BY_MAX_LENGTH} tegn)` } };
+    }
 
-  const action = await logAction({
-    eventId: patient.eventId,
-    entityType: 'patient',
-    entityId: patient.id,
-    actionType: params.meta?.actionType ?? 'patient.status_set',
-    payload: {
-      previousStatus,
-      nextStatus: params.body.status,
-      reason: params.meta?.reason,
-    },
-    createdBy: getActor(params.user),
-    undoOfActionId: params.meta?.undoOfActionId,
-  });
+    // Idempotent: once AMK has been notified, a repeat call keeps the first
+    // time and does not log a new action or change anything.
+    if (patient.amkNotifiedAt) {
+      return { patient: mapActionPatient(patient), action: null };
+    }
 
-  return {
-    patient: {
-      ...updated!,
-      arrivalTime: updated!.arrivalTime.toISOString(),
-      createdAt: updated!.createdAt.toISOString(),
-      updatedAt: updated!.updatedAt.toISOString(),
-    },
-    action,
-  };
+    const actor = getActor(params.user);
+    const amkNotifiedBy = by || actor;
+    const now = new Date();
+    const [updated] = await db
+      .update(patients)
+      .set({ amkNotifiedAt: now, amkNotifiedBy, updatedAt: now })
+      .where(eq(patients.id, patient.id))
+      .returning();
+
+    const action = await logAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patient.id,
+      actionType: 'amk.notified',
+      payload: { amkNotifiedAt: now.toISOString(), amkNotifiedBy },
+      createdBy: actor,
+    });
+
+    return { patient: mapActionPatient(updated!), action };
+  }
+
+  if (params.body.type === 'amk.cleared') {
+    const [updated] = await db
+      .update(patients)
+      .set({ amkNotifiedAt: null, amkNotifiedBy: null, updatedAt: new Date() })
+      .where(eq(patients.id, patient.id))
+      .returning();
+
+    const action = await logAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patient.id,
+      actionType: 'amk.cleared',
+      payload: {},
+      createdBy: getActor(params.user),
+    });
+
+    return { patient: mapActionPatient(updated!), action };
+  }
+
+  // Transport request (gap B3): a field team asks for a stretcher/ATV/ambulance
+  // to move a patient; the coordinator later assigns a team to carry it out.
+  if (params.body.type === 'transport.requested') {
+    const parsedNeed = TransportNeed.safeParse(params.body.need);
+    if (!parsedNeed.success) {
+      return { error: { code: 400, message: 'Ugyldig transportbehov' } };
+    }
+    const pickupText = params.body.pickupText?.trim() || null;
+    if (pickupText && pickupText.length > 500) {
+      return { error: { code: 400, message: 'Hentested er for langt (maks 500 tegn)' } };
+    }
+
+    const actor = getActor(params.user);
+    // "Requested by" defaults to the requesting patrol's team name (the
+    // patient's own assigned team) and falls back to the actor's role when
+    // the patient has no team (e.g. a sick bay tent patient).
+    let requestedBy: string = params.user.role ?? actor;
+    if (patient.assignedTeamId) {
+      const [team] = await db
+        .select({ name: teams.name })
+        .from(teams)
+        .where(eq(teams.id, patient.assignedTeamId))
+        .limit(1);
+      if (team) requestedBy = team.name;
+    }
+
+    const now = new Date();
+    const [updated] = await db
+      .update(patients)
+      .set({
+        transportNeed: parsedNeed.data,
+        transportPickupText: pickupText,
+        transportRequestedAt: now,
+        transportRequestedBy: requestedBy,
+        transportTeamId: null,
+        transportAssignedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(patients.id, patient.id))
+      .returning();
+
+    const action = await logAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patient.id,
+      actionType: 'transport.requested',
+      payload: { need: parsedNeed.data, pickupText, requestedBy },
+      createdBy: actor,
+    });
+
+    return { patient: mapActionPatient(updated!), action };
+  }
+
+  if (params.body.type === 'transport.assigned') {
+    const [team] = await db
+      .select({ id: teams.id, eventId: teams.eventId })
+      .from(teams)
+      .where(eq(teams.id, params.body.teamId))
+      .limit(1);
+    if (!team || team.eventId !== patient.eventId) {
+      return { error: { code: 400, message: 'Ukjent lag for transport' } };
+    }
+
+    const now = new Date();
+    const [updated] = await db
+      .update(patients)
+      .set({ transportTeamId: team.id, transportAssignedAt: now, updatedAt: now })
+      .where(eq(patients.id, patient.id))
+      .returning();
+
+    const action = await logAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patient.id,
+      actionType: 'transport.assigned',
+      payload: { teamId: team.id },
+      createdBy: getActor(params.user),
+    });
+
+    return { patient: mapActionPatient(updated!), action };
+  }
+
+  if (params.body.type === 'transport.cleared') {
+    const now = new Date();
+    const [updated] = await db
+      .update(patients)
+      .set({
+        transportNeed: null,
+        transportPickupText: null,
+        transportRequestedAt: null,
+        transportRequestedBy: null,
+        transportTeamId: null,
+        transportAssignedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(patients.id, patient.id))
+      .returning();
+
+    const action = await logAction({
+      eventId: patient.eventId,
+      entityType: 'patient',
+      entityId: patient.id,
+      actionType: 'transport.cleared',
+      payload: {},
+      createdBy: getActor(params.user),
+    });
+
+    return { patient: mapActionPatient(updated!), action };
+  }
+
+  return { error: { code: 400, message: 'Ugyldig handling' } };
 }
 
 export async function undoActionById(params: {

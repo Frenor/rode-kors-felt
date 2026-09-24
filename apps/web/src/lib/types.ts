@@ -1,11 +1,11 @@
-import type { AcvpuLevel as SharedAcvpuLevel } from '@rkf/shared-types';
+import type { AcvpuLevel as SharedAcvpuLevel, FieldOutcome as SharedFieldOutcome, TransportNeed as SharedTransportNeed } from '@rkf/shared-types';
 
 /**
  * Shared frontend types — replaces `any` in both dashboards.
  * Enums are re-exported from @rkf/shared-types where available.
  */
 
-export type { AcvpuLevel, PatientStatus as PatientStatusKey } from '@rkf/shared-types';
+export type { AcvpuLevel, PatientStatus as PatientStatusKey, FieldOutcome, TransportNeed } from '@rkf/shared-types';
 
 export interface VitalsReading {
   id?: string;
@@ -142,7 +142,26 @@ export interface SickBayPatient {
   description?: string | null;
   triageStatus?: 'green' | 'yellow' | 'red' | 'black' | null;
   positionText?: string | null;
+  /** Patient position (gap A7/A9 distance line) — set from a field report. */
+  lat?: number | null;
+  lon?: number | null;
   assignedTeamId?: string | null;
+  /** Hand-over model (gap A1) — set once the field team has handed the patient off. */
+  handedOverAt?: string | null;
+  handedOverByTeamId?: string | null;
+  fieldOutcome?: SharedFieldOutcome | null;
+  /** Shared patient number (gap A5) — human-facing `#<seq>`, see lib/patient-number.ts. */
+  seq?: number | null;
+  /** AMK notified (gap B2 data half). */
+  amkNotifiedAt?: string | null;
+  amkNotifiedBy?: string | null;
+  /** Transport request (gap B3) — what/if a field team has asked to move this patient. */
+  transportNeed?: SharedTransportNeed | null;
+  transportPickupText?: string | null;
+  transportRequestedAt?: string | null;
+  transportRequestedBy?: string | null;
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
   vitalsHistory: VitalsReading[];
   latestVitals: VitalsReading | null;
   notes: PatientNote[];
@@ -169,6 +188,8 @@ export interface Team {
   operationalStatus?: TeamOperationalStatus;
   statusNote?: string | null;
   statusUpdatedAt?: string | null;
+  /** Event set-up (gap B5) — a stood-down team is excluded from GET /events/:id by default. */
+  active?: boolean;
 }
 
 export interface TeamWorkspacePatient {
@@ -182,6 +203,21 @@ export interface TeamWorkspacePatient {
   lon: number | null;
   positionText: string | null;
   teamPatientStatus?: TeamPatientStatus | null;
+  latestVitals?: VitalsReading | null;
+  seq?: number | null;
+  handedOverAt?: string | null;
+  handedOverByTeamId?: string | null;
+  fieldOutcome?: SharedFieldOutcome | null;
+  /** AMK notified (gap B2) — set once the field team has called 113/AMK. */
+  amkNotifiedAt?: string | null;
+  amkNotifiedBy?: string | null;
+  /** Transport request (gap B3). */
+  transportNeed?: SharedTransportNeed | null;
+  transportPickupText?: string | null;
+  transportRequestedAt?: string | null;
+  transportRequestedBy?: string | null;
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
 }
 
 export interface TeamWorkspaceResponse {
@@ -217,6 +253,20 @@ export interface SickbayIncomingItem {
   latestVitals?: VitalsReading | null;
   news2?: { total: number; alertLevel: 'routine' | 'low' | 'medium' | 'high' } | null;
   updatedAt: string;
+  seq?: number | null;
+  handedOverAt?: string | null;
+  handedOverByTeamId?: string | null;
+  fieldOutcome?: SharedFieldOutcome | null;
+  /** AMK notified (gap B2) — set once the sick bay (or the field) has called 113. */
+  amkNotifiedAt?: string | null;
+  amkNotifiedBy?: string | null;
+  /** Transport request (gap B3). */
+  transportNeed?: SharedTransportNeed | null;
+  transportPickupText?: string | null;
+  transportRequestedAt?: string | null;
+  transportRequestedBy?: string | null;
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
 }
 
 export interface DeteriorationAlert {
@@ -233,4 +283,49 @@ export interface EventStats {
   discharged: number;
   transferred: number;
   [key: string]: number;
+}
+
+// ── Lane 8 batch 3 (B): chat history (gap B9 / 8.29) ────────────────────────
+
+export interface TeamMessage {
+  id: string;
+  fromTeamId?: string | null;
+  fromLabel?: string | null;
+  /** A team uuid, the literal `'coordinator'`, or null/undefined for everyone. */
+  toTeamId?: string | null;
+  text: string;
+  /** Set on a receipt: the id of the message it acknowledges. */
+  ackOf?: string | null;
+  sentAt: string;
+}
+
+// ── Lane 8 batch 3 (B): capacity settings (gap B6 / 8.30) ───────────────────
+
+export interface EventSickbaySettings {
+  chairs?: number;
+  beds?: number;
+}
+
+export interface EventSettings {
+  sickbay?: EventSickbaySettings;
+}
+
+// ── Lane 8 batch 3 (B): event set-up (gap B5 / 8.31) ─────────────────────────
+
+export interface AccessCode {
+  id: string;
+  role: 'admin' | 'coordinator' | 'sickbay' | 'first_aider';
+  code: string;
+  expiresAt: string;
+  revokedAt?: string | null;
+}
+/** Journal export (gap B7) — `GET /patients/:id/journal` and `GET /events/:id/journals`. */
+export interface PatientJournal {
+  patient: SickBayPatient;
+  vitalsHistory: VitalsReading[];
+  notes: PatientNote[];
+  medications: MedicationRecord[];
+  amkCallLogs: AmkCallLog[];
+  actionHistory: ActionHistoryEntry[];
+  teams: Array<{ id: string; name: string }>;
 }

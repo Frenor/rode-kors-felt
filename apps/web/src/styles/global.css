@@ -6,6 +6,7 @@
 @import '@fontsource/ibm-plex-mono/500.css';
 @import '@fontsource/ibm-plex-mono/600.css';
 @import './tokens.css';
+@import './components.css';
 
 /* ═══════════════════════════════════════════════
    RESET & BASE
@@ -139,16 +140,88 @@ body {
   }
 }
 
-/* Action buttons grid — 3 cols; collapses to 2 cols on very narrow viewports */
+/* Card action buttons — as many columns as fit a 108 px button, so
+   "Ring 113" never breaks onto two lines in a narrow sick bay column. */
 .patient-action-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
-@media (max-width: 399px) {
-  .patient-action-grid {
-    grid-template-columns: repeat(2, 1fr);
+.patient-action-grid__call {
+  grid-column: 1 / -1;
+}
+
+.patient-action-grid .btn {
+  white-space: nowrap;
+  padding-inline: var(--space-1);
+  gap: 4px;
+}
+
+/* ═══════════════════════════════════════════════
+   APP HEADER — phones get the dot, the theme and
+   logout buttons; the event name and the connection
+   text only fit from tablet width up.
+═══════════════════════════════════════════════ */
+@media (max-width: 639px) {
+  .app-header-event {
+    display: none;
+  }
+}
+
+@media (max-width: 479px) {
+  .app-header-btn-label {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   COORDINATOR STATS — seven counters (six patient
+   counts + sick bay capacity): 7 / 4+3 / 2+2+2+1.
+═══════════════════════════════════════════════ */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+@media (max-width: 1279px) {
+  .stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 479px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   COORDINATOR LAYOUT — single column on tablets,
+   patient list + sticky map side by side from 960px.
+═══════════════════════════════════════════════ */
+.coordinator-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.coordinator-map {
+  height: 60vh;
+  min-height: 360px;
+}
+
+@media (min-width: 960px) {
+  .coordinator-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+
+  .coordinator-map {
+    position: sticky;
+    top: 72px;
+    height: calc(100dvh - 80px);
   }
 }
 
@@ -172,5 +245,33 @@ body {
 @media (min-width: 1024px) {
   .sickbay-groups-grid {
     grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   PRINT — patient journal (item 8.32). Only the
+   journal's own content should reach paper: app
+   chrome, toasts and the demo banner/guide are
+   noise on a printed sheet a coordinator hands off.
+═══════════════════════════════════════════════ */
+@media print {
+  header[role='banner'],
+  [data-testid='connection-strip'],
+  [role='complementary'][aria-label='Demo-veiledning'],
+  [role='alert'][aria-live='assertive'][aria-atomic='true'],
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  main#main-content,
+  .journal-page {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 }

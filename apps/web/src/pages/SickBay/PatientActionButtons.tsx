@@ -1,3 +1,5 @@
+import { Button } from '../../components/ui';
+
 interface PatientActionButtonsProps {
   showVitals: boolean;
   showMeds: boolean;
@@ -10,6 +12,11 @@ interface PatientActionButtonsProps {
   onOpenAmk: () => void;
 }
 
+/**
+ * The five card actions. "Ring 113" is the only critical one: it gets a row of
+ * its own above the four neutral openers (2 × 2), so nothing sits alone in a
+ * half-empty row and the call button is never mistaken for a toggle.
+ */
 export function PatientActionButtons({
   showVitals,
   showMeds,
@@ -21,55 +28,27 @@ export function PatientActionButtons({
   onToggleHistory,
   onOpenAmk,
 }: PatientActionButtonsProps) {
-  const quickActionStyle = (active = false) => ({
-    minHeight: 36,
-    padding: '0 var(--space-3)',
-    borderRadius: 'var(--radius-full)',
-    border: `1px solid ${active ? 'var(--color-brand)' : 'var(--color-border)'}`,
-    background: active ? 'var(--color-brand-dim)' : 'transparent',
-    fontSize: 'var(--text-xs)',
-    fontFamily: 'var(--font-mono)',
-    color: active ? 'var(--color-text)' : 'var(--color-text-muted)',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap' as const,
-  });
   return (
     <div className="patient-action-grid">
-        <button
-          onClick={onOpenAmk}
-          data-testid="patient-ring-113"
-          className="touch-target"
-          style={{
-            minHeight: 36,
-            padding: '0 var(--space-2)',
-            borderRadius: 'var(--radius-full)',
-            border: '1px solid var(--color-status-critical)',
-            background: 'var(--color-status-critical)',
-            fontSize: 'var(--text-xs)',
-            fontFamily: 'var(--font-mono)',
-            color: 'white',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Ring 113
-        </button>
+      <Button variant="danger-soft" size="sm" pill icon="phone" onClick={onOpenAmk} data-testid="patient-ring-113" className="patient-action-grid__call">
+        Ring 113
+      </Button>
 
-        <button onClick={onToggleVitals} className="touch-target" style={quickActionStyle(showVitals)}>
-          {showVitals ? 'Lukk vitale' : 'Vitale'}
-        </button>
+      <Button variant="secondary" size="sm" pill selected={showVitals} aria-expanded={showVitals} onClick={onToggleVitals}>
+        {showVitals ? 'Lukk vitale' : 'Vitale'}
+      </Button>
 
-        <button onClick={onToggleMedication} className="touch-target" style={quickActionStyle(showMeds)}>
-          {showMeds ? 'Lukk medik.' : 'Medik.'}
-        </button>
+      <Button variant="secondary" size="sm" pill selected={showMeds} aria-expanded={showMeds} onClick={onToggleMedication}>
+        {showMeds ? 'Lukk medisin' : 'Medisin'}
+      </Button>
 
-        <button onClick={onToggleNote} className="touch-target" style={quickActionStyle(showNote)}>
-          {showNote ? 'Lukk notat' : 'Notat'}
-        </button>
+      <Button variant="secondary" size="sm" pill selected={showNote} aria-expanded={showNote} onClick={onToggleNote}>
+        {showNote ? 'Lukk notat' : 'Notat'}
+      </Button>
 
-        <button onClick={onToggleHistory} className="touch-target" style={quickActionStyle(showHistory)}>
-          Logg
-        </button>
+      <Button variant="secondary" size="sm" pill selected={showHistory} aria-expanded={showHistory} onClick={onToggleHistory}>
+        Logg
+      </Button>
     </div>
   );
 }

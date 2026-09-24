@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp, getCoordinatorToken, getSickbayToken, getEventId } from './helpers.js';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { actionEvents } from '../db/schema.js';
+import { actionEvents, teams } from '../db/schema.js';
 
 let app: FastifyInstance;
 let eventId: string;
@@ -998,5 +998,283 @@ describe('PATCH /api/patients/:id — final states are terminal (no DB-enforced 
     // If a server-side guard is introduced, change this to toBe(422) or toBe(409)
     // and remove this comment.
     expect([200, 409, 422]).toContain(res.statusCode);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/patients/:id — hand-over model (gap A1)
+// ---------------------------------------------------------------------------
+
+describe('PATCH /api/patients/:id — hand-over model (gap A1)', () => {
+  it('accepts handedOverAt, handedOverByTeamId and fieldOutcome and keeps status unchanged', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const eventRes = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+    });
+    const teamId = eventRes.json().teams[0].id as string;
+    const { token, patientId } = await createTestPatient('Overlevert-test');
+    const handedOverAt = new Date().toISOString();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { fieldOutcome: 'handed_to_sickbay', handedOverAt, handedOverByTeamId: teamId },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.patient.status).toBe('incoming'); // unchanged
+    expect(body.patient.fieldOutcome).toBe('handed_to_sickbay');
+    expect(body.patient.handedOverAt).toBe(handedOverAt);
+    expect(body.patient.handedOverByTeamId).toBe(teamId);
+  });
+
+  it('keeps fieldOutcome when a status change rides in the same request', async () => {
+    // The field's close flow sends outcome + status together ("Overlevert
+    // ambulanse" → transferred). Before the fix the status branch returned
+    // early and dropped every other field.
+    const { token, patientId } = await createTestPatient('Ambulanse-test');
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { fieldOutcome: 'handed_to_ambulance', status: 'in_treatment' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.patient.status).toBe('in_treatment');
+    expect(body.patient.fieldOutcome).toBe('handed_to_ambulance');
+
+    const check = await app.inject({
+      method: 'GET',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(check.json().patient.fieldOutcome).toBe('handed_to_ambulance');
+    expect(check.json().patient.status).toBe('in_treatment');
+  });
+
+  it('rejects an invalid fieldOutcome', async () => {
+    const { token, patientId } = await createTestPatient();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { fieldOutcome: 'sent_home' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toHaveProperty('error');
+  });
+
+  it('rejects an invalid handedOverAt string', async () => {
+    const { token, patientId } = await createTestPatient();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { handedOverAt: 'not-a-date' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toHaveProperty('error');
+  });
+
+  it('rejects a handedOverByTeamId that does not exist', async () => {
+    const { token, patientId } = await createTestPatient();
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { handedOverByTeamId: '00000000-0000-0000-0000-000000000000' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toHaveProperty('error');
+  });
+
+  it('rejects a handedOverByTeamId that belongs to a different event', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const foreignEventRes = await app.inject({
+      method: 'POST',
+      url: '/api/events',
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: {
+        name: `Fremmed hand-over event ${Date.now()}`,
+        startDate: '2026-05-04T08:00:00.000Z',
+        endDate: '2026-05-04T18:00:00.000Z',
+      },
+    });
+    const foreignEventId = foreignEventRes.json().event.id as string;
+    const [foreignTeam] = await db.insert(teams).values({ eventId: foreignEventId, name: 'Fremmed lag' }).returning();
+
+    const { token, patientId } = await createTestPatient();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { handedOverByTeamId: foreignTeam!.id },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toHaveProperty('error');
+  });
+
+  it('clears handedOverAt, handedOverByTeamId and fieldOutcome when set to null', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const eventRes = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+    });
+    const teamId = eventRes.json().teams[0].id as string;
+    const { token, patientId } = await createTestPatient();
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { fieldOutcome: 'treated_on_scene', handedOverAt: new Date().toISOString(), handedOverByTeamId: teamId },
+    });
+
+    const clearRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { fieldOutcome: null, handedOverAt: null, handedOverByTeamId: null },
+    });
+
+    expect(clearRes.statusCode).toBe(200);
+    const patient = clearRes.json().patient;
+    expect(patient.fieldOutcome).toBeNull();
+    expect(patient.handedOverAt).toBeNull();
+    expect(patient.handedOverByTeamId).toBeNull();
+  });
+});
+
+describe('GET /api/teams/:teamId/workspace — hand-over model excludes handed-over patients', () => {
+  it('drops a patient with handedOverAt set from every bucket even while status stays open', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const eventRes = await app.inject({
+      method: 'GET',
+      url: `/api/events/${eventId}`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+    });
+    const teamId = eventRes.json().teams[0].id as string;
+
+    const fieldPatientRes = await app.inject({
+      method: 'POST',
+      url: `/api/events/${eventId}/patients`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: { label: 'Overlevert-workspace-test', assignedTeamId: teamId },
+    });
+    const patientId = fieldPatientRes.json().patient.id as string;
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/patients/${patientId}`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: {
+        fieldOutcome: 'handed_to_sickbay',
+        handedOverAt: new Date().toISOString(),
+        handedOverByTeamId: teamId,
+      },
+    });
+    expect(patchRes.statusCode).toBe(200);
+    expect(patchRes.json().patient.status).toBe('incoming'); // still an "active" status
+
+    const ws = await app.inject({
+      method: 'GET',
+      url: `/api/teams/${teamId}/workspace`,
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+    });
+    expect(ws.statusCode).toBe(200);
+    const body = ws.json();
+    const allIds = [...body.assignedPatients, ...body.monitoredPatients, ...body.unassignedPatients].map(
+      (p: { id: string }) => p.id,
+    );
+    expect(allIds).not.toContain(patientId);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shared patient number (gap A5)
+// ---------------------------------------------------------------------------
+
+describe('Shared patient number (gap A5)', () => {
+  it('allocates sequential seq numbers per event across both create paths', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const eventRes = await app.inject({
+      method: 'POST',
+      url: '/api/events',
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: {
+        name: `Sekvens-test ${Date.now()}`,
+        startDate: '2026-06-01T08:00:00.000Z',
+        endDate: '2026-06-01T18:00:00.000Z',
+      },
+    });
+    const seqEventId = eventRes.json().event.id as string;
+    const token = getSickbayToken(seqEventId);
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { eventId: seqEventId, presentingComplaint: 'Sickbay intake' },
+    });
+    const second = await app.inject({
+      method: 'POST',
+      url: `/api/events/${seqEventId}/patients`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { label: 'Field report' },
+    });
+    const third = await app.inject({
+      method: 'POST',
+      url: '/api/patients',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { eventId: seqEventId, presentingComplaint: 'Sickbay intake 2' },
+    });
+
+    expect(first.json().patient.seq).toBe(1);
+    expect(second.json().patient.seq).toBe(2);
+    expect(third.json().patient.seq).toBe(3);
+  });
+
+  it('gives two concurrent intakes in the same event distinct seq numbers', async () => {
+    const coordinatorToken = getCoordinatorToken();
+    const eventRes = await app.inject({
+      method: 'POST',
+      url: '/api/events',
+      headers: { authorization: `Bearer ${coordinatorToken}` },
+      payload: {
+        name: `Konkurrent-test ${Date.now()}`,
+        startDate: '2026-06-02T08:00:00.000Z',
+        endDate: '2026-06-02T18:00:00.000Z',
+      },
+    });
+    const seqEventId = eventRes.json().event.id as string;
+    const token = getSickbayToken(seqEventId);
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        app.inject({
+          method: 'POST',
+          url: '/api/patients',
+          headers: { authorization: `Bearer ${token}` },
+          payload: { eventId: seqEventId, presentingComplaint: `Konkurrent ${i}` },
+        }),
+      ),
+    );
+
+    const seqs = results.map((r) => r.json().patient.seq as number);
+    expect(new Set(seqs).size).toBe(5);
+    expect(seqs.every((s) => typeof s === 'number')).toBe(true);
   });
 });

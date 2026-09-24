@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { TeamPositionPayload } from '@rkf/shared-types';
 import { verifyToken } from '../middleware/auth.js';
 import { db } from '../db/index.js';
-import { teams } from '../db/schema.js';
+import { teams, teamMessages } from '../db/schema.js';
 
 type TokenPayload = {
   role?: string;
@@ -133,18 +133,30 @@ export async function wsHandler(app: FastifyInstance) {
         };
 
         if (message.type === 'team.message') {
+          const id = crypto.randomUUID();
+          const fromTeamId = typeof message.payload?.fromTeamId === 'string' ? message.payload.fromTeamId : null;
+          // Who sent it when it was not a patrol (the coordinator desk).
+          const fromLabel = typeof message.payload?.fromLabel === 'string' ? message.payload.fromLabel : null;
+          const toTeamId = typeof message.payload?.toTeamId === 'string' ? message.payload.toTeamId : null;
+          // A receipt for an earlier directed message ("Mottatt").
+          const ackOf = typeof message.payload?.ackOf === 'string' ? message.payload.ackOf : null;
+          const text = typeof message.payload?.text === 'string' ? message.payload.text : '';
+          const sentAt = new Date().toISOString();
+
           broadcast({
             type: 'team.message',
             eventId: connectionEventId,
-            payload: {
-              id: crypto.randomUUID(),
-              fromTeamId: message.payload?.fromTeamId,
-              toTeamId: message.payload?.toTeamId ?? null,
-              text: message.payload?.text,
-              sentAt: new Date().toISOString(),
-            },
-            timestamp: new Date().toISOString(),
+            payload: { id, fromTeamId, fromLabel, toTeamId, ackOf, text, sentAt },
+            timestamp: sentAt,
           });
+
+          // Chat history (gap B9): persist so a dashboard that joins late or
+          // reloads can fetch what it missed. Fire-and-forget — a DB hiccup
+          // must never block the live relay.
+          if (text) {
+            persistTeamMessage({ id, eventId: connectionEventId, fromTeamId, fromLabel, toTeamId, ackOf, text, sentAt })
+              .catch((err) => app.log.error({ err }, 'Kunne ikke lagre teammelding'));
+          }
         } else if (message.type === 'team.position') {
           const parsed = TeamPositionPayload.safeParse(message.payload);
           if (parsed.success) {
@@ -194,6 +206,35 @@ export async function wsHandler(app: FastifyInstance) {
       app.log.info(`WebSocket frakoblet (${clients.size} klienter)`);
       broadcastConnectionCount(connectionEventId);
     });
+  });
+}
+
+// ── Lane 8 batch 3 (B): chat history (gap B9) ──────────────────────
+/**
+ * Persists one relayed `team.message`, using the same `id` the broadcast
+ * used, so `GET /events/:id/messages` returns exactly what clients saw live.
+ * Callers should fire-and-forget this and log rejections — a DB hiccup must
+ * never block the live relay.
+ */
+export async function persistTeamMessage(row: {
+  id: string;
+  eventId: string;
+  fromTeamId: string | null;
+  fromLabel: string | null;
+  toTeamId: string | null;
+  ackOf: string | null;
+  text: string;
+  sentAt: string;
+}): Promise<void> {
+  await db.insert(teamMessages).values({
+    id: row.id,
+    eventId: row.eventId,
+    fromTeamId: row.fromTeamId,
+    fromLabel: row.fromLabel,
+    toTeamId: row.toTeamId,
+    ackOf: row.ackOf,
+    text: row.text,
+    sentAt: new Date(row.sentAt),
   });
 }
 

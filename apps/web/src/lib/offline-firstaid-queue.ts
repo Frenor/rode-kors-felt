@@ -25,7 +25,28 @@ export type QueuedTeamActionPayload =
       /** null clears the team's engagement with this patient */
       status: TeamPatientStatus | null;
       clientActionId: string;
+    }
+  /* Vitals and notes recorded in the field while offline (review F14). They are
+     replayed against the patient endpoints, not the team action endpoint. */
+  | {
+      type: 'patient.vitals_record';
+      patientId: string;
+      vitals: Record<string, number | string | undefined>;
+      clientActionId: string;
+    }
+  | {
+      type: 'patient.note_add';
+      patientId: string;
+      text: string;
+      author: string;
+      clientActionId: string;
     };
+
+/** The subset that goes to POST /teams/:id/actions (everything but vitals/notes). */
+export type QueuedTeamEndpointPayload = Exclude<
+  QueuedTeamActionPayload,
+  { type: 'patient.vitals_record' } | { type: 'patient.note_add' }
+>;
 
 export interface QueuedTeamAction {
   clientActionId: string;

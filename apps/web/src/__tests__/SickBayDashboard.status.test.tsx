@@ -61,6 +61,8 @@ vi.mock('../lib/api', () => ({
   api: {
     getPatients: vi.fn(),
     getSickbayIncoming: vi.fn().mockResolvedValue({ items: [] }),
+    getTeamPatientEngagements: vi.fn().mockResolvedValue({ engagements: {} }),
+    getEvent: vi.fn().mockResolvedValue({ event: {}, teams: [] }),
     executePatientAction: (...args: unknown[]) => mockExecutePatientAction(...args),
     addPatientNote: (...args: unknown[]) => mockAddPatientNote(...args),
     createPatient: vi.fn(),
@@ -76,9 +78,16 @@ vi.mock('../lib/api', () => ({
   },
 }));
 
-// Offline queue — spy so we can assert queuing without hitting IndexedDB
-vi.mock('../lib/offline-queue', () => ({
-  enqueue: vi.fn().mockResolvedValue('queued-client-id'),
+// Offline queue (item 8.27) — spy so we can assert queuing without hitting
+// real IndexedDB; also backs `SickBayHeader`'s live queue-count query.
+const mockEnqueueSickbayAction = vi.fn().mockResolvedValue('queued-client-id');
+vi.mock('../lib/offline-sickbay-queue', () => ({
+  offlineSickbayQueueDb: { queue: { toArray: vi.fn().mockResolvedValue([]) } },
+  enqueueSickbayAction: (...args: unknown[]) => mockEnqueueSickbayAction(...args),
+  getRetryableSickbayActions: vi.fn().mockResolvedValue([]),
+  markSickbayActionSyncing: vi.fn(),
+  markSickbayActionFailed: vi.fn(),
+  removeSickbayAction: vi.fn(),
 }));
 
 // @rkf/shared-types — stub NEWS2 helpers so we don't need the full package
@@ -90,7 +99,6 @@ vi.mock('@rkf/shared-types', () => ({
 }));
 
 import { api } from '../lib/api';
-import { enqueue } from '../lib/offline-queue';
 
 // ---------------------------------------------------------------------------
 // Helper — build a minimal patient fixture
@@ -516,6 +524,41 @@ describe('AMK brief modal — structured 113 flow', () => {
     });
   });
 
+  it('"Lagre AMK-logg" also marks AMK as notified, naming the clinician from the form', async () => {
+    const { patient } = await renderWithPatient('in_treatment');
+    fireEvent.click(screen.getByTestId('patient-ring-113'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'AMK-brief' });
+    fireEvent.change(within(dialog).getByLabelText('Oppsummering gitt'), { target: { value: 'Pasient med brystsmerter' } });
+    fireEvent.change(within(dialog).getByLabelText('AMK-veiledning'), { target: { value: 'Kontakt AMK' } });
+    fireEvent.change(within(dialog).getByLabelText('Videre ansvar'), { target: { value: 'Lege Andersen' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre AMK-logg' }));
+
+    await waitFor(() => {
+      expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'amk.notified', by: 'Lege Andersen' });
+    });
+  });
+
+  it('shows a visible error line when marking AMK notified fails, without hiding that the log itself saved', async () => {
+    mockExecutePatientAction.mockRejectedValueOnce(new Error('Nettverksfeil'));
+    await renderWithPatient('in_treatment');
+    fireEvent.click(screen.getByTestId('patient-ring-113'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'AMK-brief' });
+    fireEvent.change(within(dialog).getByLabelText('Oppsummering gitt'), { target: { value: 'Pasient med brystsmerter' } });
+    fireEvent.change(within(dialog).getByLabelText('AMK-veiledning'), { target: { value: 'Kontakt AMK' } });
+    fireEvent.change(within(dialog).getByLabelText('Videre ansvar'), { target: { value: 'Lege Andersen' } });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre AMK-logg' }));
+
+    await waitFor(() => {
+      expect(within(dialog).getByText(/AMK-samtalen er logget, men klarte ikke å markere AMK som varslet/)).toBeInTheDocument();
+    });
+    // The call log itself was still saved — the failure is additive, not a rollback.
+    expect(mockCreateAmkCallLog).toHaveBeenCalled();
+  });
+
   it('renders dedicated AMK and AI timeline rows from action history artifacts', async () => {
     const now = new Date().toISOString();
     const actionHistory = [
@@ -564,47 +607,25 @@ describe('Offline behaviour — status update queuing', () => {
     Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
   });
 
-  it('executePatientAction still receives the call when offline', async () => {
-    /**
-     * The current api.ts does NOT yet wrap executePatientAction in an offline queue
-     * (only createIncident does). This test documents the EXPECTED behaviour
-     * once the feature is implemented — it will fail until api.updatePatient
-     * gains the same offline-first treatment as createIncident.
-     *
-     * Expected flow:
-     *   1. navigator.onLine === false
-     *   2. User clicks a status transition button
-     *   3. api.executePatientAction detects offline state
-     *   4. enqueue() is called with the status payload
-     *   5. A temporary patient object with _queued: true is returned
-     *
-     * This test is marked as a known-gap: it asserts the call reaches
-     * api.executePatientAction, and separately that enqueue() was called.
-     */
-
-    // Make executePatientAction simulate offline-queue behaviour
-    mockExecutePatientAction.mockImplementation(async (id: string, data: Record<string, unknown>) => {
-      if (!navigator.onLine) {
-        await enqueue({ type: 'patient.status', patientId: id, ...data, status: data.status });
-        return { patient: { id, _queued: true, ...data }, action: { id: 'queued' } };
-      }
-      return { patient: { id, ...data }, action: { id: 'online' } };
-    });
-
+  it('queues the status change locally and never calls the API while offline (item 8.27)', async () => {
     const { patient } = await renderWithPatient('incoming');
     const container = screen.getByTestId(`patient-status-${patient.id}`);
 
     fireEvent.click(within(container).getByTestId('status-btn-in_treatment'));
 
-    expect(mockExecutePatientAction).toHaveBeenCalledWith(patient.id, { type: 'status.set', status: 'in_treatment' });
+    await waitFor(() => {
+      expect(mockEnqueueSickbayAction).toHaveBeenCalledWith(patient.id, { type: 'status_set', status: 'in_treatment' });
+    });
+    // Fail loud, not fake: the dashboard never pretends the server saw this —
+    // it queues locally instead of calling the (unreachable) API.
+    expect(mockExecutePatientAction).not.toHaveBeenCalled();
 
-    // The offline queue received the payload
-    expect(enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({
-        patientId: patient.id,
-        status: 'in_treatment',
-      }),
-    );
+    // Optimistic update: the card reflects the new status straight away —
+    // it moves sections, so re-query from the document rather than the
+    // (now possibly detached) `container` captured before the click.
+    await waitFor(() => {
+      expect(screen.getByTestId(`patient-status-badge-${patient.id}`)).toHaveTextContent('Under behandling');
+    });
   });
 });
 
@@ -620,7 +641,7 @@ describe('Demographics — intake and display', () => {
     render(<SickBayDashboard />);
     await screen.findByText('Sykestue');
 
-    fireEvent.click(screen.getByRole('button', { name: '+ Ny pasient' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ny pasient' }));
     const dialog = await screen.findByRole('dialog', { name: 'Registrer ny pasient' });
 
     fireEvent.change(within(dialog).getByLabelText('Fullt navn'), { target: { value: 'Kari Nordmann' } });
@@ -675,6 +696,7 @@ describe('Demographics editor — edit patient info from PatientCard', () => {
       birthDate: '1990-06-15',
     });
 
+    fireEvent.click(screen.getByTestId(`edit-details-toggle-${patient.id}`));
     const toggle = screen.getByTestId(`demographics-editor-toggle-${patient.id}`);
     expect(screen.queryByTestId(`demographics-editor-${patient.id}`)).not.toBeInTheDocument();
 
@@ -691,6 +713,7 @@ describe('Demographics editor — edit patient info from PatientCard', () => {
       birthDate: '',
     });
 
+    fireEvent.click(screen.getByTestId(`edit-details-toggle-${patient.id}`));
     fireEvent.click(screen.getByTestId(`demographics-editor-toggle-${patient.id}`));
 
     const editor = screen.getByTestId(`demographics-editor-${patient.id}`);
@@ -722,6 +745,7 @@ describe('Demographics editor — edit patient info from PatientCard', () => {
   it('closes the demographics editor after saving', async () => {
     const { patient } = await renderWithPatient('incoming', { id: 'pat-close-demo' });
 
+    fireEvent.click(screen.getByTestId(`edit-details-toggle-${patient.id}`));
     fireEvent.click(screen.getByTestId(`demographics-editor-toggle-${patient.id}`));
     expect(screen.getByTestId(`demographics-editor-${patient.id}`)).toBeInTheDocument();
 

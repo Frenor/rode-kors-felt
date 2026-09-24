@@ -8,22 +8,39 @@ import {
 } from '@rkf/shared-types';
 import {
   calculateAgeYears,
+  FIELD_TRIAGE_STYLE,
   formatPatientAge,
   formatSickbayPlacement,
+  freeSickbayNumbers,
   GENDER_LABELS,
   GENDER_OPTIONS,
   news2Colors,
   STATUS_TRANSITIONS,
   statusColors,
   statusLabels,
+  TRANSPORT_NEED_LABELS,
+  type FieldTriageStatus,
 } from '../../lib/constants';
-import type { SickBayPatient, MedicationRecord } from '../../lib/types';
+import { describeObservationDue, nextObservationDue } from '../../lib/observation';
+import { useNow } from '../../hooks/useNow';
+import type { SickBayPatient, MedicationRecord, Team, TeamPatientEngagement } from '../../lib/types';
+import { FieldEngagementLine, engagementDistanceLabel } from './FieldEngagementLine';
+import { TRANSPORT_LABELS } from '../FirstAider/TeamSettingsPanel';
 import { PatientVitalsDisplay } from './PatientVitalsDisplay';
 import { PatientActionButtons } from './PatientActionButtons';
 import { VitalsEntryForm, type VitalsFormShape } from './VitalsEntryForm';
 import { MedicationPanel, type MedFormShape } from './MedicationPanel';
 import { NotePanel, type NoteFormShape } from './NotePanel';
 import { PatientHistoryTimeline } from './PatientHistoryTimeline';
+import { Button, Icon, PatientNumberPill, Pill, type IconName } from '../../components/ui';
+
+/** Chip order for the sick bay's own triage editor (gap A2) — clinically most-to-least urgent
+ *  reads oddly here, so this follows the reviewed spec order instead: green, yellow, red, black. */
+const SICKBAY_TRIAGE_ORDER: FieldTriageStatus[] = ['green', 'yellow', 'red', 'black'];
+
+function formatClockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+}
 
 const EMPTY_VITALS_FORM: VitalsFormShape = {
   pulse: '', spo2: '', rr: '', pain: '', bp: '', temp: '', acvpu: '',
@@ -47,6 +64,14 @@ export interface DemographicsFormShape {
 interface PatientCardProps {
   patient: SickBayPatient;
   medications: MedicationRecord[];
+  /** Patrols currently with this patient (på vei / transporterer / overvåker). */
+  fieldEngagements?: TeamPatientEngagement[];
+  /** Teams in this event — the hand-over line's team name, the "på vei" distance line and the transport line. */
+  teams?: Team[];
+  /** Other open patients in the event — feeds the placement editor's free-number quick picks (item 8.30). */
+  openPatients?: SickBayPatient[];
+  /** The latest vitals were recorded offline and are not yet synced (item 8.27). */
+  localVitalsPending?: boolean;
   onStatusChange: (status: string) => void;
   onSubmitVitals: (form: VitalsFormShape) => void;
   onSubmitNote: (text: string, author: string) => void;
@@ -56,11 +81,17 @@ interface PatientCardProps {
   onUpdatePlacement: (placementType: 'chair' | 'bed' | '', placementNumber: string) => void;
   onUpdateDemographics: (form: DemographicsFormShape) => void;
   onUpdateComplaint: (complaint: string) => void;
+  /** Triage chips in "Rediger detaljer" (gap A2). */
+  onUpdateTriage?: (triage: FieldTriageStatus | null) => void;
 }
 
 export function PatientCard({
   patient,
   medications,
+  fieldEngagements = [],
+  teams = [],
+  openPatients = [],
+  localVitalsPending = false,
   onStatusChange,
   onSubmitVitals,
   onSubmitNote,
@@ -70,14 +101,18 @@ export function PatientCard({
   onUpdatePlacement,
   onUpdateDemographics,
   onUpdateComplaint,
+  onUpdateTriage = () => {},
 }: PatientCardProps) {
   const [showVitals, setShowVitals] = useState(false);
+  // The three secondary editors sit behind one row so a resting card stays short.
+  const [showEditors, setShowEditors] = useState(false);
   const [showMeds, setShowMeds] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showPlacementEditor, setShowPlacementEditor] = useState(false);
   const [showDemographicsEditor, setShowDemographicsEditor] = useState(false);
   const [showComplaintEditor, setShowComplaintEditor] = useState(false);
+  const [showTriageEditor, setShowTriageEditor] = useState(false);
   const [complaintDraft, setComplaintDraft] = useState(patient.presentingComplaint ?? '');
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -106,37 +141,52 @@ export function PatientCard({
 
   const currentStatus = patient.status as keyof typeof STATUS_TRANSITIONS;
   const nextStatuses = STATUS_TRANSITIONS[currentStatus] ?? [];
-  const actionCopy: Record<string, { label: string; icon: string }> = {
-    'incoming:in_treatment': { label: 'Start behandling', icon: '▶' },
-    'incoming:observation': { label: 'Observasjon', icon: '⊕' },
-    'in_treatment:observation': { label: 'Observasjon', icon: '→' },
-    'observation:in_treatment': { label: 'Start behandling', icon: '▶' },
-    'in_treatment:discharged': { label: 'Skriv ut', icon: '✓' },
-    'observation:discharged': { label: 'Skriv ut', icon: '✓' },
-    'in_treatment:transferred': { label: 'Overfør', icon: '⇢' },
-    'observation:transferred': { label: 'Overfør', icon: '⇢' },
-    'discharged:observation': { label: 'Observasjon', icon: '↺' },
-    'transferred:observation': { label: 'Observasjon', icon: '↺' },
-    'discharged:in_treatment': { label: 'Start behandling', icon: '↺' },
-    'transferred:in_treatment': { label: 'Start behandling', icon: '↺' },
-    'in_treatment:incoming': { label: 'Innkommende', icon: '↩' },
-    'observation:incoming': { label: 'Innkommende', icon: '↩' },
+  // Copy follows the locked v3.1 sick bay flow spec.
+  const actionCopy: Record<string, { label: string; icon: IconName }> = {
+    'incoming:in_treatment': { label: 'Start behandling', icon: 'play' },
+    'incoming:observation': { label: 'Legg til observasjon', icon: 'clock' },
+    'in_treatment:observation': { label: 'Flytt til observasjon', icon: 'clock' },
+    'observation:in_treatment': { label: 'Start behandling', icon: 'play' },
+    'in_treatment:discharged': { label: 'Skriv ut', icon: 'check' },
+    'observation:discharged': { label: 'Skriv ut', icon: 'check' },
+    'in_treatment:transferred': { label: 'Overfør (ambulanse/sykehus)', icon: 'navigate' },
+    'observation:transferred': { label: 'Overfør (ambulanse/sykehus)', icon: 'navigate' },
+    'discharged:observation': { label: 'Gjenåpne til observasjon', icon: 'refresh' },
+    'transferred:observation': { label: 'Gjenåpne til observasjon', icon: 'refresh' },
+    'discharged:in_treatment': { label: 'Gjenåpne behandling', icon: 'refresh' },
+    'transferred:in_treatment': { label: 'Gjenåpne behandling', icon: 'refresh' },
+    'in_treatment:incoming': { label: 'Tilbake til innkommende', icon: 'chevronRight' },
+    'observation:incoming': { label: 'Tilbake til innkommende', icon: 'chevronRight' },
   };
+  // The one transition that is obviously "next" for this status gets a real
+  // button; the rest stay in the dropdown behind the status badge.
+  const primaryNextStatus = currentStatus === 'incoming' ? 'in_treatment' : null;
 
   const news2 = patient.latestVitals ? calculateNEWS2(patient.latestVitals) : null;
   const n2colors = news2 ? news2Colors[news2.alertLevel] : null;
+
+  const now = useNow();
+  const isClosed = patient.status === 'discharged' || patient.status === 'transferred';
+  const observationDue = isClosed ? { kind: 'none' as const } : nextObservationDue(patient.latestVitals, now);
+  const observationText = describeObservationDue(observationDue);
+  const observationUrgent = observationDue.kind === 'overdue' || observationDue.kind === 'continuous';
 
   // Field reports carry a label (e.g. "Brudd / skade") and a free-text
   // description rather than a name and presenting complaint — fall back to
   // them so a patient arriving from a patrol is not shown as "Ukjent pasient".
   const patientName = patient.fullName ?? patient.label ?? patient.presentingComplaint ?? 'Ukjent pasient';
-  const FIELD_TRIAGE_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-    red:    { bg: '#fee2e2', text: '#b91c1c', label: 'Rød' },
-    yellow: { bg: '#fef9c3', text: '#854d0e', label: 'Gul' },
-    green:  { bg: '#dcfce7', text: '#166534', label: 'Grønn' },
-    black:  { bg: '#f1f5f9', text: '#1e293b', label: 'Svart' },
-  };
   const fieldTriage = patient.triageStatus ? FIELD_TRIAGE_STYLE[patient.triageStatus] ?? null : null;
+  // Hand-over model (gap A1) — the patient stays "incoming", not discharged, once handed off.
+  const handoverTeamName = patient.handedOverByTeamId
+    ? (teams.find((t) => t.id === patient.handedOverByTeamId)?.name ?? null)
+    : null;
+  // "På vei" distance (gap A7) — only when a patrol is approaching and both positions are known.
+  const distanceLabel = engagementDistanceLabel(fieldEngagements, teams, patient);
+  // Transport request (gap B3 / item 8.26) — a field team asked to move this patient.
+  const transportTeam = patient.transportTeamId ? teams.find((t) => t.id === patient.transportTeamId) ?? null : null;
+  const transportTeamModeLabel = transportTeam?.transport
+    ? (TRANSPORT_LABELS[transportTeam.transport as keyof typeof TRANSPORT_LABELS] ?? transportTeam.transport)
+    : null;
   const patientAgeLabel = formatPatientAge({
     birthDate: patient.birthDate ?? null,
     ageGroup: patient.ageGroup ?? null,
@@ -252,6 +302,15 @@ export function PatientCard({
     setShowComplaintEditor((prev) => !prev);
   };
 
+  const handleToggleTriageEditor = () => {
+    setShowTriageEditor((prev) => !prev);
+  };
+
+  const handleSelectTriage = (value: FieldTriageStatus | null) => {
+    onUpdateTriage(value);
+    setShowTriageEditor(false);
+  };
+
   // Re-initialise placement state only when the patient identity changes.
   // NOT on individual field changes — that would clobber what the user is
   // currently typing if a concurrent prop update (WS / fetchPatients) arrives.
@@ -283,35 +342,47 @@ export function PatientCard({
   return (
     <article
       aria-label={`Pasient ${patientName}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
+      data-observation={observationDue.kind}
+      className={`card card--stripe${observationUrgent ? ' card--critical' : ''}`}
       style={{
-        padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-        display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', height: '100%',
-      }}
+        '--stripe': fieldTriage?.text ?? 'var(--color-border-strong)',
+        padding: 'var(--space-3)',
+        display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', height: '100%',
+      } as React.CSSProperties}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 'var(--space-2)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      {/* Name column gets first claim on width; the badge group wraps under it
+          in a narrow grid column instead of clipping the name mid-word. */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: '1 1 160px' }}>
+          <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, minWidth: 0 }}>
+            <PatientNumberPill seq={patient.seq} data-testid={`patient-number-${patient.id}`} />
             {fieldTriage && (
-              <span
-                aria-label={`Felt-triage ${fieldTriage.label}`}
-                style={{
-                  flexShrink: 0, padding: '1px 7px', borderRadius: 'var(--radius-full)',
-                  background: fieldTriage.bg, color: fieldTriage.text,
-                  fontSize: 'var(--text-xs)', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                }}
-              >
+              <Pill aria-label={`Felt-triage ${fieldTriage.label}`} tone={{ color: fieldTriage.text, bg: fieldTriage.bg }}>
                 {fieldTriage.label}
-              </span>
+              </Pill>
             )}
-            <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{patientName}</span>
+            <span
+              style={{
+                fontWeight: 700, fontSize: 'var(--text-base)', lineHeight: 1.25,
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              }}
+            >
+              {patientName}
+            </span>
           </span>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{complaintText}</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-            {`${placementLabel || 'Ikke satt'}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
+          <span
+            style={{
+              fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', lineHeight: 1.3,
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}
+          >
+            {complaintText}
+          </span>
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-muted)' }}>
+            {`${placementLabel || 'Plassering ikke satt'}${patientDemographics ? ` · ${patientDemographics}` : ''}`}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
           {news2 && n2colors && (
             <span
               title={`${news2MonitoringLabel(news2)}${news2MissingLabels.length > 0 ? ` · Mangler: ${news2MissingLabels.join(', ')}` : ''}`}
@@ -329,6 +400,14 @@ export function PatientCard({
               )}
             </span>
           )}
+          {patient.amkNotifiedAt && (
+            <Pill
+              data-testid={`amk-notified-pill-${patient.id}`}
+              tone={{ color: 'var(--color-status-critical)', bg: 'transparent', border: 'transparent' }}
+            >
+              AMK varslet kl. {formatClockTime(patient.amkNotifiedAt)}
+            </Pill>
+          )}
           <div ref={statusMenuRef} style={{ position: 'relative' }} data-testid={`patient-status-${patient.id}`}>
             <button
               type="button"
@@ -337,18 +416,15 @@ export function PatientCard({
               aria-expanded={showStatusMenu}
               aria-haspopup="listbox"
               onClick={() => setShowStatusMenu((prev) => !prev)}
+              className="pill"
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)',
-                padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                background: sc.bg, color: sc.color,
-                border: 'none', cursor: nextStatuses.length > 0 ? 'pointer' : 'default',
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-              }}
+                '--pill-bg': sc.bg, '--pill-fg': sc.color,
+                minHeight: 32, padding: '3px 8px 3px 10px',
+                cursor: nextStatuses.length > 0 ? 'pointer' : 'default',
+              } as React.CSSProperties}
             >
               {statusLabels[patient.status] || patient.status}
-              {nextStatuses.length > 0 && (
-                <span aria-hidden="true" style={{ fontSize: '0.6em', opacity: 0.7 }}>▾</span>
-              )}
+              {nextStatuses.length > 0 && <Icon name="chevronDown" size="sm" />}
             </button>
 
             {nextStatuses.length > 0 && (
@@ -377,12 +453,12 @@ export function PatientCard({
                       aria-label={copy?.label ?? statusLabels[nextStatus]}
                       onClick={() => { onStatusChange(nextStatus); setShowStatusMenu(false); }}
                       style={{
-                        display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                        display: 'flex', width: '100%', alignItems: 'center', gap: 10,
                         padding: 'var(--space-2) var(--space-3)',
                         minHeight: 'var(--touch-min)',
                         border: 'none', borderBottom: '1px solid var(--color-border)',
                         background: 'transparent', cursor: 'pointer', textAlign: 'left',
-                        fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)',
+                        fontSize: 'var(--text-sm)', fontWeight: 600, font: 'inherit',
                         color: nsc.color,
                       }}
                     >
@@ -396,8 +472,8 @@ export function PatientCard({
                           outlineOffset: 2,
                         }}
                       />
-                      <span style={{ fontWeight: 600, fontSize: '0.9em' }}>{copy?.icon}</span>
-                      <span>{copy?.label ?? statusLabels[nextStatus]}</span>
+                      {copy?.icon && <Icon name={copy.icon} />}
+                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{copy?.label ?? statusLabels[nextStatus]}</span>
                     </button>
                   );
                 })}
@@ -407,8 +483,85 @@ export function PatientCard({
         </div>
       </div>
 
+      {!isClosed && (
+        <FieldEngagementLine patientId={patient.id} engagements={fieldEngagements} distanceLabel={distanceLabel} />
+      )}
+
+      {/* Hand-over model (gap A1) — the patient is in the tent now, not "finished". */}
+      {patient.handedOverAt && (
+        <div
+          data-testid={`handover-line-${patient.id}`}
+          style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-muted)' }}
+        >
+          {handoverTeamName
+            ? `Overlevert av ${handoverTeamName} kl. ${formatClockTime(patient.handedOverAt)}`
+            : `Overlevert kl. ${formatClockTime(patient.handedOverAt)}`}
+        </div>
+      )}
+
+      {/* Transport request (gap B3 / item 8.26) — what a field team has asked
+          to move this patient, and who is coming for them once assigned. */}
+      {patient.transportNeed && (
+        <div data-testid={`transport-line-${patient.id}`}>
+          {patient.transportTeamId ? (
+            <Pill tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)' }}>
+              Transport: {transportTeam?.name ?? 'Ukjent lag'}
+              {transportTeamModeLabel ? ` (${transportTeamModeLabel})` : ''} på vei
+            </Pill>
+          ) : (
+            <Pill tone={{ color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)' }}>
+              Transport: {TRANSPORT_NEED_LABELS[patient.transportNeed]}
+              {patient.transportRequestedAt ? ` · bedt om kl. ${formatClockTime(patient.transportRequestedAt)}` : ''}
+            </Pill>
+          )}
+        </div>
+      )}
+
+      {/* When is this patient due for a new set of observations — the thing a
+          busy clinician with six patients forgets first. */}
+      {observationText && (
+        <div
+          data-testid={`observation-due-${patient.id}`}
+          role={observationDue.kind === 'overdue' ? 'alert' : undefined}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            borderRadius: 'var(--radius-sm)',
+            background: observationUrgent ? 'var(--color-status-critical-bg)' : 'var(--color-surface-sunken)',
+            color: observationUrgent ? 'var(--color-status-critical)' : 'var(--color-text-muted)',
+            fontSize: 'var(--text-sm)', fontWeight: observationUrgent ? 700 : 600,
+          }}
+        >
+          <Icon name={observationDue.kind === 'overdue' ? 'alert' : observationDue.kind === 'continuous' ? 'activity' : 'clock'} />
+          <span>{observationText}</span>
+        </div>
+      )}
+
       {patient.latestVitals && (
-        <PatientVitalsDisplay vitals={patient.latestVitals} />
+        <>
+          <PatientVitalsDisplay vitals={patient.latestVitals} />
+          {localVitalsPending && (
+            <span
+              data-testid={`local-vitals-marker-${patient.id}`}
+              style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-status-warning)' }}
+            >
+              Lagret lokalt — sendes når tilkoblingen er tilbake
+            </span>
+          )}
+        </>
+      )}
+
+      {primaryNextStatus && (
+        <Button
+          variant="ink"
+          size="lg"
+          block
+          icon="play"
+          data-testid={`primary-action-${patient.id}`}
+          onClick={() => onStatusChange(primaryNextStatus)}
+        >
+          {actionCopy[`${currentStatus}:${primaryNextStatus}`]?.label ?? statusLabels[primaryNextStatus]}
+        </Button>
       )}
 
       <PatientActionButtons
@@ -423,73 +576,93 @@ export function PatientCard({
         onOpenAmk={onOpenAmk}
       />
 
-      {/* Compact editor bar — 3 pills in one row */}
+      {/* Secondary edits — one disclosure row; the three toggles appear when it opens */}
+      <button
+        type="button"
+        className="disclosure"
+        data-testid={`edit-details-toggle-${patient.id}`}
+        aria-expanded={showEditors}
+        onClick={() => setShowEditors((open) => !open)}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Icon name="edit" size="sm" />
+          Rediger detaljer
+        </span>
+        <Icon name={showEditors ? 'chevronUp' : 'chevronDown'} />
+      </button>
+
+      {showEditors && (
       <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          pill
+          icon={showPlacementEditor ? 'x' : 'edit'}
+          selected={showPlacementEditor}
           aria-label={showPlacementEditor ? 'Lukk plassering' : 'Rediger plassering'}
           aria-expanded={showPlacementEditor}
           onClick={handleTogglePlacementEditor}
-          style={{
-            minHeight: 28,
-            padding: '0 var(--space-2)',
-            borderRadius: 'var(--radius-full)',
-            border: `1px solid ${showPlacementEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
-            background: showPlacementEditor ? 'var(--color-brand-dim)' : 'transparent',
-            fontSize: 'var(--text-xs)',
-            fontFamily: 'var(--font-mono)',
-            color: showPlacementEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
         >
-          {showPlacementEditor ? '✕ Plassering' : '✎ Plassering'}
-        </button>
+          Plassering
+        </Button>
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          pill
+          icon={showDemographicsEditor ? 'x' : 'edit'}
+          selected={showDemographicsEditor}
           aria-label={showDemographicsEditor ? 'Lukk pasientinfo' : 'Rediger pasientinfo'}
           aria-expanded={showDemographicsEditor}
           data-testid={`demographics-editor-toggle-${patient.id}`}
           onClick={handleToggleDemographicsEditor}
-          style={{
-            minHeight: 28,
-            padding: '0 var(--space-2)',
-            borderRadius: 'var(--radius-full)',
-            border: `1px solid ${showDemographicsEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
-            background: showDemographicsEditor ? 'var(--color-brand-dim)' : 'transparent',
-            fontSize: 'var(--text-xs)',
-            fontFamily: 'var(--font-mono)',
-            color: showDemographicsEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
         >
-          {showDemographicsEditor ? '✕ Pasientinfo' : '✎ Pasientinfo'}
-        </button>
+          Pasientinfo
+        </Button>
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          pill
+          icon={showComplaintEditor ? 'x' : 'edit'}
+          selected={showComplaintEditor}
           aria-label={showComplaintEditor ? 'Lukk problemstilling' : 'Rediger problemstilling'}
           aria-expanded={showComplaintEditor}
           data-testid={`complaint-editor-toggle-${patient.id}`}
           onClick={handleToggleComplaintEditor}
-          style={{
-            minHeight: 28,
-            padding: '0 var(--space-2)',
-            borderRadius: 'var(--radius-full)',
-            border: `1px solid ${showComplaintEditor ? 'var(--color-brand)' : 'var(--color-border)'}`,
-            background: showComplaintEditor ? 'var(--color-brand-dim)' : 'transparent',
-            fontSize: 'var(--text-xs)',
-            fontFamily: 'var(--font-mono)',
-            color: showComplaintEditor ? 'var(--color-brand)' : 'var(--color-text-subtle)',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
         >
-          {showComplaintEditor ? '✕ Beskrivelse' : '✎ Beskrivelse'}
-        </button>
+          Beskrivelse
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          pill
+          icon={showTriageEditor ? 'x' : 'edit'}
+          selected={showTriageEditor}
+          aria-label={showTriageEditor ? 'Lukk triage' : 'Rediger triage'}
+          aria-expanded={showTriageEditor}
+          data-testid={`triage-editor-toggle-${patient.id}`}
+          onClick={handleToggleTriageEditor}
+        >
+          Triage
+        </Button>
+
+        {/* Printable journal (gap B7 / item 8.32) — a plain link, not a Button,
+            so a middle-click / right-click "open in new tab" works like any
+            other link; `target="_blank"` covers the ordinary click. */}
+        <a
+          href={`${import.meta.env.BASE_URL}sickbay/journal/${patient.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid={`journal-link-${patient.id}`}
+          className="btn btn--ghost btn--sm btn--pill"
+        >
+          <Icon name="document" />
+          Journal
+        </a>
       </div>
+      )}
 
       {showPlacementEditor && (
           <div
@@ -505,19 +678,12 @@ export function PatientCard({
               padding: 'var(--space-3)',
             }}
           >
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               Type
               <select
                 value={placementType}
                 onChange={(e) => setPlacementType(e.target.value as 'chair' | 'bed' | '')}
-                style={{
-                  height: 'var(--touch-min)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-input-border)',
-                  background: 'var(--color-input-bg)',
-                  color: 'var(--color-text)',
-                  padding: '0 var(--space-2)',
-                }}
+className="field"
               >
                 <option value="">Ikke satt</option>
                 <option value="chair">Stol</option>
@@ -525,7 +691,7 @@ export function PatientCard({
               </select>
             </label>
 
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+            <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               Nummer
               <input
                 type="text"
@@ -534,34 +700,38 @@ export function PatientCard({
                 value={placementNumber}
                 onChange={(e) => setPlacementNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
                 placeholder="F.eks. 12"
-                style={{
-                  height: 'var(--touch-min)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-input-border)',
-                  background: 'var(--color-input-bg)',
-                  color: 'var(--color-text)',
-                  padding: '0 var(--space-2)',
-                }}
+className="field"
               />
             </label>
 
-            <button
-              type="button"
-              className="touch-target"
-              onClick={handleSubmitPlacement}
-              style={{
-                minHeight: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: 'none',
-                background: 'var(--color-brand)',
-                color: '#fff',
-                fontWeight: 700,
-                padding: '0 var(--space-3)',
-                cursor: 'pointer',
-              }}
-            >
+            <Button variant="secondary" size="lg" onClick={handleSubmitPlacement}>
               Lagre
-            </button>
+            </Button>
+
+            {/* Quick-pick the lowest free numbers for the chosen type (item 8.30) — never
+                invented, just the placements not already taken by another open patient. */}
+            {placementType && (
+              <div
+                data-testid={`placement-free-numbers-${patient.id}`}
+                style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}
+              >
+                {freeSickbayNumbers(
+                  placementType,
+                  openPatients.filter((p) => p.id !== patient.id),
+                ).map((n) => (
+                  <Button
+                    key={n}
+                    variant="ghost"
+                    size="sm"
+                    pill
+                    data-testid={`placement-free-${n}`}
+                    onClick={() => setPlacementNumber(String(n))}
+                  >
+                    <span className="data">{n}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -578,26 +748,18 @@ export function PatientCard({
             padding: 'var(--space-3)',
           }}
         >
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Fullt navn
             <input
               type="text"
               value={demoForm.fullName}
               onChange={(e) => setDemoForm((f) => ({ ...f, fullName: e.target.value }))}
               placeholder="Fornavn Etternavn"
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-                fontSize: 'var(--text-sm)',
-              }}
+className="field"
             />
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Kjønn
             <select
               value={demoForm.gender}
@@ -606,14 +768,7 @@ export function PatientCard({
                 const gender = val === 'male' || val === 'female' || val === 'other' ? val : '';
                 setDemoForm((f) => ({ ...f, gender }));
               }}
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-              }}
+className="field"
             >
               <option value="">Ikke oppgitt</option>
               {GENDER_OPTIONS.map((opt) => (
@@ -622,21 +777,14 @@ export function PatientCard({
             </select>
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Fødselsdato
             <input
               type="date"
               value={demoForm.birthDate}
               max={new Date().toISOString().slice(0, 10)}
               onChange={(e) => setDemoForm((f) => ({ ...f, birthDate: e.target.value }))}
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-              }}
+className="field"
             />
             {demoForm.birthDate && (() => {
               const age = calculateAgeYears(demoForm.birthDate);
@@ -648,19 +796,12 @@ export function PatientCard({
             })()}
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Aldersgruppe
             <select
               value={demoForm.ageGroup}
               onChange={(e) => setDemoForm((f) => ({ ...f, ageGroup: e.target.value }))}
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-              }}
+className="field"
             >
               <option value="child">Barn</option>
               <option value="adolescent">Ungdom</option>
@@ -669,24 +810,9 @@ export function PatientCard({
             </select>
           </label>
 
-          <button
-            type="button"
-            className="touch-target"
-            onClick={handleSubmitDemographics}
-            style={{
-              minHeight: 'var(--touch-min)',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
-              background: 'var(--color-brand)',
-              color: '#fff',
-              fontWeight: 700,
-              padding: '0 var(--space-3)',
-              cursor: 'pointer',
-              alignSelf: 'flex-start',
-            }}
-          >
+          <Button variant="secondary" size="lg" onClick={handleSubmitDemographics} style={{ alignSelf: 'flex-start' }}>
             Lagre pasientinfo
-          </button>
+          </Button>
         </div>
       )}
 
@@ -703,43 +829,69 @@ export function PatientCard({
             padding: 'var(--space-3)',
           }}
         >
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)' }}>
+          <label className="section-label" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             Problemstilling / kort beskrivelse
             <input
               type="text"
               value={complaintDraft}
               onChange={(e) => setComplaintDraft(e.target.value)}
               placeholder="F.eks. Smerter i brystet"
-              style={{
-                height: 'var(--touch-min)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-input-border)',
-                background: 'var(--color-input-bg)',
-                color: 'var(--color-text)',
-                padding: '0 var(--space-2)',
-                fontSize: 'var(--text-sm)',
-              }}
+className="field"
             />
           </label>
 
-          <button
-            type="button"
-            className="touch-target"
-            onClick={handleSubmitComplaint}
-            style={{
-              minHeight: 'var(--touch-min)',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
-              background: 'var(--color-brand)',
-              color: '#fff',
-              fontWeight: 700,
-              padding: '0 var(--space-3)',
-              cursor: 'pointer',
-              alignSelf: 'flex-start',
-            }}
-          >
+          <Button variant="secondary" size="lg" onClick={handleSubmitComplaint} style={{ alignSelf: 'flex-start' }}>
             Lagre problemstilling
-          </button>
+          </Button>
+        </div>
+      )}
+
+      {showTriageEditor && (
+        <div
+          data-testid={`triage-editor-${patient.id}`}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-3)',
+            background: 'var(--color-surface-sunken)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-3)',
+          }}
+        >
+          <span className="section-label">Triage</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
+            {SICKBAY_TRIAGE_ORDER.map((value) => {
+              const style = FIELD_TRIAGE_STYLE[value];
+              const active = patient.triageStatus === value;
+              return (
+                <Button
+                  key={value}
+                  variant="tone"
+                  tone={{ color: style.text, bg: style.bg }}
+                  size="lg"
+                  aria-pressed={active}
+                  icon={active ? 'check' : undefined}
+                  data-testid={`triage-chip-${patient.id}-${value}`}
+                  onClick={() => handleSelectTriage(value)}
+                  style={{ padding: 0 }}
+                >
+                  {style.label}
+                </Button>
+              );
+            })}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="x"
+            disabled={!patient.triageStatus}
+            data-testid={`triage-clear-${patient.id}`}
+            onClick={() => handleSelectTriage(null)}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            Fjern triage
+          </Button>
         </div>
       )}
 

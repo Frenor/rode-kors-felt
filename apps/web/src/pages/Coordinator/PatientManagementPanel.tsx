@@ -1,11 +1,24 @@
 import { useState } from 'react';
-import type { TeamPatientEngagement } from '../../lib/types';
+import {
+  ASSIGNMENT_ACK_MINUTES,
+  FIELD_TRIAGE_ORDER,
+  FIELD_TRIAGE_STYLE,
+  TEAM_PATIENT_STATUS_STYLE,
+  TRANSPORT_NEED_LABELS,
+  minutesSince,
+  type FieldTriageStatus,
+} from '../../lib/constants';
+import { formatRelativeAge } from '../../lib/observation';
+import type { FieldOutcome, TeamPatientEngagement, TeamPatientStatus, TransportNeed } from '../../lib/types';
+import { Button, Icon, Pill, PatientNumberPill } from '../../components/ui';
 
-export type FieldTriageStatus = 'red' | 'yellow' | 'green' | 'black';
+export type { FieldTriageStatus } from '../../lib/constants';
 
 export interface FieldPatient {
   id: string;
   label: string | null;
+  /** Sick bay intake field; used as the display name when the field label is empty. */
+  presentingComplaint?: string | null;
   triageStatus: FieldTriageStatus | null;
   description: string | null;
   positionText: string | null;
@@ -14,11 +27,31 @@ export interface FieldPatient {
   assignedTeamId: string | null;
   updatedAt: string;
   status?: string | null;
+  /** Hand-over model (gap A1) — set once the field team has handed the patient off. */
+  handedOverAt?: string | null;
+  handedOverByTeamId?: string | null;
+  fieldOutcome?: FieldOutcome | null;
+  /** Shared patient number (gap A5). */
+  seq?: number | null;
+  /** AMK notified (gap B2 data half). */
+  amkNotifiedAt?: string | null;
+  amkNotifiedBy?: string | null;
+  /** Transport request (gap B3). */
+  transportNeed?: TransportNeed | null;
+  transportPickupText?: string | null;
+  transportRequestedAt?: string | null;
+  transportRequestedBy?: string | null;
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
+  /** Sick bay placement (gap B6 / item 8.30 stats tile) — same patient record, sick bay side. */
+  placementType?: 'chair' | 'bed' | null;
+  placementNumber?: string | null;
 }
 
 interface Team {
   id: string;
   name: string;
+  transport?: string;
 }
 
 interface PatientManagementPanelProps {
@@ -31,59 +64,152 @@ interface PatientManagementPanelProps {
   teamPatientEngagements?: Record<string, TeamPatientEngagement[]>;
   onClosePatient?: (id: string, reason: 'false_alarm' | 'disappeared') => Promise<void>;
   onPickLocation?: (patientId: string) => void;
+  /** Transport request (gap B3 / item 8.26) — clears a patient's transport request/assignment. */
+  onClearTransport?: (patientId: string) => Promise<void> | void;
+  /** Clock for age-based state (acknowledgement); defaults to `new Date()`. */
+  now?: Date;
 }
 
-const TRIAGE_COLORS: Record<FieldTriageStatus, { bg: string; text: string; label: string }> = {
-  red:    { bg: '#fee2e2', text: '#b91c1c', label: 'Rød' },
-  yellow: { bg: '#fef9c3', text: '#854d0e', label: 'Gul' },
-  green:  { bg: '#dcfce7', text: '#166534', label: 'Grønn' },
-  black:  { bg: '#f1f5f9', text: '#1e293b', label: 'Svart' },
-};
+const TRIAGE_RANK: Record<string, number> = { red: 0, none: 1, yellow: 2, green: 3, black: 4 };
 
-const TRIAGE_ORDER: FieldTriageStatus[] = ['red', 'yellow', 'green', 'black'];
+/** What the coordinator calls this patient: field label, else what is wrong with them. */
+export function fieldPatientName(p: Pick<FieldPatient, 'label' | 'presentingComplaint' | 'description'>): string {
+  return p.label?.trim() || p.presentingComplaint?.trim() || p.description?.trim() || 'Ukjent pasient';
+}
 
-const TEAM_PATIENT_STATUS_CONFIG = {
-  en_route_to_patient: { label: 'På vei', bg: '#fef3c7', text: '#92400e', border: '#f59e0b' },
-  transporting:        { label: 'Transporterer', bg: '#dbeafe', text: '#1e40af', border: '#3b82f6' },
-  monitoring:          { label: 'Overvåker', bg: '#dcfce7', text: '#166534', border: '#22c55e' },
-} as const;
+export type AssignmentAck =
+  | { kind: 'confirmed'; teamName: string }
+  | { kind: 'unconfirmed'; minutes: number }
+  | { kind: 'none' };
+
+/**
+ * Assignment acknowledgement (gap A4 / item 8.21). A patrol "acknowledges" an
+ * assignment by going en route or starting transport for that patient. There
+ * is no stored assignment timestamp, so the patient's `updatedAt` — bumped by
+ * the assigning PATCH — is used as an honest proxy for "when the assignment
+ * happened"; any other edit also bumps it, so this is a proxy, not an exact
+ * measurement, and deliberately documented as such here rather than presented
+ * as more precise than it is.
+ */
+export function assignmentAckState(
+  patient: Pick<FieldPatient, 'assignedTeamId' | 'updatedAt' | 'status' | 'handedOverAt'>,
+  engagements: TeamPatientEngagement[],
+  now: Date,
+): AssignmentAck {
+  if (!patient.assignedTeamId) return { kind: 'none' };
+  // Acknowledgement is about a patrol going to a patient in the field: once the
+  // patient is in the tent (handed over, in treatment, observation) or closed,
+  // there is nothing left to acknowledge.
+  if (patient.status !== 'incoming' || patient.handedOverAt) return { kind: 'none' };
+  // Any engagement by the assigned patrol (on the way, transporting, or
+  // monitoring on site) means they have the patient — that is the acknowledgement.
+  const confirmed = engagements.find((e) => e.teamId === patient.assignedTeamId);
+  if (confirmed) return { kind: 'confirmed', teamName: confirmed.teamName };
+  const minutes = minutesSince(patient.updatedAt, now);
+  if (minutes == null) return { kind: 'none' };
+  return { kind: 'unconfirmed', minutes };
+}
+
+function clockTime(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** "AMK varslet kl." pill (gap B2 data half / item 8.25) — critical text tone. */
+export function AmkNotifiedPill({ patientId, amkNotifiedAt }: { patientId: string; amkNotifiedAt?: string | null }) {
+  const clock = clockTime(amkNotifiedAt);
+  if (!clock) return null;
+  return (
+    <Pill
+      data-testid={`amk-notified-${patientId}`}
+      tone={{ color: 'var(--color-status-critical)', bg: 'var(--color-status-critical-bg)', border: 'var(--color-status-critical-border)' }}
+    >
+      {`AMK varslet kl. ${clock}`}
+    </Pill>
+  );
+}
+
+/**
+ * Transport pill (gap B3 / item 8.26) — "Transport bedt om: ATV" while
+ * pending, "Transport: Delta (ATV) · tildelt kl." once a team is assigned.
+ */
+export function TransportPill({
+  patientId,
+  transportNeed,
+  transportTeamId,
+  transportAssignedAt,
+  teamName,
+}: {
+  patientId: string;
+  transportNeed?: FieldPatient['transportNeed'];
+  transportTeamId?: string | null;
+  transportAssignedAt?: string | null;
+  teamName?: string | null;
+}) {
+  if (!transportNeed) return null;
+  const need = TRANSPORT_NEED_LABELS[transportNeed];
+  if (transportTeamId) {
+    const clock = clockTime(transportAssignedAt);
+    return (
+      <Pill
+        data-testid={`transport-pill-${patientId}`}
+        tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', border: 'var(--color-status-info-border)' }}
+      >
+        {`Transport: ${teamName ?? 'lag'} (${need})${clock ? ` · tildelt kl. ${clock}` : ''}`}
+      </Pill>
+    );
+  }
+  return (
+    <Pill
+      data-testid={`transport-pill-${patientId}`}
+      tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', border: 'var(--color-status-info-border)' }}
+    >
+      {`Transport bedt om: ${need}`}
+    </Pill>
+  );
+}
+
+/** Assignment-acknowledgement pill shared by the patient row and the attention queue. */
+export function AssignmentAckPill({ patientId, ack }: { patientId: string; ack: AssignmentAck }) {
+  if (ack.kind === 'confirmed') {
+    return (
+      <Pill
+        data-testid={`ack-confirmed-${patientId}`}
+        tone={{ color: 'var(--color-status-ok)', bg: 'var(--color-status-ok-bg)', border: 'var(--color-status-ok-border)' }}
+      >
+        {`Bekreftet av ${ack.teamName}`}
+      </Pill>
+    );
+  }
+  if (ack.kind === 'unconfirmed' && ack.minutes > ASSIGNMENT_ACK_MINUTES.warn) {
+    return (
+      <Pill
+        data-testid={`ack-unconfirmed-${patientId}`}
+        tone={{ color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)', border: 'var(--color-status-warning-border)' }}
+      >
+        {`Ikke bekreftet · ${Math.floor(ack.minutes)} min`}
+      </Pill>
+    );
+  }
+  return null;
+}
+
+/** Dense coordinator inputs: 44 px, 14 px text. */
+const inputStyle = { minHeight: 44, fontSize: 'var(--text-sm)' };
+
+const fieldLabelStyle = { display: 'block', marginBottom: 4 };
 
 function TeamEngagementBadge({ status }: { status: string }) {
-  const cfg = TEAM_PATIENT_STATUS_CONFIG[status as keyof typeof TEAM_PATIENT_STATUS_CONFIG];
+  const cfg = TEAM_PATIENT_STATUS_STYLE[status as TeamPatientStatus];
   if (!cfg) return null;
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '1px 7px',
-      borderRadius: 'var(--radius-full)',
-      background: cfg.bg,
-      color: cfg.text,
-      border: `1px solid ${cfg.border}`,
-      fontSize: 'var(--text-xs)',
-      fontWeight: 600,
-    }}>
-      {cfg.label}
-    </span>
-  );
+  return <Pill dot tone={{ color: cfg.color, bg: cfg.bg, border: cfg.color }}>{cfg.label}</Pill>;
 }
 
 function TriageBadge({ status }: { status: FieldTriageStatus | null }) {
   if (!status) return null;
-  const c = TRIAGE_COLORS[status];
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '1px 8px',
-      borderRadius: 'var(--radius-full)',
-      background: c.bg,
-      color: c.text,
-      fontSize: 'var(--text-xs)',
-      fontWeight: 700,
-      fontFamily: 'var(--font-mono)',
-    }}>
-      {c.label}
-    </span>
-  );
+  const c = FIELD_TRIAGE_STYLE[status];
+  return <Pill tone={{ color: c.text, bg: c.bg }}>{c.label}</Pill>;
 }
 
 function PatientRow({
@@ -93,6 +219,8 @@ function PatientRow({
   onUpdate,
   onClose,
   onPickLocation,
+  onClearTransport,
+  now = new Date(),
 }: {
   patient: FieldPatient;
   teams: Team[];
@@ -100,14 +228,28 @@ function PatientRow({
   onUpdate: (data: Partial<Omit<FieldPatient, 'id' | 'updatedAt'>>) => Promise<void>;
   onClose?: (reason: 'false_alarm' | 'disappeared') => Promise<void>;
   onPickLocation?: () => void;
+  onClearTransport?: (patientId: string) => Promise<void> | void;
+  now?: Date;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ ...patient });
   const [saving, setSaving] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const [closing, setClosing] = useState(false);
   const [showCloseMenu, setShowCloseMenu] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [clearingTransport, setClearingTransport] = useState(false);
+
+  const handleClearTransport = async () => {
+    if (!onClearTransport) return;
+    setClearingTransport(true);
+    try {
+      await onClearTransport(patient.id);
+    } finally {
+      setClearingTransport(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -122,6 +264,16 @@ function PatientRow({
     });
     setSaving(false);
     setEditing(false);
+  };
+
+  /** Inline assignment — the coordinator's most frequent action, one interaction. */
+  const handleAssign = async (teamId: string) => {
+    setAssigning(true);
+    try {
+      await onUpdate({ assignedTeamId: teamId || null });
+    } finally {
+      setAssigning(false);
+    }
   };
 
   const handleClose = async (reason: 'false_alarm' | 'disappeared') => {
@@ -139,68 +291,137 @@ function PatientRow({
   };
 
   const isClosed = patient.status === 'discharged' || patient.status === 'transferred';
+  // A handed-over patient is in the tent now, not "unassigned" in the sense
+  // the warning badge means (gap A1 / item 8.22).
+  const isUnassigned = !patient.assignedTeamId && !isClosed && !patient.handedOverAt;
   const assignedTeam = teams.find((t) => t.id === patient.assignedTeamId);
   const hasCoords = patient.lat != null && patient.lon != null;
   const coordsText = hasCoords ? `${patient.lat!.toFixed(5)}, ${patient.lon!.toFixed(5)}` : null;
   // Field reports often carry GPS coordinates but no text — still show *something*.
   const positionSummary = patient.positionText ?? (coordsText ? `GPS ${coordsText}` : null);
+  const age = formatRelativeAge(patient.updatedAt);
+  const ack = assignmentAckState(patient, engagements, now);
 
   return (
-    <div style={{
-      border: '1px solid var(--color-border)',
-      borderRadius: 'var(--radius-md)',
-      background: isClosed ? 'var(--color-surface-sunken)' : 'var(--color-surface)',
-      overflow: 'hidden',
-      opacity: isClosed ? 0.65 : 1,
-    }}>
+    <div
+      data-testid={`coordinator-patient-${patient.id}`}
+      data-unassigned={isUnassigned ? 'true' : undefined}
+      className="card card--stripe"
+      style={{
+        '--stripe': patient.triageStatus ? FIELD_TRIAGE_STYLE[patient.triageStatus].text : 'var(--color-border-strong)',
+        borderColor: isUnassigned ? 'var(--color-status-warning-border)' : undefined,
+        background: isClosed ? 'var(--color-surface-sunken)' : undefined,
+        overflow: 'hidden',
+        opacity: isClosed ? 0.7 : 1,
+      } as React.CSSProperties}
+    >
       {/* Row header */}
       <button
+        type="button"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
         style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-          padding: 'var(--space-3)', background: 'none', border: 'none',
-          cursor: 'pointer', textAlign: 'left',
+          width: '100%', minHeight: 48, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap',
+          padding: 'var(--space-2) var(--space-3)', background: 'none', border: 'none',
+          cursor: 'pointer', textAlign: 'left', color: 'var(--color-text)', font: 'inherit',
         }}
       >
         <TriageBadge status={patient.triageStatus} />
-        <span style={{ flex: 1, fontWeight: 600, fontSize: 'var(--text-sm)', textDecoration: isClosed ? 'line-through' : undefined }}>
-          {patient.label || 'Ukjent pasient'}
+        <PatientNumberPill seq={patient.seq} data-testid={`patient-number-${patient.id}`} />
+        <span style={{ flex: 1, minWidth: 120, fontWeight: 700, fontSize: 'var(--text-sm)', textDecoration: isClosed ? 'line-through' : undefined }}>
+          {fieldPatientName(patient)}
         </span>
         {isClosed && (
-          <span style={{ fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 'var(--radius-full)', background: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1' }}>
+          <Pill tone={{ color: 'var(--color-text-subtle)', bg: 'var(--color-surface-sunken)', border: 'var(--color-border)' }}>
             Lukket
-          </span>
+          </Pill>
+        )}
+        {isUnassigned && (
+          <Pill
+            data-testid={`unassigned-badge-${patient.id}`}
+            tone={{ color: 'var(--color-status-warning)', bg: 'var(--color-status-warning-bg)', border: 'var(--color-status-warning-border)' }}
+          >
+            Ikke tildelt
+          </Pill>
+        )}
+        {patient.handedOverAt && (
+          <Pill
+            data-testid={`handed-over-${patient.id}`}
+            tone={{ color: 'var(--color-status-info)', bg: 'var(--color-status-info-bg)', border: 'var(--color-status-info-border)' }}
+          >
+            I sykestua
+          </Pill>
         )}
         {assignedTeam && (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-text-muted)' }}>
             {assignedTeam.name}
           </span>
         )}
+        <AssignmentAckPill patientId={patient.id} ack={ack} />
+        <AmkNotifiedPill patientId={patient.id} amkNotifiedAt={patient.amkNotifiedAt} />
+        <TransportPill
+          patientId={patient.id}
+          transportNeed={patient.transportNeed}
+          transportTeamId={patient.transportTeamId}
+          transportAssignedAt={patient.transportAssignedAt}
+          teamName={teams.find((t) => t.id === patient.transportTeamId)?.name}
+        />
         {positionSummary && (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {positionSummary}
           </span>
         )}
-        <span style={{ color: 'var(--color-text-subtle)', fontSize: 'var(--text-xs)' }}>{expanded ? '▲' : '▼'}</span>
+        {age && !isClosed && (
+          <span className="data" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}>
+            {age}
+          </span>
+        )}
+        <Icon name={expanded ? 'chevronUp' : 'chevronDown'} style={{ color: 'var(--color-text-muted)' }} />
       </button>
 
       {expanded && !editing && (
-        <div style={{ padding: 'var(--space-3)', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        <div style={{ padding: 'var(--space-3)', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           {patient.description && (
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>{patient.description}</p>
           )}
           {(patient.positionText || coordsText) && (
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
               <strong>Posisjon:</strong> {patient.positionText ?? 'Kun GPS'}
               {coordsText && ` (${coordsText})`}
             </div>
           )}
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)' }}>
-            Oppdatert {new Date(patient.updatedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+            Oppdatert <span className="data">{new Date(patient.updatedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
+
+          {!isClosed && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <label htmlFor={`assign-${patient.id}`} style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+                Tilordnet lag
+              </label>
+              <select
+                id={`assign-${patient.id}`}
+                data-testid={`assign-select-${patient.id}`}
+                className="field"
+                value={patient.assignedTeamId ?? ''}
+                disabled={assigning}
+                onChange={(e) => void handleAssign(e.target.value)}
+                style={{
+                  ...inputStyle, width: 'auto', minWidth: 180,
+                  border: `2px solid ${isUnassigned ? 'var(--color-brand)' : 'var(--color-input-border)'}`,
+                  fontWeight: 600,
+                }}
+              >
+                <option value="">— ikke tildelt —</option>
+                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              {assigning && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Lagrer…</span>}
+            </div>
+          )}
+
           {engagements.length > 0 && (
-            <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 'var(--space-1)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-2)' }}>
+              <div className="section-label" style={{ marginBottom: 'var(--space-1)' }}>
                 Lag responderer
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
@@ -213,60 +434,57 @@ function PatientRow({
               </div>
             </div>
           )}
+
           <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
             {!isClosed && (
-              <button
-                onClick={() => { setDraft({ ...patient }); setEditing(true); }}
-                style={{
-                  padding: '4px 12px', borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--color-brand)', background: 'transparent',
-                  color: 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
-                }}
+              <Button variant="secondary" size="sm" icon="edit" onClick={() => { setDraft({ ...patient }); setEditing(true); }}>
+                Rediger detaljer
+              </Button>
+            )}
+            {!isClosed && patient.transportNeed && onClearTransport && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="x"
+                disabled={clearingTransport}
+                data-testid={`transport-clear-${patient.id}`}
+                onClick={() => void handleClearTransport()}
               >
-                Rediger
-              </button>
+                {clearingTransport ? 'Fjerner…' : 'Fjern'}
+              </Button>
             )}
             {!isClosed && onClose && (
               <div style={{ position: 'relative' }}>
-                <button
+                <Button
+                  variant="danger-soft"
+                  size="sm"
+                  iconEnd="chevronDown"
                   onClick={() => setShowCloseMenu((v) => !v)}
                   disabled={closing}
                   aria-expanded={showCloseMenu}
-                  style={{
-                    padding: '4px 12px', borderRadius: 'var(--radius-sm)',
-                    border: '1px solid #dc2626', background: 'transparent',
-                    color: '#dc2626', fontSize: 'var(--text-xs)', fontWeight: 600,
-                    cursor: closing ? 'wait' : 'pointer',
-                  }}
                 >
-                  {closing ? 'Lukker...' : 'Lukk pasient ▾'}
-                </button>
+                  {closing ? 'Lukker...' : 'Lukk pasient'}
+                </Button>
                 {showCloseMenu && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, zIndex: 20, marginTop: 2,
                     background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-sm)', boxShadow: '0 4px 12px rgba(0,0,0,.15)',
-                    minWidth: 160,
+                    borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-md)',
+                    minWidth: 180,
                   }}>
-                    <button
-                      onClick={() => handleClose('false_alarm')}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 600 }}
-                    >
+                    <Button variant="ghost" size="sm" block onClick={() => handleClose('false_alarm')} style={{ justifyContent: 'flex-start', borderRadius: 0 }}>
                       Falsk alarm
-                    </button>
-                    <button
-                      onClick={() => handleClose('disappeared')}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 600 }}
-                    >
+                    </Button>
+                    <Button variant="ghost" size="sm" block onClick={() => handleClose('disappeared')} style={{ justifyContent: 'flex-start', borderRadius: 0 }}>
                       Forsvunnet
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
             )}
           </div>
           {closeError && (
-            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: '#dc2626' }}>{closeError}</p>
+            <p role="alert" style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-status-critical)' }}>{closeError}</p>
           )}
         </div>
       )}
@@ -275,91 +493,90 @@ function PatientRow({
         <div style={{ padding: 'var(--space-3)', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Navn / ID</label>
+              <label htmlFor={`edit-label-${patient.id}`} className="section-label" style={fieldLabelStyle}>Navn / ID</label>
               <input
+                id={`edit-label-${patient.id}`}
                 type="text"
                 value={draft.label ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="field" style={inputStyle}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Triage</label>
+              <label htmlFor={`edit-triage-${patient.id}`} className="section-label" style={fieldLabelStyle}>Triage</label>
               <select
+                id={`edit-triage-${patient.id}`}
                 value={draft.triageStatus ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, triageStatus: (e.target.value || null) as FieldTriageStatus | null }))}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)' }}
+                className="field" style={inputStyle}
               >
                 <option value="">— ingen —</option>
-                {TRIAGE_ORDER.map((t) => <option key={t} value={t}>{TRIAGE_COLORS[t].label}</option>)}
+                {FIELD_TRIAGE_ORDER.map((t) => <option key={t} value={t}>{FIELD_TRIAGE_STYLE[t].label}</option>)}
               </select>
             </div>
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Notater / beskrivelse</label>
+            <label htmlFor={`edit-description-${patient.id}`} className="section-label" style={fieldLabelStyle}>Notater / beskrivelse</label>
             <textarea
+              id={`edit-description-${patient.id}`}
               value={draft.description ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value || null }))}
               rows={2}
-              style={{ width: '100%', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', resize: 'vertical', boxSizing: 'border-box' }}
+              className="field" style={{ ...inputStyle, resize: 'vertical' }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Posisjonstekst</label>
+            <label htmlFor={`edit-position-${patient.id}`} className="section-label" style={fieldLabelStyle}>Posisjonstekst</label>
             <input
+              id={`edit-position-${patient.id}`}
               type="text"
               value={draft.positionText ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, positionText: e.target.value || null }))}
               placeholder="f.eks. Ved hovedscenen, sektor B"
-              style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+              className="field" style={inputStyle}
             />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Breddegrad (lat)</label>
+              <label htmlFor={`edit-lat-${patient.id}`} className="section-label" style={fieldLabelStyle}>Breddegrad (lat)</label>
               <input
+                id={`edit-lat-${patient.id}`}
                 type="number"
                 step="any"
                 value={draft.lat ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, lat: e.target.value ? parseFloat(e.target.value) : null }))}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="field" style={inputStyle}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Lengdegrad (lon)</label>
+              <label htmlFor={`edit-lon-${patient.id}`} className="section-label" style={fieldLabelStyle}>Lengdegrad (lon)</label>
               <input
+                id={`edit-lon-${patient.id}`}
                 type="number"
                 step="any"
                 value={draft.lon ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, lon: e.target.value ? parseFloat(e.target.value) : null }))}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="field" style={inputStyle}
               />
             </div>
           </div>
 
           {onPickLocation && (
-            <button
-              type="button"
-              onClick={() => onPickLocation()}
-              style={{
-                alignSelf: 'flex-start', padding: '4px 12px', height: 36, borderRadius: 'var(--radius-sm)',
-                border: '1px solid #0369a1', background: 'transparent',
-                color: '#0369a1', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              📍 Pin på kart
-            </button>
+            <Button variant="secondary" size="sm" icon="pin" onClick={() => onPickLocation()} style={{ alignSelf: 'flex-start', color: 'var(--color-status-info)' }}>
+              Pin på kart
+            </Button>
           )}
 
           <div>
-            <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Tilordnet lag</label>
+            <label htmlFor={`edit-team-${patient.id}`} className="section-label" style={fieldLabelStyle}>Tilordnet lag</label>
             <select
+              id={`edit-team-${patient.id}`}
               value={draft.assignedTeamId ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, assignedTeamId: e.target.value || null }))}
-              style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)' }}
+              className="field" style={inputStyle}
             >
               <option value="">— ikke tildelt —</option>
               {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -367,27 +584,12 @@ function PatientRow({
           </div>
 
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button
-              onClick={handleSave}
-              disabled={saving || !draft.label?.trim()}
-              style={{
-                flex: 1, height: 36, borderRadius: 'var(--radius-sm)', border: 'none',
-                background: 'var(--color-brand)', color: 'white', fontSize: 'var(--text-sm)',
-                fontWeight: 600, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1,
-              }}
-            >
+            <Button variant="primary" size="sm" onClick={handleSave} disabled={saving || !draft.label?.trim()} style={{ flex: 1 }}>
               {saving ? 'Lagrer...' : 'Lagre'}
-            </button>
-            <button
-              onClick={() => setEditing(false)}
-              style={{
-                padding: '0 16px', height: 36, borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)', background: 'transparent',
-                color: 'var(--color-text)', fontSize: 'var(--text-sm)', cursor: 'pointer',
-              }}
-            >
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
               Avbryt
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -405,6 +607,8 @@ export function PatientManagementPanel({
   teamPatientEngagements = {},
   onClosePatient,
   onPickLocation,
+  onClearTransport,
+  now = new Date(),
 }: PatientManagementPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [newLabel, setNewLabel] = useState('');
@@ -434,116 +638,114 @@ export function PatientManagementPanel({
   };
 
   const CLOSED_STATUSES = new Set(['discharged', 'transferred']);
-  const triageOrder = { red: 0, yellow: 1, green: 2, black: 3 };
 
+  // Worst triage first; within the same triage the ones nobody has taken yet,
+  // oldest first — that is the order a coordinator works the list in.
   const activePatients = [...patients]
     .filter((p) => !CLOSED_STATUSES.has(p.status ?? ''))
-    .sort((a, b) => (triageOrder[a.triageStatus ?? 'green'] ?? 2) - (triageOrder[b.triageStatus ?? 'green'] ?? 2));
+    .sort((a, b) => {
+      const ra = TRIAGE_RANK[a.triageStatus ?? 'none'] ?? 5;
+      const rb = TRIAGE_RANK[b.triageStatus ?? 'none'] ?? 5;
+      if (ra !== rb) return ra - rb;
+      const ua = a.assignedTeamId ? 1 : 0;
+      const ub = b.assignedTeamId ? 1 : 0;
+      if (ua !== ub) return ua - ub;
+      return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+    });
 
   const closedPatients = [...patients]
     .filter((p) => CLOSED_STATUSES.has(p.status ?? ''))
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  const unassignedCount = activePatients.filter((p) => !p.assignedTeamId).length;
 
   return (
     <section
       aria-labelledby="patients-panel-title"
       style={{ marginBottom: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', overflow: 'hidden' }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
-        <h2
-          id="patients-panel-title"
-          style={{ margin: 0, fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', letterSpacing: 'var(--tracking-mono)', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}
-        >
-          Pasienter ({activePatients.length})
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
+        <h2 id="patients-panel-title" className="section-label" style={{ margin: 0 }}>
+          Pasienter (<span className="data">{activePatients.length}</span>)
+          {unassignedCount > 0 && (
+            <span style={{ marginLeft: 8, color: 'var(--color-status-warning)' }}>· <span className="data">{unassignedCount}</span> uten lag</span>
+          )}
           {closedPatients.length > 0 && (
-            <span style={{ marginLeft: 8, color: 'var(--color-text-subtle)', fontWeight: 400 }}>· {closedPatients.length} lukket</span>
+            <span style={{ marginLeft: 8, color: 'var(--color-text-subtle)', fontWeight: 400 }}>· <span className="data">{closedPatients.length}</span> lukket</span>
           )}
         </h2>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          style={{
-            padding: '4px 12px', borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-brand)', background: showForm ? 'var(--color-brand)' : 'transparent',
-            color: showForm ? 'white' : 'var(--color-brand)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
-          }}
-        >
-          {showForm ? 'Avbryt' : '+ Legg til pasient'}
-        </button>
+        <Button variant={showForm ? 'ghost' : 'outline'} size="sm" icon={showForm ? 'x' : 'plus'} onClick={() => setShowForm((v) => !v)}>
+          {showForm ? 'Avbryt' : 'Legg til pasient'}
+        </Button>
       </div>
 
       {showForm && (
         <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', background: 'var(--color-surface-sunken)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Navn / ID *</label>
+              <label htmlFor="new-patient-label" className="section-label" style={fieldLabelStyle}>Navn / ID *</label>
               <input
+                id="new-patient-label"
                 type="text"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="f.eks. Pasient 1"
                 autoFocus
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="field" style={inputStyle}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Triage</label>
+              <label htmlFor="new-patient-triage" className="section-label" style={fieldLabelStyle}>Triage</label>
               <select
+                id="new-patient-triage"
                 value={newTriage}
                 onChange={(e) => setNewTriage(e.target.value as FieldTriageStatus | '')}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)' }}
+                className="field" style={inputStyle}
               >
                 <option value="">— ingen —</option>
-                {TRIAGE_ORDER.map((t) => <option key={t} value={t}>{TRIAGE_COLORS[t].label}</option>)}
+                {FIELD_TRIAGE_ORDER.map((t) => <option key={t} value={t}>{FIELD_TRIAGE_STYLE[t].label}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Notater / beskrivelse</label>
+            <label htmlFor="new-patient-description" className="section-label" style={fieldLabelStyle}>Notater / beskrivelse</label>
             <input
+              id="new-patient-description"
               type="text"
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
               placeholder="Valgfritt"
-              style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+              className="field" style={inputStyle}
             />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Posisjonstekst</label>
+              <label htmlFor="new-patient-position" className="section-label" style={fieldLabelStyle}>Posisjonstekst</label>
               <input
+                id="new-patient-position"
                 type="text"
                 value={newPositionText}
                 onChange={(e) => setNewPositionText(e.target.value)}
                 placeholder="f.eks. Nær inngangen"
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)', boxSizing: 'border-box' }}
+                className="field" style={inputStyle}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-subtle)', marginBottom: 4 }}>Tilordnet lag</label>
+              <label htmlFor="new-patient-team" className="section-label" style={fieldLabelStyle}>Tilordnet lag</label>
               <select
+                id="new-patient-team"
                 value={newTeamId}
                 onChange={(e) => setNewTeamId(e.target.value)}
-                style={{ width: '100%', height: 36, padding: '0 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-input-border)', background: 'var(--color-input-bg)', color: 'var(--color-text)', fontSize: 'var(--text-sm)' }}
+                className="field" style={inputStyle}
               >
                 <option value="">— ikke tildelt —</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
           </div>
-          <button
-            onClick={handleCreate}
-            disabled={creating || !newLabel.trim()}
-            style={{
-              alignSelf: 'flex-start', padding: '0 20px', height: 36,
-              borderRadius: 'var(--radius-sm)', border: 'none',
-              background: newLabel.trim() ? 'var(--color-brand)' : 'var(--color-border)',
-              color: newLabel.trim() ? 'white' : 'var(--color-text-subtle)',
-              fontSize: 'var(--text-sm)', fontWeight: 600,
-              cursor: creating || !newLabel.trim() ? 'not-allowed' : 'pointer',
-            }}
-          >
+          <Button variant="primary" onClick={handleCreate} disabled={creating || !newLabel.trim()} style={{ alignSelf: 'flex-start' }}>
             {creating ? 'Oppretter...' : 'Opprett pasient'}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -567,22 +769,16 @@ export function PatientManagementPanel({
             onUpdate={(data) => onUpdatePatient(p.id, data)}
             onClose={onClosePatient ? (reason) => onClosePatient(p.id, reason) : undefined}
             onPickLocation={onPickLocation ? () => onPickLocation(p.id) : undefined}
+            onClearTransport={onClearTransport}
+            now={now}
           />
         ))}
 
         {closedPatients.length > 0 && (
           <div style={{ marginTop: 'var(--space-2)' }}>
-            <button
-              type="button"
-              onClick={() => setShowClosed((v) => !v)}
-              aria-expanded={showClosed}
-              style={{
-                width: '100%', padding: '6px var(--space-3)', background: 'none', border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--text-xs)',
-                color: 'var(--color-text-subtle)', fontWeight: 600, textAlign: 'left',
-              }}
-            >
-              {showClosed ? '▲' : '▼'} Lukkede pasienter ({closedPatients.length})
+            <button type="button" className="disclosure" onClick={() => setShowClosed((v) => !v)} aria-expanded={showClosed}>
+              <span>Lukkede pasienter (<span className="data">{closedPatients.length}</span>)</span>
+              <Icon name={showClosed ? 'chevronUp' : 'chevronDown'} />
             </button>
             {showClosed && (
               <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>

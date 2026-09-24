@@ -4,6 +4,7 @@
  */
 
 import type { News2Result } from '@rkf/shared-types';
+import type { SickBayPlacementType, TeamOperationalStatus, TeamPatientStatus, TransportNeed } from './types';
 
 export const ACVPU_OPTIONS: { value: string; label: string; short: string }[] = [
   { value: 'alert', label: 'Alert', short: 'A' },
@@ -126,6 +127,56 @@ export const TEAM_OPERATIONAL_STATUS_LABELS: Record<string, string> = {
   unavailable: 'Utilgjengelig',
 };
 
+/**
+ * Colour per team operational status. Shared by the coordinator's team panel
+ * and the first aider's own status pill so both sides read the same colour.
+ */
+export const TEAM_OPERATIONAL_STATUS_STYLE: Record<
+  TeamOperationalStatus,
+  { color: string; bg: string; border: string }
+> = {
+  available:        { color: 'var(--color-status-ok)',       bg: 'var(--color-status-ok-bg)',       border: 'var(--color-status-ok-border)' },
+  en_route:         { color: 'var(--color-status-info)',     bg: 'var(--color-status-info-bg)',     border: 'var(--color-status-info-border)' },
+  on_scene:         { color: 'var(--color-status-warning)',  bg: 'var(--color-status-warning-bg)',  border: 'var(--color-status-warning-border)' },
+  needs_assistance: { color: 'var(--color-status-critical)', bg: 'var(--color-status-critical-bg)', border: 'var(--color-status-critical-border)' },
+  unavailable:      { color: 'var(--color-text-subtle)',     bg: 'var(--color-surface-sunken)',     border: 'var(--color-border)' },
+};
+
+export type FieldTriageStatus = 'red' | 'yellow' | 'green' | 'black';
+
+export const FIELD_TRIAGE_ORDER: FieldTriageStatus[] = ['red', 'yellow', 'green', 'black'];
+
+/** Field triage pill colours — theme-aware via tokens.css (light + dark). */
+export const FIELD_TRIAGE_STYLE: Record<FieldTriageStatus, { bg: string; text: string; label: string }> = {
+  red:    { bg: 'var(--color-triage-red-bg)',    text: 'var(--color-triage-red)',    label: 'Rød' },
+  yellow: { bg: 'var(--color-triage-yellow-bg)', text: 'var(--color-triage-yellow)', label: 'Gul' },
+  green:  { bg: 'var(--color-triage-green-bg)',  text: 'var(--color-triage-green)',  label: 'Grønn' },
+  black:  { bg: 'var(--color-triage-black-bg)',  text: 'var(--color-triage-black)',  label: 'Svart' },
+};
+
+/** Team ↔ patient engagement pill colours (På vei / Transporterer / Overvåker). */
+export const TEAM_PATIENT_STATUS_STYLE: Record<
+  TeamPatientStatus,
+  { label: string; bg: string; color: string }
+> = {
+  en_route_to_patient: { label: 'På vei',        bg: 'var(--color-engagement-en-route-bg)',     color: 'var(--color-engagement-en-route)' },
+  transporting:        { label: 'Transporterer', bg: 'var(--color-engagement-transporting-bg)', color: 'var(--color-engagement-transporting)' },
+  monitoring:          { label: 'Overvåker',     bg: 'var(--color-engagement-monitoring-bg)',   color: 'var(--color-engagement-monitoring)' },
+};
+
+/**
+ * Why a patrol closes a patient. Chips instead of free text: typing a sentence
+ * with gloves in the dark is the wrong trade-off, and the reason is almost
+ * always one of these.
+ */
+export const PATIENT_CLOSE_REASONS: Array<{ id: string; label: string }> = [
+  { id: 'handed_to_sickbay',   label: 'Overlevert sykestue' },
+  { id: 'handed_to_ambulance', label: 'Overlevert ambulanse' },
+  { id: 'treated_on_scene',    label: 'Ferdig behandlet på stedet' },
+  { id: 'false_alarm',         label: 'Falsk alarm' },
+  { id: 'disappeared',         label: 'Forsvunnet' },
+];
+
 export const SICKBAY_PLACEMENT_LABELS: Record<'chair' | 'bed', string> = {
   chair: 'Stol',
   bed: 'Seng',
@@ -186,3 +237,126 @@ export function formatSickbayPlacement(
   if (!label) return null;
   return `${label} ${placementNumber}`;
 }
+
+/**
+ * Whole (fractional) minutes elapsed since an ISO timestamp, or `null` when
+ * the timestamp is missing or invalid. Shared by the coordinator's wait-time
+ * (gap A6), assignment-acknowledgement (gap A4) and message-receipt (gap B10)
+ * thresholds below — one place to get the arithmetic right.
+ */
+export function minutesSince(iso: string | null | undefined, now: Date = new Date()): number | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return null;
+  return (now.getTime() - then) / 60_000;
+}
+
+/**
+ * How long a yellow/green patient can wait without a team before the
+ * coordinator's "Krever handling" banner escalates it into "Venter for
+ * lenge" (gap A6 / lane 8 item 8.20). Red patients are always in the banner
+ * regardless of age — this only adds time as a second trigger for the rest.
+ */
+export const ATTENTION_WAIT_MINUTES: Record<'yellow' | 'green', number> = {
+  yellow: 10,
+  green: 30,
+};
+
+/**
+ * Assignment-acknowledgement thresholds (gap A4 / item 8.21): a patrol
+ * "acknowledges" an assignment by going en route or transporting for that
+ * patient. Past `warn` minutes without that, the patient row shows "Ikke
+ * bekreftet"; past `escalate` minutes it also enters the attention queue.
+ */
+export const ASSIGNMENT_ACK_MINUTES: Record<'warn' | 'escalate', number> = {
+  warn: 2,
+  escalate: 5,
+};
+
+/**
+ * A directed coordinator message with no "Mottatt" receipt after this many
+ * minutes shows "Ikke kvittert" in the message stream (gap B10 / item 8.24).
+ */
+export const MESSAGE_UNACKED_MINUTES = 3;
+
+/**
+ * Transport request chip / pill labels (gap B3 / item 8.26) — what a patrol
+ * asks for when a patient cannot walk out under their own power.
+ */
+export const TRANSPORT_NEED_LABELS: Record<TransportNeed, string> = {
+  stretcher: 'Båre',
+  atv: 'ATV',
+  ambulance: 'Ambulanse',
+};
+
+/**
+ * Quick log complaint chips (gap A8 / item 8.28) — "Behandlet på stedet" is
+ * almost always one of these; the chip's label becomes the patient label
+ * unless "Annet" is picked, which requires its own free text instead.
+ */
+export const QUICK_LOG_COMPLAINTS: Array<{ id: string; label: string }> = [
+  { id: 'blister', label: 'Gnagsår' },
+  { id: 'cut', label: 'Kutt' },
+  { id: 'sprain', label: 'Forstuing' },
+  { id: 'headache', label: 'Hodepine' },
+  { id: 'nausea', label: 'Kvalme' },
+  { id: 'other', label: 'Annet' },
+];
+export interface SickbayOccupancyCount {
+  occupied: number;
+  total: number;
+}
+
+export interface SickbayOccupancy {
+  chairs: SickbayOccupancyCount | null;
+  beds: SickbayOccupancyCount | null;
+}
+
+/**
+ * Occupancy strip math (gap B6 / item 8.30): counts open patients placed in
+ * each type against the event's configured capacity. A type with no
+ * configured capacity comes back `null` — the header shows "Kapasitet ikke
+ * satt" for it rather than inventing a denominator.
+ */
+export function computeSickbayOccupancy(
+  settings: { chairs?: number; beds?: number } | null | undefined,
+  openPatients: Array<{ placementType?: SickBayPlacementType | null; placementNumber?: string | null }>,
+): SickbayOccupancy {
+  const countOccupied = (type: SickBayPlacementType) =>
+    openPatients.filter((p) => p.placementType === type && p.placementNumber).length;
+  return {
+    chairs: typeof settings?.chairs === 'number' ? { occupied: countOccupied('chair'), total: settings.chairs } : null,
+    beds: typeof settings?.beds === 'number' ? { occupied: countOccupied('bed'), total: settings.beds } : null,
+  };
+}
+
+/**
+ * The lowest free placement numbers for a type, up to `limit` (item 8.30) —
+ * feeds the quick-pick chips in the placement editor and the intake modal.
+ * Ignores configured capacity on purpose: the sick bay still needs to place
+ * someone even before a coordinator has set chair/bed counts.
+ */
+export function freeSickbayNumbers(
+  placementType: SickBayPlacementType,
+  openPatients: Array<{ placementType?: SickBayPlacementType | null; placementNumber?: string | null }>,
+  limit = 6,
+): number[] {
+  const occupied = new Set(
+    openPatients
+      .filter((p) => p.placementType === placementType && p.placementNumber)
+      .map((p) => Number.parseInt(p.placementNumber as string, 10))
+      .filter((n) => Number.isFinite(n)),
+  );
+  const free: number[] = [];
+  for (let n = 1; free.length < limit && n <= 999; n++) {
+    if (!occupied.has(n)) free.push(n);
+  }
+  return free;
+}
+/** A team's own means of getting around (distinct from a patient's transport need above). */
+export const TEAM_TRANSPORT_LABELS: Record<string, string> = {
+  foot: 'Til fots',
+  bike: 'Sykkel',
+  vehicle: 'Kjøretøy',
+  atv: 'ATV',
+};
